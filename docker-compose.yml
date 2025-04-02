@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  # Fluxa Development Environment
+  # This service is used for local development of the Fluxa project.
+  # It includes a Solana validator, frontend application, and other necessary components.
+  fluxa-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "8899:8899" # Port for Solana Validator
+      - "3000:3000" # Port for Frontend
+      - "9900:9900" # Port for Program Logs
+    volumes:
+      - ./programs:/app/programs # Program source code
+      - ./frontend:/app/frontend # Frontend application
+      - ./tests:/app/tests # Test files
+      - ./scripts:/app/scripts # Scripts
+      - solana-config:/root/.config/solana # Solana config
+      - node_modules:/app/frontend/node_modules # Node modules
+    environment:
+      - NODE_ENV=development
+      - ANCHOR_WALLLET=/app/test-keypair.json
+    command: bash -c "cd /app/frontend && npm run dev"
+
+  # Seperate frontend-only container for UI work
+  fluxa-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-base
+    ports:
+      - "3001:3000" # Port for Frontend
+    volumes:
+      - ./frontend:/app/frontend # Frontend application
+      - node_modules:/app/frontend/node_modules # Node modules
+    command: npm run dev
+    depends_on:
+      - fluxa-dev # Ensure the fluxa-dev service is running before starting the frontend
+
+volumes:
+  solana-config:
+  node_modules:
