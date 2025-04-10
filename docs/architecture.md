@@ -4,11 +4,13 @@
 
 Fluxa is designed as a Hybrid Adaptive AMM with Personalized Yield Optimization built specifically for the Solana ecosystem. This document details the overall system architecture, key modules, their interactions, and integration points with external protocols. It serves as a blueprint for development, testing, and future scalability.
 
+**Hackathon Implementation Focus:** For the hackathon phase, we will prioritize the AMM Core and Impermanent Loss Mitigation modules to deliver a focused, high-impact demonstration. Other modules will be developed in subsequent phases.
+
 ## 2. High-Level System Architecture
 
 ### 2.1 Overview Diagram
 
-Below is a conceptual diagram of Fluxa's architecture:
+Below is a conceptual diagram of Fluxa's full architecture. Components highlighted in **bold** represent our hackathon implementation priorities:
 
 ```
                            ┌────────────────────┐
@@ -27,16 +29,16 @@ Below is a conceptual diagram of Fluxa's architecture:
                   │     Fluxa Smart Contract Layer      │
                   │                                     │
                   │  ┌─────────────┐   ┌─────────────┐  │
-                  │  │   AMM Core  │   │  Order Book │  │
+                  │  │ **AMM Core**│   │  Order Book │  │
                   │  │(Concentrated│   │  Module     │  │
                   │  │ Liquidity)  │   │(Limit Orders)│ │
                   │  └─────┬──────-┘   └─────┬───────┘  │
                   │        │                 │          │
                   │        ▼                 ▼          │
                   │  ┌─────────────┐  ┌──────────────┐  │
-                  │  │ Impermanent │  │ Personalized │  │
-                  │  │ Loss Mitigation│ Yield Optimizer││
-                  │  │  Module       │  Module      │   │
+                  │  │**Impermanent│  │ Personalized │  │
+                  │  │Loss Mitigation│ Yield Optimizer││
+                  │  │  Module**    │  Module      │   │
                   │  └─────┬──────┘  └─────┬───────┘    │
                   │        │                │           │
                   │        ▼                ▼           │
@@ -59,9 +61,48 @@ Below is a conceptual diagram of Fluxa's architecture:
                            └────────────────────┘
 ```
 
+### 2.2 Hackathon Implementation Architecture
+
+For the hackathon, we will implement a simplified but powerful architecture focusing on our core value proposition:
+
+```
+                           ┌────────────────────┐
+                           │    User Client     │
+                           │ (Web/Mobile App)   │
+                           └─────────┬──────────┘
+                                     │
+                                     │
+                           ┌─────────▼──────────┐
+                           │  Interactive UI    │
+                           │(Visualizations & LP │
+                           │  Management)       │
+                           └─────────┬──────────┘
+                                     │
+                                     │
+                  ┌──────────────────▼──────────────────┐
+                  │     Fluxa Core Implementation       │
+                  │                                     │
+                  │  ┌─────────────┐   ┌─────────────┐  │
+                  │  │   AMM Core  │──▶│ Impermanent │  │
+                  │  │(Concentrated│   │Loss Mitigation│ │
+                  │  │ Liquidity)  │◀──│  Module      │ │
+                  │  └─────────────┘   └─────────────┘  │
+                  │                                     │
+                  │  ┌─────────────────────────────┐   │
+                  │  │ Simplified Yield Optimizer  │   │
+                  │  │    (Demo Implementation)    │   │
+                  │  └─────────────────────────────┘   │
+                  └──────────────────┬──────────────────┘
+                                     │
+                                     ▼
+                           ┌────────────────────┐
+                           │  Solana Blockchain │
+                           └────────────────────┘
+```
+
 ## 3. Detailed Component Design
 
-### 3.1 AMM Core
+### 3.1 AMM Core (Hackathon Priority)
 
 **Purpose:**
 
@@ -77,8 +118,16 @@ Below is a conceptual diagram of Fluxa's architecture:
 
 - Use Solana's fast, parallel processing for real-time state updates.
 - Maintain efficient on-chain arithmetic to support dynamic liquidity curves.
+- Implement precise data structures for tracking liquidity positions.
 
-### 3.2 Order Book Module
+**Hackathon Implementation Details:**
+
+- Focus on optimized implementation of core swap functionality
+- Implement position management with range specification
+- Prioritize robust fee accrual mechanism
+- Ensure clean interfaces for integration with IL mitigation module
+
+### 3.2 Order Book Module (Post-Hackathon Phase)
 
 **Purpose:**
 
@@ -95,7 +144,9 @@ Below is a conceptual diagram of Fluxa's architecture:
 - Leverage Solana's low-latency transactions for rapid order matching.
 - Ensure transparency and fairness in order execution.
 
-### 3.3 Impermanent Loss Mitigation Module
+**Note:** Full implementation deferred to post-hackathon phase.
+
+### 3.3 Impermanent Loss Mitigation Module (Hackathon Priority)
 
 **Purpose:**
 
@@ -112,7 +163,14 @@ Below is a conceptual diagram of Fluxa's architecture:
 - Incorporate real-time data feeds and oracle integrations.
 - Maintain on-chain records of adjustments for auditability.
 
-### 3.4 Personalized Yield Optimization Module
+**Hackathon Implementation Details:**
+
+- Implement core algorithms for detecting IL risk conditions
+- Develop position rebalancing mechanism optimized for gas efficiency
+- Create simulation capabilities to demonstrate IL reduction in various market scenarios
+- Focus on quantifiable metrics showing improvement over traditional AMMs
+
+### 3.4 Personalized Yield Optimization Module (Simplified for Hackathon)
 
 **Purpose:**
 
@@ -128,6 +186,12 @@ Below is a conceptual diagram of Fluxa's architecture:
 
 - Integrate with external yield protocols (e.g., Marinade, Solend) for diversified yield generation.
 - Use Solana's parallel execution to perform complex calculations without delay.
+
+**Hackathon Implementation Details:**
+
+- Implement simplified version showing profile selection and basic strategy adjustment
+- Focus on UI representation of different strategies rather than full implementation
+- Demonstrate concept through simulation rather than live integrations
 
 ### 3.5 Insurance Fund Module
 
@@ -190,9 +254,11 @@ Below is a conceptual diagram of Fluxa's architecture:
 
 - Modules communicate via well-defined CPI calls ensuring data consistency and real-time updates.
 
-**External Data:**
+**Hackathon Implementation Focus:**
 
-- Oracles and external protocols feed data into the system to inform dynamic adjustments, with robust verification layers (e.g., aggregated price feeds).
+- Prioritize robust integration between AMM Core and IL Mitigation modules
+- Implement clean data flow for position management and fee accrual
+- Focus on observable state changes for demonstration purposes
 
 ### 4.2 Off-Chain Interactions
 
@@ -233,3 +299,24 @@ Below is a conceptual diagram of Fluxa's architecture:
 **Resource Management:**
 
 - Optimize compute and storage usage on-chain to keep transaction costs low.
+
+## 6. Development Priorities and Phasing
+
+### 6.1 Hackathon Phase Implementation
+
+The hackathon implementation will focus on delivering a compelling demonstration of Fluxa's core value proposition through these components:
+
+1. **AMM Core Module**: Complete implementation with concentrated liquidity functionality
+2. **Impermanent Loss Mitigation Module**: Full implementation with demonstrable benefits
+3. **Frontend Visualizations**: Interactive UI showing liquidity positions and IL reduction
+4. **Simplified Yield Optimizer**: Basic implementation showing the concept
+
+### 6.2 Post-Hackathon Implementation
+
+Following components will be implemented after the hackathon:
+
+1. Order Book Module
+2. Full Personalized Yield Optimization
+3. Insurance Fund Module
+4. Governance Module
+5. External Protocol Integrations

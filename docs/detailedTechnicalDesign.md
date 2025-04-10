@@ -4,6 +4,17 @@
 
 Fluxa is a Hybrid Adaptive AMM with Personalized Yield Optimization designed for Solana’s high-speed, parallel execution environment. This document details the technical design and implementation strategy for each core module of the protocol, including concentrated liquidity math, dynamic liquidity curve adjustments, impermanent loss (IL) mitigation, yield optimization logic, order book integration, and fee distribution. The design leverages Solana’s account model and cross-program invocations (CPIs) to maintain modularity, scalability, and security.
 
+### 1.1 Hackathon Implementation Focus
+
+For the hackathon phase, we will focus on implementing two core modules that showcase Fluxa's most innovative contributions:
+
+1. **AMM Core Module with Concentrated Liquidity**: A complete implementation of concentrated liquidity positions, pricing curves, and fee accrual.
+2. **Impermanent Loss Mitigation Module**: Full implementation of our dynamic liquidity curve adjustment algorithm that demonstrably reduces IL compared to existing AMMs.
+
+We will also develop a simplified version of the Personalized Yield Optimization module to demonstrate the concept through the UI, but with limited backend functionality. The Order Book Module and Insurance Fund Module will be deferred to the post-hackathon phase.
+
+This focused approach allows us to deliver a compelling, production-quality demonstration of our core value proposition while optimizing for the hackathon timeframe.
+
 ## 2. System Overview
 
 Fluxa consists of several interrelated modules deployed as Solana programs (using the Anchor framework). Each module is responsible for a distinct function:
@@ -148,7 +159,79 @@ fn compute_delta(volatility: f64) -> f64 {
 }
 ```
 
-#### 3.3.2 Rebalancing and Insurance Fund Trigger
+#### 3.3.2 Hackathon Implementation Details
+
+**Core Algorithm Implementation**:
+
+For the hackathon, we will implement the complete IL mitigation algorithm with the following components:
+
+1. **Volatility Calculation Model**:
+
+   - Implement a rolling window standard deviation model for price data
+   - Use exponential moving averages (EMA) to smooth volatility signals
+   - Create an adaptive threshold that changes based on token pair characteristics
+
+2. **Position Rebalancing Logic**:
+
+   - Develop automatic position boundary adjustments based on volatility triggers
+   - Implement gas-efficient rebalancing that minimizes transaction costs
+   - Create position simulation to preview outcomes before execution
+
+3. **Performance Metrics**:
+
+   - Implement real-time IL calculation for positions
+   - Develop comparative analytics showing IL reduction vs standard AMM models
+   - Create historical performance tracking for different volatility scenarios
+
+4. **Demonstration Components**:
+   - Build a simulated market environment to showcase IL mitigation during price swings
+   - Implement side-by-side comparison with traditional AMM position
+   - Create visual representation of position adjustments during volatility events
+
+**Implementation Strategy**:
+
+```rust
+// Core IL mitigation implementation
+pub struct ILMitigationParams {
+    volatility_window: u64,        // Window size for volatility calculation
+    adjustment_threshold: f64,     // Minimum volatility to trigger adjustment
+    max_adjustment_factor: f64,    // Maximum range expansion factor
+    rebalance_cooldown: u64,       // Minimum time between rebalances
+}
+
+// Main adjustment function
+pub fn mitigate_impermanent_loss(
+    position: &mut LiquidityPosition,
+    price_history: &PriceHistory,
+    params: &ILMitigationParams
+) -> Result<PositionAdjustment> {
+    // 1. Calculate current volatility
+    let volatility = calculate_volatility(price_history, params.volatility_window);
+
+    // 2. Determine if adjustment is needed
+    if volatility > params.adjustment_threshold {
+        // 3. Calculate optimal position boundaries
+        let optimal_boundaries = calculate_optimal_boundaries(
+            position,
+            volatility,
+            price_history.current_price,
+            params.max_adjustment_factor
+        );
+
+        // 4. Perform rebalance if cooldown period has passed
+        if position.can_rebalance(params.rebalance_cooldown) {
+            return adjust_position_boundaries(position, optimal_boundaries);
+        }
+    }
+
+    // No adjustment needed or possible at this time
+    Ok(PositionAdjustment::none())
+}
+```
+
+This implementation will give us a demonstrable advantage over traditional AMMs during the hackathon demonstration, with quantifiable IL reduction metrics.
+
+#### 3.3.3 Rebalancing and Insurance Fund Trigger
 
 - **Rebalancing**:  
    Automatically trigger rebalancing events when liquidity falls outside optimal ranges.  
@@ -157,6 +240,8 @@ fn compute_delta(volatility: f64) -> f64 {
 - **Insurance Trigger**:  
    Monitor IL metrics in real time. If IL exceeds a predefined threshold, trigger an insurance fund payout.  
    Use stored fee reserves to compensate LPs.
+
+_Note: For the hackathon implementation, we will implement rebalancing functionality but defer the insurance fund mechanism to the post-hackathon phase._
 
 ### 3.4 Personalized Yield Optimization Module
 
