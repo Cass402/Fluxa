@@ -14,6 +14,8 @@ Fluxa is a next-generation decentralized finance (DeFi) protocol built on Solana
 - [Features](#features)
 - [Architecture](#architecture)
 - [Testing](#testing)
+- [Development Setup](#development-setup)
+- [Additional Documentation](#additional-documentation)
 - [Contributing](#contributing)
 - [Roadmap](#roadmap)
 - [License](#license)
@@ -89,20 +91,66 @@ For more details, check the [Security Testing Checklist](docs/securityTestingChe
 
 ---
 
+## Development Setup
+
+Fluxa uses a Docker-based development environment to ensure consistent setup across all developer machines.
+
+### Prerequisites
+- Docker
+- Docker Compose
+- Git
+- VS Code with Remote-Containers extension (optional but recommended)
+
+### Getting Started
+
+For detailed instructions on setting up the development environment, please refer to the [Docker Setup Guide](Fluxa_Docker_Setup.md).
+
+Quick start:
+```bash
+# Clone the repository
+git clone https://github.com/Cass402/Fluxa.git
+cd Fluxa
+
+# Start the development environment
+make up
+
+# Set up test accounts
+make setup-test-accounts
+
+# Access the development shell
+make shell
+```
+
+This Docker-based setup eliminates "works on my machine" problems and allows you to start coding in minutes.
+
+---
+
 ## Additional Documentation
 
+### Project and Technical Documentation
 - [Project Overview and Executive Summary](docs/projectOverview_and_executiveSummary.md)
 - [Requirements Document](docs/requirements.md)
 - [Architecture Document](docs/architecture.md)
 - [Detailed Technical Design](docs/detailedTechnicalDesign.md)
+- [Impermanent Loss Mitigation Deep Dive](docs/ILMitigation_DeepDive.md)
+- [Implementation Timeline](docs/implementationTimeline.md)
+
+### Security and Testing
 - [Threat Model and Risk Assessment](docs/threatModel_and_riskAssessment.md)
 - [Security Testing Checklist](docs/securityTestingChecklist.md)
 - [Test Plan and Coverage Report](docs/testPlan_coverageReport.md)
+
+### Business and User Experience
 - [Tokenomics and Protocol Fee](docs/tokenomics_and_protocolFee.md)
 - [UX Flow/User Journey](docs/userJourney.md)
 - [Business Model and Monetization Plan](docs/businessModel_and_monetizationPlan.md)
+- [Competitive Analysis](docs/competitiveAnalysis.md)
+- [Visual Design Guide](docs/visualDesignGuide.md)
+
+### Planning and Presentation
 - [Roadmap](docs/roadmap.md)
 - [FAQ and Pitch Deck](docs/FAQ_and_pitchDeck.md)
+- [Hackathon Presentation Strategy](docs/hackathonPresentationStrategy.md)
 
 ---
 
