@@ -1,0 +1,23 @@
+[package]
+name = "impermanent_loss"
+version = "0.1.0"
+description = "Impermanent Loss Mitigation module for Fluxa"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "impermanent_loss"
+path = "lib.rs"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"
+solana-program = "=2.1.0"
+amm_core = { path = "../amm_core", features = ["cpi"] }
