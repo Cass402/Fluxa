@@ -14,7 +14,7 @@ COPY frontend/ ./
 FROM rust:1.85.1 as rust-base
 
 # Install Solana CLI
-RUN sh -c "$(curl -sSfL https://release.solana.com/v2.1.0/install)" && \
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/v2.1.0/install)" && \
     export PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
 
 # Set the working directory
