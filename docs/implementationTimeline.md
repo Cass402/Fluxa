@@ -12,22 +12,22 @@ The timeline is organized into sprints with clear objectives, dependencies, and 
 
 | Task                    | Description                                                      | Owner          | Deadline | Status |
 | ----------------------- | ---------------------------------------------------------------- | -------------- | -------- | ------ |
-| Repository Structure    | Finalize structure and branch management strategy                | Lead Developer | Day -5   | To Do  |
-| Development Environment | Set up Docker containers and CI/CD pipeline                      | DevOps         | Day -4   | To Do  |
-| Rust Templates          | Create project scaffolding for Anchor programs                   | Backend Dev    | Day -3   | To Do  |
-| Frontend Framework      | Initialize React/TypeScript project with core dependencies       | Frontend Dev   | Day -3   | To Do  |
-| Solana Test Environment | Configure local Solana validator for testing                     | Backend Dev    | Day -2   | To Do  |
-| Architecture Review     | Team review of architecture document and implementation approach | All            | Day -1   | To Do  |
+| Repository Structure    | Finalize structure and branch management strategy                | Lead Developer | Day -5   | Done   |
+| Development Environment | Set up Docker containers and CI/CD pipeline                      | DevOps         | Day -4   | Done   |
+| Rust Templates          | Create project scaffolding for Anchor programs                   | Backend Dev    | Day -3   | Done   |
+| Frontend Framework      | Initialize React/TypeScript project with core dependencies       | Frontend Dev   | Day -3   | Done   |
+| Solana Test Environment | Configure local Solana validator for testing                     | Backend Dev    | Day -2   | Done   |
+| Architecture Review     | Team review of architecture document and implementation approach | All            | Day -1   | Done   |
 
 ### 2.2 Task Breakdown and Assignment
 
 | Task                    | Description                                         | Owner          | Deadline | Status |
 | ----------------------- | --------------------------------------------------- | -------------- | -------- | ------ |
-| Component Decomposition | Break down components into granular tasks           | Tech Lead      | Day -5   | To Do  |
-| Dependency Mapping      | Identify critical path and dependencies             | Tech Lead      | Day -4   | To Do  |
-| Team Task Assignment    | Assign core responsibilities to team members        | Project Lead   | Day -3   | To Do  |
-| Development Standards   | Document coding standards and review process        | Lead Developer | Day -2   | To Do  |
-| Technical Spikes        | Identify and assign research for technical unknowns | Tech Lead      | Day -1   | To Do  |
+| Component Decomposition | Break down components into granular tasks           | Tech Lead      | Day -5   | Done   |
+| Dependency Mapping      | Identify critical path and dependencies             | Tech Lead      | Day -4   | Done   |
+| Team Task Assignment    | Assign core responsibilities to team members        | Project Lead   | Day -3   | Done   |
+| Development Standards   | Document coding standards and review process        | Lead Developer | Day -2   | Done   |
+| Technical Spikes        | Identify and assign research for technical unknowns | Tech Lead      | Day -1   | Done   |
 
 ## 3. Hackathon Sprint 1 - Core Infrastructure (Days 1-7)
 
