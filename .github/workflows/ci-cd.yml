@@ -1,0 +1,101 @@
+name: Fluxa CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+env:
+  CARGO_TERM_COLOR: always
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.31.0"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install Rust and required components
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      # Install Solana CLI
+      - name: Install Solana
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          solana --version
+
+      # Install Anchor CLI
+      - name: Install Anchor
+        run: |
+          npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
+          anchor --version
+
+      # Cache Dependencies
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Check formatting
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # Run Clippy
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
+
+      # Build all programs
+      - name: Build
+        run: anchor build
+
+      # Run tests
+      - name: Run tests
+        run: anchor test
+
+  # Deploy to devnet job - uncomment when ready for deployment
+  # deploy-devnet:
+  #   needs: build-and-test
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #
+  #     # Setup similar environment as build job
+  #     - name: Install Rust toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         profile: minimal
+  #         toolchain: stable
+  #         override: true
+  #
+  #     - name: Install Solana
+  #       run: |
+  #         sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
+  #         echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+  #         solana --version
+  #
+  #     - name: Install Anchor
+  #       run: |
+  #         npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
+  #         anchor --version
+  #
+  #     # Setup Solana CLI config for deployment
+  #     - name: Setup Solana Config
+  #       run: |
+  #         mkdir -p ~/.config/solana
+  #         echo "${{ secrets.SOLANA_DEVNET_PRIVATE_KEY }}" > keypair.json
+  #         solana config set --keypair keypair.json
+  #         solana config set --url devnet
+  #
+  #     # Deploy to devnet
+  #     - name: Deploy to devnet
+  #       run: |
+  #         anchor build
+  #         anchor deploy --provider.cluster devnet
