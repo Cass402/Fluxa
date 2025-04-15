@@ -37,7 +37,7 @@ jobs:
       # Install Anchor CLI
       - name: Install Anchor
         run: |
-          npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
           anchor --version
 
       # Cache Dependencies
@@ -84,7 +84,7 @@ jobs:
   #
   #     - name: Install Anchor
   #       run: |
-  #         npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
+  #         cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
   #         anchor --version
   #
   #     # Setup Solana CLI config for deployment
