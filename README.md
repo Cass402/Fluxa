@@ -96,6 +96,7 @@ For more details, check the [Security Testing Checklist](docs/securityTestingChe
 Fluxa uses a Docker-based development environment to ensure consistent setup across all developer machines.
 
 ### Prerequisites
+
 - Docker
 - Docker Compose
 - Git
@@ -103,9 +104,10 @@ Fluxa uses a Docker-based development environment to ensure consistent setup acr
 
 ### Getting Started
 
-For detailed instructions on setting up the development environment, please refer to the [Docker Setup Guide](Fluxa_Docker_Setup.md).
+For detailed instructions on setting up the development environment, please refer to the [Docker Setup Guide](Fluxa_Docker_Setup.md) and [Development Environment Setup Guide](/docs/development_environment.md).
 
 Quick start:
+
 ```bash
 # Clone the repository
 git clone https://github.com/Cass402/Fluxa.git
@@ -128,6 +130,7 @@ This Docker-based setup eliminates "works on my machine" problems and allows you
 ## Additional Documentation
 
 ### Project and Technical Documentation
+
 - [Project Overview and Executive Summary](docs/projectOverview_and_executiveSummary.md)
 - [Requirements Document](docs/requirements.md)
 - [Architecture Document](docs/architecture.md)
@@ -136,11 +139,13 @@ This Docker-based setup eliminates "works on my machine" problems and allows you
 - [Implementation Timeline](docs/implementationTimeline.md)
 
 ### Security and Testing
+
 - [Threat Model and Risk Assessment](docs/threatModel_and_riskAssessment.md)
 - [Security Testing Checklist](docs/securityTestingChecklist.md)
 - [Test Plan and Coverage Report](docs/testPlan_coverageReport.md)
 
 ### Business and User Experience
+
 - [Tokenomics and Protocol Fee](docs/tokenomics_and_protocolFee.md)
 - [UX Flow/User Journey](docs/userJourney.md)
 - [Business Model and Monetization Plan](docs/businessModel_and_monetizationPlan.md)
@@ -148,6 +153,7 @@ This Docker-based setup eliminates "works on my machine" problems and allows you
 - [Visual Design Guide](docs/visualDesignGuide.md)
 
 ### Planning and Presentation
+
 - [Roadmap](docs/roadmap.md)
 - [FAQ and Pitch Deck](docs/FAQ_and_pitchDeck.md)
 - [Hackathon Presentation Strategy](docs/hackathonPresentationStrategy.md)

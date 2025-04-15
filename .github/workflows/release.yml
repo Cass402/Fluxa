@@ -1,0 +1,109 @@
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.31.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install Rust
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      # Install Solana
+      - name: Install Solana
+        run: |
+          sh -c "$(curl -sSfL https://release.solana.com/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          solana --version
+
+      # Install Anchor
+      - name: Install Anchor
+        run: |
+          npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
+          anchor --version
+
+      # Cache Dependencies
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Build programs
+      - name: Build
+        run: anchor build
+
+      # Run tests
+      - name: Run tests
+        run: anchor test
+
+      # Create artifacts
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p artifacts
+          cp target/deploy/*.so artifacts/
+          cp target/idl/*.json artifacts/
+          tar -czvf fluxa-programs-${{ github.ref_name }}.tar.gz artifacts/
+
+      # Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            fluxa-programs-${{ github.ref_name }}.tar.gz
+          body: |
+            # Fluxa ${{ github.ref_name }} Release
+
+            ## Program Binaries
+            - This release includes compiled Solana program binaries (.so files)
+            - Interface Definition Language (IDL) files for program integration
+
+            ## Installation
+            Extract the archive and deploy using the Solana CLI:
+            ```
+            solana program deploy <program.so>
+            ```
+
+            ## Documentation
+            For detailed documentation, see the [project docs](https://github.com/username/fluxa/tree/main/docs)
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Deploy to mainnet job - commented out until production readiness
+  # deploy-mainnet:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #
+  #     # Setup similar environment as build job
+  #     - name: Install required tools
+  #       # Similar setup steps as the build job
+  #
+  #     # Setup Solana CLI config for mainnet deployment
+  #     - name: Setup Solana Config
+  #       run: |
+  #         mkdir -p ~/.config/solana
+  #         echo "${{ secrets.SOLANA_MAINNET_PRIVATE_KEY }}" > keypair.json
+  #         solana config set --keypair keypair.json
+  #         solana config set --url mainnet-beta
+  #
+  #     # Deploy to mainnet
+  #     - name: Deploy to mainnet
+  #       run: |
+  #         anchor build
+  #         anchor deploy --provider.cluster mainnet-beta

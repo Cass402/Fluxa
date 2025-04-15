@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Fluxa Development Environment
   # This service is used for local development of the Fluxa project.
