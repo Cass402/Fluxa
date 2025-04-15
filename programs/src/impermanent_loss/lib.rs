@@ -18,18 +18,22 @@ pub mod impermanent_loss {
         rebalance_cooldown: u64,
     ) -> Result<()> {
         instructions::initialize_il_mitigation::handler(
-            ctx, 
-            pool_id, 
-            volatility_window, 
-            adjustment_threshold, 
-            max_adjustment_factor, 
+            ctx,
+            pool_id,
+            volatility_window,
+            adjustment_threshold,
+            max_adjustment_factor,
             rebalance_cooldown,
         )
     }
 
     /// Updates price data for volatility calculation.
     /// This should be called periodically to feed price data to the system.
-    pub fn update_price_data(ctx: Context<UpdatePriceData>, price: u64, timestamp: i64) -> Result<()> {
+    pub fn update_price_data(
+        ctx: Context<UpdatePriceData>,
+        price: u64,
+        timestamp: i64,
+    ) -> Result<()> {
         instructions::update_price_data::handler(ctx, price, timestamp)
     }
 
@@ -62,16 +66,16 @@ pub mod impermanent_loss {
 pub struct InitializeILMitigation<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(init, payer = authority, space = 8 + ILMitigationParams::LEN)]
     pub il_params: Account<'info, ILMitigationParams>,
-    
+
     #[account(init, payer = authority, space = 8 + VolatilityState::LEN)]
     pub volatility_state: Account<'info, VolatilityState>,
-    
+
     #[account(init, payer = authority, space = 8 + PriceHistory::LEN)]
     pub price_history: Account<'info, PriceHistory>,
-    
+
     pub system_program: Program<'info, System>,
 }
 
@@ -80,10 +84,10 @@ pub struct InitializeILMitigation<'info> {
 pub struct UpdatePriceData<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(mut)]
     pub price_history: Account<'info, PriceHistory>,
-    
+
     #[account(mut)]
     pub volatility_state: Account<'info, VolatilityState>,
 }
@@ -93,12 +97,12 @@ pub struct UpdatePriceData<'info> {
 pub struct CalculateVolatility<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(mut)]
     pub volatility_state: Account<'info, VolatilityState>,
-    
+
     pub price_history: Account<'info, PriceHistory>,
-    
+
     pub il_params: Account<'info, ILMitigationParams>,
 }
 
@@ -107,12 +111,12 @@ pub struct CalculateVolatility<'info> {
 pub struct CheckRebalanceCondition<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(mut)]
     pub rebalance_state: Account<'info, RebalanceState>,
-    
+
     pub volatility_state: Account<'info, VolatilityState>,
-    
+
     pub il_params: Account<'info, ILMitigationParams>,
 }
 
@@ -121,14 +125,13 @@ pub struct CheckRebalanceCondition<'info> {
 pub struct ExecuteRebalance<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(mut)]
     pub rebalance_state: Account<'info, RebalanceState>,
-    
+
     // These accounts would be used to interact with the AMM core program
     // to modify the position's boundaries. The actual structure would depend
     // on how the AMM Core program is designed.
-    
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -138,16 +141,16 @@ pub struct ExecuteRebalance<'info> {
 pub struct ILMitigationParams {
     /// The pool this configuration applies to
     pub pool_id: Pubkey,
-    
+
     /// Window size for volatility calculation (in seconds)
     pub volatility_window: u64,
-    
+
     /// Minimum volatility to trigger adjustment (in basis points)
     pub adjustment_threshold: u64,
-    
+
     /// Maximum range expansion factor (in basis points)
     pub max_adjustment_factor: u64,
-    
+
     /// Minimum time between rebalances (in seconds)
     pub rebalance_cooldown: u64,
 }
@@ -157,7 +160,7 @@ impl ILMitigationParams {
         8 +  // volatility_window
         8 +  // adjustment_threshold
         8 +  // max_adjustment_factor
-        8;   // rebalance_cooldown
+        8; // rebalance_cooldown
 }
 
 /// State tracking for volatility calculations
@@ -165,16 +168,16 @@ impl ILMitigationParams {
 pub struct VolatilityState {
     /// Current short-term volatility (rolling window)
     pub short_term_volatility: u64,
-    
+
     /// Current medium-term volatility (rolling window)
     pub medium_term_volatility: u64,
-    
+
     /// Current long-term volatility (rolling window)
     pub long_term_volatility: u64,
-    
+
     /// Rate of volatility change
     pub volatility_acceleration: i64,
-    
+
     /// Timestamp of last volatility calculation
     pub last_calculation: i64,
 }
@@ -184,21 +187,21 @@ impl VolatilityState {
         8 +  // medium_term_volatility
         8 +  // long_term_volatility
         8 +  // volatility_acceleration
-        8;   // last_calculation
+        8; // last_calculation
 }
 
 /// Price data for volatility calculation
 #[account]
 pub struct PriceHistory {
     /// Circular buffer of price data points
-    pub prices: [u64; 288],  // Store 5-minute intervals for 24 hours
-    
+    pub prices: [u64; 288], // Store 5-minute intervals for 24 hours
+
     /// Corresponding timestamps for each price point
     pub timestamps: [i64; 288],
-    
+
     /// Current index in the circular buffer
     pub current_index: u16,
-    
+
     /// Number of valid data points in the buffer
     pub data_count: u16,
 }
@@ -207,7 +210,7 @@ impl PriceHistory {
     pub const LEN: usize = 8 * 288 +  // prices
         8 * 288 +  // timestamps
         2 +  // current_index
-        2;   // data_count
+        2; // data_count
 }
 
 /// State tracking for a specific position being rebalanced
@@ -215,25 +218,25 @@ impl PriceHistory {
 pub struct RebalanceState {
     /// Position being monitored
     pub position_id: Pubkey,
-    
+
     /// Pool this position belongs to
     pub pool_id: Pubkey,
-    
+
     /// Original lower tick boundary
     pub original_lower_tick: i32,
-    
+
     /// Original upper tick boundary
     pub original_upper_tick: i32,
-    
+
     /// Current optimal lower tick boundary
     pub optimal_lower_tick: i32,
-    
+
     /// Current optimal upper tick boundary
     pub optimal_upper_tick: i32,
-    
+
     /// Last time this position was rebalanced
     pub last_rebalance: i64,
-    
+
     /// Estimated IL saved by previous rebalances
     pub estimated_il_saved: u64,
 }
@@ -246,7 +249,7 @@ impl RebalanceState {
         4 +  // optimal_lower_tick
         4 +  // optimal_upper_tick
         8 +  // last_rebalance
-        8;   // estimated_il_saved
+        8; // estimated_il_saved
 }
 
 /// Errors for the IL mitigation module

@@ -18,20 +18,14 @@ pub mod yield_optimization {
     }
 
     /// Update a user's risk profile
-    pub fn update_risk_profile(
-        ctx: Context<UpdateYieldProfile>,
-        risk_profile: u8,
-    ) -> Result<()> {
+    pub fn update_risk_profile(ctx: Context<UpdateYieldProfile>, risk_profile: u8) -> Result<()> {
         // This will be implemented in the post-hackathon phase
         // For now, the function signature serves as a placeholder
         Ok(())
     }
 
     /// Generate yield optimization strategy for a user
-    pub fn generate_strategy(
-        ctx: Context<GenerateStrategy>,
-        pool_id: Pubkey,
-    ) -> Result<()> {
+    pub fn generate_strategy(ctx: Context<GenerateStrategy>, pool_id: Pubkey) -> Result<()> {
         // This will be implemented in the post-hackathon phase
         // For now, the function signature serves as a placeholder
         Ok(())
@@ -60,10 +54,10 @@ pub mod risk_profiles {
 pub struct InitializeYieldProfile<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    
+
     #[account(init, payer = user, space = 8 + YieldProfile::LEN)]
     pub yield_profile: Account<'info, YieldProfile>,
-    
+
     pub system_program: Program<'info, System>,
 }
 
@@ -72,7 +66,7 @@ pub struct InitializeYieldProfile<'info> {
 pub struct UpdateYieldProfile<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    
+
     #[account(mut, has_one = user)]
     pub yield_profile: Account<'info, YieldProfile>,
 }
@@ -82,12 +76,12 @@ pub struct UpdateYieldProfile<'info> {
 pub struct GenerateStrategy<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    
+
     pub yield_profile: Account<'info, YieldProfile>,
-    
+
     #[account(init, payer = user, space = 8 + YieldStrategy::LEN)]
     pub yield_strategy: Account<'info, YieldStrategy>,
-    
+
     pub system_program: Program<'info, System>,
 }
 
@@ -96,13 +90,12 @@ pub struct GenerateStrategy<'info> {
 pub struct ExecuteCompounding<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(mut)]
     pub yield_strategy: Account<'info, YieldStrategy>,
-    
+
     // Additional accounts would be needed for the specific position
     // and pool, but those would be detailed in the full implementation
-    
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -112,22 +105,22 @@ pub struct ExecuteCompounding<'info> {
 pub struct YieldProfile {
     /// User who owns this profile
     pub user: Pubkey,
-    
+
     /// Selected risk profile (1=Conservative, 2=Balanced, 3=Aggressive)
     pub risk_profile: u8,
-    
+
     /// Auto-compound frequency preference (in hours)
     pub compound_frequency: u16,
-    
+
     /// Whether to enable auto-rebalancing
     pub auto_rebalance: bool,
-    
+
     /// Total value managed under this profile
     pub total_value_managed: u64,
-    
+
     /// Creation timestamp
     pub created_at: i64,
-    
+
     /// Last update timestamp
     pub updated_at: i64,
 }
@@ -139,7 +132,7 @@ impl YieldProfile {
         1 +  // auto_rebalance
         8 +  // total_value_managed
         8 +  // created_at
-        8;   // updated_at
+        8; // updated_at
 }
 
 /// Individual yield strategy for a specific pool
@@ -147,28 +140,28 @@ impl YieldProfile {
 pub struct YieldStrategy {
     /// User this strategy belongs to
     pub user: Pubkey,
-    
+
     /// Pool this strategy is for
     pub pool_id: Pubkey,
-    
+
     /// Risk profile applied
     pub risk_profile: u8,
-    
+
     /// Lower tick target
     pub target_lower_tick: i32,
-    
+
     /// Upper tick target
     pub target_upper_tick: i32,
-    
+
     /// Auto-compound frequency (in seconds)
     pub compound_frequency: u32,
-    
+
     /// Last compounding timestamp
     pub last_compounded: i64,
-    
+
     /// Total fees earned
     pub total_fees_earned: u64,
-    
+
     /// Estimated APY (in basis points)
     pub estimated_apy: u32,
 }
@@ -182,7 +175,7 @@ impl YieldStrategy {
         4 +  // compound_frequency
         8 +  // last_compounded
         8 +  // total_fees_earned
-        4;   // estimated_apy
+        4; // estimated_apy
 }
 
 /// Errors

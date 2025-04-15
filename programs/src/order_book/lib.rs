@@ -51,10 +51,10 @@ pub mod order_book {
 pub struct InitializeOrderBook<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(init, payer = authority, space = 8 + OrderBook::LEN)]
     pub order_book: Account<'info, OrderBook>,
-    
+
     pub system_program: Program<'info, System>,
 }
 
@@ -63,16 +63,16 @@ pub struct InitializeOrderBook<'info> {
 pub struct PlaceLimitOrder<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    
+
     #[account(mut)]
     pub order_book: Account<'info, OrderBook>,
-    
+
     #[account(init, payer = user, space = 8 + Order::LEN)]
     pub order: Account<'info, Order>,
-    
+
     #[account(mut)]
     pub token_account: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -82,16 +82,16 @@ pub struct PlaceLimitOrder<'info> {
 pub struct CancelOrder<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    
+
     #[account(mut, has_one = user)]
     pub order: Account<'info, Order>,
-    
+
     #[account(mut)]
     pub order_book: Account<'info, OrderBook>,
-    
+
     #[account(mut)]
     pub token_account: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -101,22 +101,22 @@ pub struct CancelOrder<'info> {
 pub struct ExecuteMatch<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     #[account(mut)]
     pub order_book: Account<'info, OrderBook>,
-    
+
     #[account(mut)]
     pub bid_order: Account<'info, Order>,
-    
+
     #[account(mut)]
     pub ask_order: Account<'info, Order>,
-    
+
     #[account(mut)]
     pub bid_user_token_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut)]
     pub ask_user_token_account: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
 }
 
@@ -125,16 +125,16 @@ pub struct ExecuteMatch<'info> {
 pub struct OrderBook {
     /// The liquidity pool this order book is associated with
     pub pool_id: Pubkey,
-    
+
     /// Size of the minimum price increment (tick size)
     pub tick_size: u64,
-    
+
     /// Total number of open orders
     pub order_count: u64,
-    
+
     /// Total open bid volume
     pub bid_volume: u64,
-    
+
     /// Total open ask volume
     pub ask_volume: u64,
 }
@@ -144,7 +144,7 @@ impl OrderBook {
         8 +  // tick_size
         8 +  // order_count
         8 +  // bid_volume
-        8;   // ask_volume
+        8; // ask_volume
 }
 
 /// Individual order state
@@ -152,28 +152,28 @@ impl OrderBook {
 pub struct Order {
     /// User who placed the order
     pub user: Pubkey,
-    
+
     /// Order book this order belongs to
     pub order_book: Pubkey,
-    
+
     /// Unique order ID
     pub id: u64,
-    
+
     /// Price of the order
     pub price: u64,
-    
+
     /// Original amount of the order
     pub original_amount: u64,
-    
+
     /// Remaining amount of the order
     pub remaining_amount: u64,
-    
+
     /// Whether this is a bid (buy) or ask (sell) order
     pub is_bid: bool,
-    
+
     /// Timestamp when order was placed
     pub created_at: i64,
-    
+
     /// Timestamp when order expires (0 for no expiry)
     pub expires_at: i64,
 }
@@ -187,7 +187,7 @@ impl Order {
         8 +  // remaining_amount
         1 +  // is_bid
         8 +  // created_at
-        8;   // expires_at
+        8; // expires_at
 }
 
 /// Errors

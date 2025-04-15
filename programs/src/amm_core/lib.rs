@@ -39,25 +39,19 @@ pub mod amm_core {
     ) -> Result<()> {
         instructions::swap::handler(ctx, amount_in, min_amount_out, is_token_a)
     }
-    
+
     /// Collects fees accrued to a specific position.
     pub fn collect_fees(ctx: Context<CollectFees>) -> Result<()> {
         instructions::collect_fees::handler(ctx)
     }
 
     /// Increases liquidity in an existing position.
-    pub fn increase_liquidity(
-        ctx: Context<ModifyPosition>,
-        liquidity_delta: u128,
-    ) -> Result<()> {
+    pub fn increase_liquidity(ctx: Context<ModifyPosition>, liquidity_delta: u128) -> Result<()> {
         instructions::modify_position::increase_handler(ctx, liquidity_delta)
     }
 
     /// Decreases liquidity from an existing position.
-    pub fn decrease_liquidity(
-        ctx: Context<ModifyPosition>,
-        liquidity_delta: u128,
-    ) -> Result<()> {
+    pub fn decrease_liquidity(ctx: Context<ModifyPosition>, liquidity_delta: u128) -> Result<()> {
         instructions::modify_position::decrease_handler(ctx, liquidity_delta)
     }
 }
@@ -67,13 +61,13 @@ pub mod amm_core {
 pub struct InitializePool<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    
+
     #[account(init, payer = payer, space = 8 + Pool::LEN)]
     pub pool: Account<'info, Pool>,
-    
+
     pub token_a_mint: Account<'info, Mint>,
     pub token_b_mint: Account<'info, Mint>,
-    
+
     #[account(
         init,
         payer = payer,
@@ -81,7 +75,7 @@ pub struct InitializePool<'info> {
         token::authority = pool,
     )]
     pub token_a_vault: Account<'info, TokenAccount>,
-    
+
     #[account(
         init,
         payer = payer,
@@ -89,7 +83,7 @@ pub struct InitializePool<'info> {
         token::authority = pool,
     )]
     pub token_b_vault: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -100,29 +94,29 @@ pub struct InitializePool<'info> {
 pub struct CreatePosition<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-    
+
     #[account(mut)]
     pub pool: Account<'info, Pool>,
-    
+
     #[account(
         init,
         payer = owner,
         space = 8 + Position::LEN
     )]
     pub position: Account<'info, Position>,
-    
+
     #[account(mut, constraint = token_a_account.mint == pool.token_a_mint)]
     pub token_a_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_b_account.mint == pool.token_b_mint)]
     pub token_b_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_a_vault.key() == pool.token_a_vault)]
     pub token_a_vault: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_b_vault.key() == pool.token_b_vault)]
     pub token_b_vault: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -132,22 +126,22 @@ pub struct CreatePosition<'info> {
 pub struct Swap<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    
+
     #[account(mut)]
     pub pool: Account<'info, Pool>,
-    
+
     #[account(mut)]
     pub token_source: Account<'info, TokenAccount>,
-    
+
     #[account(mut)]
     pub token_destination: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_a_vault.key() == pool.token_a_vault)]
     pub token_a_vault: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_b_vault.key() == pool.token_b_vault)]
     pub token_b_vault: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
 }
 
@@ -156,25 +150,25 @@ pub struct Swap<'info> {
 pub struct CollectFees<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-    
+
     #[account(mut, has_one = owner)]
     pub position: Account<'info, Position>,
-    
+
     #[account(mut)]
     pub pool: Account<'info, Pool>,
-    
+
     #[account(mut)]
     pub token_a_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut)]
     pub token_b_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_a_vault.key() == pool.token_a_vault)]
     pub token_a_vault: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_b_vault.key() == pool.token_b_vault)]
     pub token_b_vault: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
 }
 
@@ -183,25 +177,25 @@ pub struct CollectFees<'info> {
 pub struct ModifyPosition<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-    
+
     #[account(mut, has_one = owner)]
     pub position: Account<'info, Position>,
-    
+
     #[account(mut)]
     pub pool: Account<'info, Pool>,
-    
+
     #[account(mut)]
     pub token_a_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut)]
     pub token_b_account: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_a_vault.key() == pool.token_a_vault)]
     pub token_a_vault: Account<'info, TokenAccount>,
-    
+
     #[account(mut, constraint = token_b_vault.key() == pool.token_b_vault)]
     pub token_b_vault: Account<'info, TokenAccount>,
-    
+
     pub token_program: Program<'info, Token>,
 }
 
@@ -249,7 +243,7 @@ impl Pool {
         16 + // fee_growth_global_b
         2 +  // protocol_fee
         16 + // liquidity
-        8;   // position_count
+        8; // position_count
 }
 
 /// Data structure for a liquidity position
@@ -284,11 +278,11 @@ impl Position {
         16 + // fee_growth_inside_a
         16 + // fee_growth_inside_b
         8 +  // tokens_owed_a
-        8;   // tokens_owed_b
+        8; // tokens_owed_b
 }
 
 // Import instruction implementations
+pub mod constants;
+pub mod errors;
 pub mod instructions;
 pub mod math;
-pub mod errors;
-pub mod constants;

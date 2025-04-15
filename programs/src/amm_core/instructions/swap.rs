@@ -8,7 +8,7 @@ pub fn handler(
     is_token_a: bool,
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
-    
+
     // Calculate amount out based on current liquidity and price
     // TODO: Use math module to calculate the swap result
     let amount_out = 0; // Placeholder until math implementation
@@ -19,10 +19,10 @@ pub fn handler(
     // Calculate fees
     // TODO: Calculate fee amount based on pool.fee_tier
     let fee_amount = 0; // Placeholder until fee calculation
-    
+
     // Calculate protocol fee
     let protocol_fee = fee_amount * pool.protocol_fee as u64 / 10000;
-    
+
     // Update global fee growth
     // TODO: Update fee_growth_global_a or fee_growth_global_b based on is_token_a
 
