@@ -3,6 +3,7 @@
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useSolana } from '@/contexts/SolanaContext';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 export default function Home() {
   const { wallet, connection, isConnected } = useSolana();
@@ -28,47 +29,38 @@ export default function Home() {
   }, [wallet, connection, isConnected]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit">
-          Fluxa AMM Protocol
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black">
-          <div className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto">
-            <WalletMultiButton />
-          </div>
+    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-gray-50 dark:bg-zinc-900">
+      <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-xl shadow-md overflow-hidden p-8">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent inline-block text-transparent bg-clip-text">
+            Fluxa
+          </h1>
+          <p className="text-gray-600 dark:text-gray-300 mt-2">
+            Solana AMM Protocol
+          </p>
         </div>
-      </div>
 
-      <div className="relative flex place-items-center">
-        <h1 className="text-4xl font-bold">Fluxa</h1>
-      </div>
+        <div className="flex justify-center mb-8">
+          <WalletMultiButton className="!bg-accent hover:!bg-accent-dark transition-all" />
+        </div>
 
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-3 lg:text-left">
-        {isConnected ? (
-          <div className="group rounded-lg border border-transparent px-5 py-4">
-            <h2 className="mb-3 text-2xl font-semibold">
-              Connected to Solana
-            </h2>
-            <p className="m-0 max-w-[30ch] text-sm opacity-50">
-              Wallet: {wallet?.publicKey.toString().slice(0, 8)}...
+        {isConnected && balance !== null && (
+          <div className="bg-gray-50 dark:bg-zinc-700/30 p-4 rounded-lg text-center">
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Connected Wallet</p>
+            <p className="font-mono text-sm truncate mt-1">
+              {wallet?.publicKey.toString()}
             </p>
-            {balance !== null && (
-              <p className="m-0 max-w-[30ch] text-sm opacity-50">
-                Balance: {balance.toFixed(4)} SOL
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="group rounded-lg border border-transparent px-5 py-4">
-            <h2 className="mb-3 text-2xl font-semibold">
-              Connect Your Wallet
-            </h2>
-            <p className="m-0 max-w-[30ch] text-sm opacity-50">
-              Please connect your Solana wallet to use the application.
+            <p className="font-bold mt-2 text-primary">
+              {balance.toFixed(4)} SOL
             </p>
           </div>
         )}
+
+        <div className="mt-8 text-center">
+          <Link href="/components" className="text-accent underline text-sm">
+            View Components
+          </Link>
+        </div>
       </div>
     </main>
   );
