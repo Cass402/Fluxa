@@ -5,6 +5,7 @@ members = [
     "programs/src/order_book",
     "programs/src/yield_optimization",
 ]
+resolver = "2"
 
 [profile.release]
 overflow-checks = true

@@ -5,8 +5,8 @@ export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
-  prefix?: React.ReactNode;
-  suffix?: React.ReactNode;
+  prefixElement?: React.ReactNode;
+  suffixElement?: React.ReactNode;
 }
 
 /**
@@ -14,9 +14,23 @@ export interface InputProps
  * Supports labels, error messages, and prefix/suffix elements
  */
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, label, error, prefix, suffix, id, ...props }, ref) => {
-    const inputId = id || React.useId();
-    
+  (
+    {
+      className,
+      type,
+      label,
+      error,
+      prefixElement,
+      suffixElement,
+      id,
+      ...props
+    },
+    ref
+  ) => {
+    // Always call React.useId() unconditionally
+    const generatedId = React.useId();
+    const inputId = id || generatedId;
+
     return (
       <div className="w-full">
         {label && (
@@ -28,9 +42,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           </label>
         )}
         <div className="relative">
-          {prefix && (
+          {prefixElement && (
             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              {prefix}
+              {prefixElement}
             </div>
           )}
           <input
@@ -38,23 +52,21 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             className={cn(
               "flex h-10 w-full rounded-md border border-input bg-background-light px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50",
-              prefix && "pl-10",
-              suffix && "pr-10",
+              prefixElement && "pl-10",
+              suffixElement && "pr-10",
               error && "border-critical focus:ring-critical",
               className
             )}
             ref={ref}
             {...props}
           />
-          {suffix && (
+          {suffixElement && (
             <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              {suffix}
+              {suffixElement}
             </div>
           )}
         </div>
-        {error && (
-          <p className="mt-1 text-xs text-critical">{error}</p>
-        )}
+        {error && <p className="mt-1 text-xs text-critical">{error}</p>}
       </div>
     );
   }
