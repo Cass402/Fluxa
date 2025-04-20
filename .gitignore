@@ -27,6 +27,7 @@ yarn-error.log*
 
 # Dependency directories
 node_modules/
+frontend/.next/
 
 # Optional: Comment this line if you want to track Cargo.lock
 # Cargo.lock

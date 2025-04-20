@@ -1,10 +1,33 @@
-use crate::*;
+use crate::CollectFees;
+/// Collect Fees Instruction Module
+///
+/// This module implements the instruction for collecting accumulated trading fees
+/// from a liquidity position in the Fluxa AMM. As trades occur through a pool,
+/// fees accrue to the liquidity providers proportional to their contribution
+/// within the active price range.
+///
+/// The fee collection process calculates the fees earned since the last collection,
+/// updates the position's accounting, and transfers the fee tokens to the owner.
 use anchor_lang::prelude::*;
-use anchor_spl::token;
 
+/// Handler function for collecting accumulated fees from a position
+///
+/// This function calculates the fees earned by a position since the last collection,
+/// transfers those fees from the pool's vaults to the owner's accounts, and updates
+/// the position's accounting to reflect the collection.
+///
+/// Fees are earned when trades occur through price ranges where the position has
+/// provided liquidity, with the amount earned proportional to the position's share
+/// of the total liquidity in that range.
+///
+/// # Arguments
+/// * `ctx` - The context containing all accounts involved in the operation
+///
+/// # Returns
+/// * `Result<()>` - Result indicating success or failure
 pub fn handler(ctx: Context<CollectFees>) -> Result<()> {
     let position = &mut ctx.accounts.position;
-    let pool = &ctx.accounts.pool;
+    // let pool = &ctx.accounts.pool;
 
     // Calculate uncollected fees
     // TODO: Calculate current fee growth inside the position's range

@@ -1,6 +1,32 @@
-use crate::*;
+/// Create Position Instruction Module
+///
+/// This module implements the instruction for creating a new liquidity position in a pool
+/// within the Fluxa AMM. A position represents concentrated liquidity provided within a
+/// specific price range, allowing for efficient capital utilization.
+///
+/// The creation process initializes a new position account and transfers the appropriate
+/// token amounts to the pool vaults based on the current price and specified price range.
+use crate::errors::ErrorCode;
+use crate::CreatePosition;
 use anchor_lang::prelude::*;
 
+/// Handler function for creating a new liquidity position
+///
+/// This function initializes a new position with the specified parameters, calculates
+/// the required token amounts based on the current pool price, and transfers those tokens
+/// to the pool's vaults. It also updates the pool's global liquidity and position count.
+///
+/// # Arguments
+/// * `ctx` - The context containing all accounts involved in the operation
+/// * `lower_tick` - The lower tick bound of the position (inclusive)
+/// * `upper_tick` - The upper tick bound of the position (exclusive)
+/// * `liquidity_amount` - The amount of liquidity to provide (in L-units)
+///
+/// # Returns
+/// * `Result<()>` - Result indicating success or failure
+///
+/// # Errors
+/// * `ErrorCode::InvalidTickRange` - If the tick range is invalid (e.g., lower >= upper)
 pub fn handler(
     ctx: Context<CreatePosition>,
     lower_tick: i32,

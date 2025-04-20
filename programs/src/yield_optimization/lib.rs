@@ -1,7 +1,10 @@
+#![allow(unexpected_cfgs)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};
 
-declare_id!("YO111111111111111111111111111111111111111"); // Placeholder ID, replace with actual one
+declare_id!("GqQoZvoapUaR95BBGTwVNKrGaxMwuWcqa7LJtEaG48tX"); // Placeholder ID, replace with actual one
 
 #[program]
 pub mod yield_optimization {

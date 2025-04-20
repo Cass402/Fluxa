@@ -7,17 +7,17 @@ export const colors = {
   // Primary Colors
   fluxaBlue: "#3B82F6", // RGB: 59, 130, 246
   fluxaCyan: "#06B6D4", // RGB: 6, 182, 212
-  
+
   // Secondary Colors
   deepPurple: "#7C3AED", // RGB: 124, 58, 237
   vibrantCoral: "#F43F5E", // RGB: 244, 63, 94
-  
+
   // Neutrals
   backgroundDark: "#111827", // RGB: 17, 24, 39
   backgroundLight: "#F8FAFC", // RGB: 248, 250, 252
   textDark: "#1F2937", // RGB: 31, 41, 55
   textLight: "#F9FAFB", // RGB: 249, 250, 251
-  
+
   // Data Visualization Colors
   positive: "#10B981", // RGB: 16, 185, 129
   negative: "#EF4444", // RGB: 239, 68, 68
@@ -28,7 +28,7 @@ export const colors = {
 export const typography = {
   // Font Family
   fontFamily: "Inter, sans-serif",
-  
+
   // Font Weights
   fontWeights: {
     regular: 400,
@@ -36,7 +36,7 @@ export const typography = {
     semibold: 600,
     bold: 700,
   },
-  
+
   // Font Sizes
   fontSizes: {
     h1: "2rem", // 32px
@@ -46,7 +46,7 @@ export const typography = {
     small: "0.875rem", // 14px
     dataLabel: "0.75rem", // 12px
   },
-  
+
   // Line Heights
   lineHeights: {
     headings: 1.2,
@@ -68,7 +68,7 @@ export const spacing = {
 export const layout = {
   // Border Radius
   borderRadius: "0.5rem", // 8px
-  
+
   // Component Sizing
   buttonHeight: "2.5rem", // 40px
   inputHeight: "2.5rem", // 40px
@@ -90,7 +90,7 @@ export const animation = {
     normal: "250ms",
     slow: "350ms",
   },
-  
+
   // Easing Functions
   easing: {
     easeOut: "cubic-bezier(0.0, 0, 0.2, 1)",
@@ -99,7 +99,8 @@ export const animation = {
   },
 };
 
-export default {
+// Define the tokens object before exporting it
+const tokens = {
   colors,
   typography,
   spacing,
@@ -107,3 +108,5 @@ export default {
   elevation,
   animation,
 };
+
+export default tokens;
