@@ -114,4 +114,24 @@ pub enum ErrorCode {
     /// the correct token vaults can be used in operations with a specific pool.
     #[msg("Invalid token vault")]
     InvalidVault,
+
+    /// Returned when attempting to initialize a pool with both token mints being the same
+    ///
+    /// A valid pool must have two different token mints. This error prevents creation of
+    /// nonsensical pools with the same token on both sides.
+    #[msg("Token mints must be different")]
+    MintsMustDiffer,
+
+    /// Returned when attempting to initialize a pool with an invalid initial price
+    ///
+    /// The initial price must be within the valid range for the protocol to ensure
+    /// calculations remain within the bounds of the fixed-point math.
+    #[msg("Initial price is outside acceptable range")]
+    InvalidInitialPrice,
+
+    /// Returned when attempting to set up token vaults with invalid configuration
+    ///
+    /// Token vaults must be properly initialized and associated with the correct token mint.
+    #[msg("Token vault setup failed")]
+    VaultSetupFailed,
 }
