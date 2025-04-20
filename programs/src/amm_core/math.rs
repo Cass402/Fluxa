@@ -345,6 +345,59 @@ pub fn sqrt_price_to_tick(sqrt_price: u128) -> Result<i32> {
     }
 }
 
+/// Rounds a tick to the nearest tick that is usable based on the given tick spacing.
+///
+/// In concentrated liquidity AMMs, ticks are often restricted to multiples of a certain spacing
+/// value (e.g., every 10th tick only) to reduce the computational overhead and storage
+/// requirements of tracking each tick. This function rounds a given tick to the nearest
+/// valid tick according to the specified spacing.
+///
+/// # Mathematical Formula
+/// `nearest_tick = round(tick / spacing) * spacing`
+///
+/// Where the rounding direction is determined by which is closer: the next lower usable tick
+/// or the next higher usable tick.
+///
+/// # Parameters
+/// * `tick` - The tick to round to the nearest usable tick
+/// * `tick_spacing` - The spacing between usable ticks (e.g., 1, 10, 60)
+///
+/// # Returns
+/// * `i32` - The nearest valid tick that is a multiple of tick_spacing
+///
+/// # Examples
+/// - With tick=123 and tick_spacing=10, returns 120
+/// - With tick=155 and tick_spacing=10, returns 160
+/// - With tick=-43 and tick_spacing=5, returns -45
+/// - With tick=0 and tick_spacing=any, returns 0
+pub fn nearest_usable_tick(tick: i32, tick_spacing: i32) -> i32 {
+    // Handle special case of tick_spacing = 1 (all ticks are usable)
+    if tick_spacing == 1 {
+        tick
+    } else {
+        // Calculate the remainder when dividing by tick_spacing
+        let remainder = tick.rem_euclid(tick_spacing);
+
+        // If tick is already a multiple of tick_spacing, it's already usable
+        if remainder == 0 {
+            tick
+        } else {
+            // Calculate distance to lower and upper usable ticks
+            let distance_to_lower = remainder;
+            let distance_to_upper = tick_spacing - remainder;
+
+            // Round to the nearest usable tick
+            if distance_to_lower <= distance_to_upper {
+                // Closer to lower tick
+                tick - distance_to_lower
+            } else {
+                // Closer to upper tick
+                tick + distance_to_upper
+            }
+        }
+    }
+}
+
 /// Calculates the next price and consumed amount for a single step of a swap operation.
 ///
 /// This core function computes how a swap affects the price within a single price range,

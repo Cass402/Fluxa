@@ -1,16 +1,58 @@
-import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
-import { AmmCore } from "../target/types/amm_core";
+/// <reference types="mocha" />
+import * as anchor from "@project-serum/anchor";
+import { Program } from "@project-serum/anchor";
 import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, createMint, createAccount } from "@solana/spl-token";
 import { assert } from "chai";
+
+// Define account types to resolve TypeScript errors
+interface TokenPairAccount {
+  authority: PublicKey;
+  tokenAMint: PublicKey;
+  tokenBMint: PublicKey;
+  tokenADecimals: number;
+  tokenBDecimals: number;
+  pools: Array<[PublicKey, number]>;
+  isVerified: boolean;
+  version: number;
+}
+
+interface PoolAccount {
+  authority: PublicKey;
+  tokenAMint: PublicKey;
+  tokenBMint: PublicKey;
+  tokenAVault: PublicKey;
+  tokenBVault: PublicKey;
+  sqrtPrice: typeof anchor.BN;
+  currentTick: number;
+  feeTier: number;
+  liquidity: typeof anchor.BN;
+  positionCount: typeof anchor.BN;
+}
+
+// Define a generic AnchorProgram type to allow account access
+interface AnchorProgram {
+  account: {
+    tokenPair: {
+      fetch: (address: PublicKey) => Promise<TokenPairAccount>;
+    };
+    pool: {
+      fetch: (address: PublicKey) => Promise<PoolAccount>;
+    };
+  };
+  methods: {
+    [key: string]: (...args: any[]) => any;
+  };
+  programId: PublicKey;
+}
 
 describe("Token Pair Account Structure", () => {
   // Configure the client
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace.AmmCore as Program<AmmCore>;
+  // Reference the deployed program with proper type
+  const program = anchor.workspace.AmmCore as unknown as AnchorProgram;
 
   // Generate keypairs for test
   const authority = provider.wallet;
@@ -44,7 +86,7 @@ describe("Token Pair Account Structure", () => {
     const payer = provider.wallet.publicKey;
     tokenAMint = await createMint(
       provider.connection,
-      provider.wallet.payer,
+      (provider.wallet as anchor.Wallet).payer,
       payer,
       payer,
       tokenADecimals
@@ -52,7 +94,7 @@ describe("Token Pair Account Structure", () => {
 
     tokenBMint = await createMint(
       provider.connection,
-      provider.wallet.payer,
+      (provider.wallet as anchor.Wallet).payer,
       payer,
       payer,
       tokenBDecimals
