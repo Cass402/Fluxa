@@ -141,4 +141,12 @@ pub enum ErrorCode {
     /// liquidity from a tick that has no references.
     #[msg("Invalid tick reference")]
     InvalidTickReference,
+
+    /// No fees to collect from the position
+    #[msg("No fees available to collect from this position")]
+    NoFeesToCollect,
+
+    /// Transfer of tokens failed
+    #[msg("Token transfer operation failed")]
+    TransferFailed,
 }
