@@ -7,7 +7,7 @@
 //! The implementation uses a sparse data structure to track liquidity changes at tick boundaries,
 //! allowing for capital-efficient positions and precise fee accounting per liquidity unit.
 
-use crate::constants::{MAX_TICK, MIN_TICK};
+use crate::constants::{MAX_TICK, MIN_TICK, PROTOCOL_FEE_DENOMINATOR};
 use crate::errors::ErrorCode;
 use crate::math::{self, Q64, U128MAX};
 use crate::{Pool, Position};
@@ -624,22 +624,61 @@ impl<'a> PoolState<'a> {
     }
 
     /// Update accumulated fees in the pool
+    ///
+    /// This function updates the global fee accumulators when fees are collected from trades.
+    /// It properly handles the scaling of fees according to available liquidity and ensures
+    /// that even with zero liquidity, fee accounting remains consistent.
+    ///
+    /// # Arguments
+    /// * `fee_amount_a` - Amount of token A fees to add to global accumulators
+    /// * `fee_amount_b` - Amount of token B fees to add to global accumulators
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or containing an error code
     pub fn update_fees(&mut self, fee_amount_a: u64, fee_amount_b: u64) -> Result<()> {
+        // If there's no active liquidity, we don't update fee growth
+        // as there are no LPs to attribute the fees to
         if self.pool.liquidity == 0 {
             return Ok(());
         }
 
+        // Calculate protocol fees (if applicable)
+        let protocol_fee_bps = self.pool.protocol_fee;
+        let protocol_fee_a = if protocol_fee_bps > 0 {
+            (fee_amount_a as u128)
+                .checked_mul(protocol_fee_bps as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(PROTOCOL_FEE_DENOMINATOR as u128)
+                .ok_or(ErrorCode::MathOverflow)? as u64
+        } else {
+            0
+        };
+
+        let protocol_fee_b = if protocol_fee_bps > 0 {
+            (fee_amount_b as u128)
+                .checked_mul(protocol_fee_bps as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(PROTOCOL_FEE_DENOMINATOR as u128)
+                .ok_or(ErrorCode::MathOverflow)? as u64
+        } else {
+            0
+        };
+
+        // Calculate LP fees (total fees minus protocol fees)
+        let lp_fee_amount_a = fee_amount_a.saturating_sub(protocol_fee_a);
+        let lp_fee_amount_b = fee_amount_b.saturating_sub(protocol_fee_b);
+
         // Convert to Q64.64 fixed-point with proper scaling
         // Convert u64 to u128 using into() before passing to U128::from
-        let fee_growth_a_delta = U128::from(fee_amount_a as u128)
+        let fee_growth_a_delta = U128::from(lp_fee_amount_a as u128)
             .mul_div_floor(U128::from(Q64), U128::from(self.pool.liquidity))
             .map_err(|_| ErrorCode::MathOverflow)?;
 
-        let fee_growth_b_delta = U128::from(fee_amount_b as u128)
+        let fee_growth_b_delta = U128::from(lp_fee_amount_b as u128)
             .mul_div_floor(U128::from(Q64), U128::from(self.pool.liquidity))
             .map_err(|_| ErrorCode::MathOverflow)?;
 
-        // Add to global fee growth accumulator
+        // Add to global fee growth accumulator using wrapping addition to handle overflow
         self.pool.fee_growth_global_a = self
             .pool
             .fee_growth_global_a
@@ -650,8 +689,39 @@ impl<'a> PoolState<'a> {
             .fee_growth_global_b
             .wrapping_add(fee_growth_b_delta.as_u128());
 
+        // Store protocol fees for later collection (in a separate ProtocolFeeCollect instruction)
+        // For the hackathon implementation, protocol fees can be added to a tracking account
+        // For now, we'll just emit an event for transparency
+        if protocol_fee_a > 0 || protocol_fee_b > 0 {
+            // Get the account info for the pool to access its public key
+            // We can't directly call key() on &mut Pool, so we use the authority field's public key
+            // as an identifier, which is safe since each pool has a unique authority
+            emit!(ProtocolFeeEvent {
+                pool: self.pool.authority,
+                token_a_amount: protocol_fee_a,
+                token_b_amount: protocol_fee_b,
+                timestamp: Clock::get()?.unix_timestamp,
+            });
+        }
+
         Ok(())
     }
+}
+
+/// Event emitted when protocol fees are collected
+#[event]
+pub struct ProtocolFeeEvent {
+    /// The pool where the fees were collected
+    pub pool: Pubkey,
+
+    /// The amount of token A protocol fees
+    pub token_a_amount: u64,
+
+    /// The amount of token B protocol fees
+    pub token_b_amount: u64,
+
+    /// The timestamp when the fee was recorded
+    pub timestamp: i64,
 }
 
 /// Helper struct for 128-bit unsigned math operations
