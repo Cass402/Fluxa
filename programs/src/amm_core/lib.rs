@@ -220,6 +220,9 @@ pub mod amm_core {
         let current_tick = pool.current_tick;
         let current_price = utils::price_range::PriceRange::tick_to_price(current_tick);
 
+        // Store the range preset value for later use
+        let range_preset = preset.unwrap_or(0);
+
         // Determine ticks based on preset or explicit price values
         let (lower_tick, upper_tick) = if let Some(preset_value) = preset {
             // Convert u8 to PriceRangePreset enum
@@ -261,6 +264,9 @@ pub mod amm_core {
                 return Err(error!(ErrorCode::RangeTooNarrow));
             }
 
+            // Set the preset value directly on the position account before calling the handler
+            ctx.accounts.position.range_preset = range_preset;
+
             // Use adjusted ticks
             return instructions::create_position::handler(
                 ctx,
@@ -269,6 +275,9 @@ pub mod amm_core {
                 liquidity_amount,
             );
         }
+
+        // Set the preset value directly on the position account before calling the handler
+        ctx.accounts.position.range_preset = range_preset;
 
         // Call the standard handler with calculated tick indices
         instructions::create_position::handler(ctx, lower_tick, upper_tick, liquidity_amount)

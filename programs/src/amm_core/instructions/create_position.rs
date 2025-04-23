@@ -57,8 +57,8 @@ pub fn handler(
     position.lower_price = (lower_price * 1_000_000.0) as u64;
     position.upper_price = (upper_price * 1_000_000.0) as u64;
 
-    // Default to custom range preset (0)
-    position.range_preset = 0;
+    // Note: range_preset is now set by the caller before invoking this handler
+    // The previous default value of 0 has been removed
 
     // Create pool state manager for handling the concentrated liquidity logic
     let mut pool_state = PoolState::new(pool);
