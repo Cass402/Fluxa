@@ -7,6 +7,7 @@
 /// The creation process initializes a new position account and transfers the appropriate
 /// token amounts to the pool vaults based on the current price and specified price range.
 use crate::pool_state::PoolState;
+use crate::utils::price_range::PriceRange;
 use crate::CreatePosition;
 use anchor_lang::prelude::*;
 use anchor_spl::token;
@@ -43,6 +44,22 @@ pub fn handler(
     position.owner = ctx.accounts.owner.key();
     position.pool = pool.key();
 
+    // Store price range information
+    position.lower_tick = lower_tick;
+    position.upper_tick = upper_tick;
+
+    // Calculate and store the actual price values for better UX
+    // (converting from ticks to prices for human-readable display)
+    let lower_price = PriceRange::tick_to_price(lower_tick);
+    let upper_price = PriceRange::tick_to_price(upper_tick);
+
+    // Store as fixed-point representation with 6 decimals for UI display
+    position.lower_price = (lower_price * 1_000_000.0) as u64;
+    position.upper_price = (upper_price * 1_000_000.0) as u64;
+
+    // Note: range_preset is now set by the caller before invoking this handler
+    // The previous default value of 0 has been removed
+
     // Create pool state manager for handling the concentrated liquidity logic
     let mut pool_state = PoolState::new(pool);
 
@@ -51,10 +68,12 @@ pub fn handler(
         pool_state.create_position(position, lower_tick, upper_tick, liquidity_amount)?;
 
     msg!(
-        "Creating position with {} liquidity in range [{}, {}]. Token amounts: A={}, B={}",
+        "Creating position with {} liquidity in range [{}, {}] (prices: {:.6} to {:.6}). Token amounts: A={}, B={}",
         liquidity_amount,
         lower_tick,
         upper_tick,
+        lower_price,
+        upper_price,
         amount_a,
         amount_b
     );

@@ -149,4 +149,20 @@ pub enum ErrorCode {
     /// Transfer of tokens failed
     #[msg("Token transfer operation failed")]
     TransferFailed,
+
+    /// Invalid price range provided
+    #[msg("Invalid price range: lower price must be less than upper price")]
+    InvalidPriceRange,
+
+    /// Invalid price value provided
+    #[msg("Invalid price: price must be positive")]
+    InvalidPrice,
+
+    /// Invalid preset specified for price range creation
+    #[msg("Invalid preset: cannot create price range from Custom preset")]
+    InvalidPreset,
+
+    /// Price range is too narrow based on tick spacing
+    #[msg("Price range is too narrow for the selected fee tier's tick spacing")]
+    RangeTooNarrow,
 }

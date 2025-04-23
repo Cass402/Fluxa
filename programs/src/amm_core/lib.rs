@@ -5,6 +5,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount};
 use errors::ErrorCode;
 use token_pair::TokenPair;
 use token_pair::TokenPairError;
+use utils::price_range::{PriceRange, PriceRangePreset};
 
 declare_id!("HyxBoSbjENm23GRot8Q3dLd22Y7XFTaNTP51ZH4s7ZQr");
 
@@ -88,6 +89,41 @@ pub mod amm_core {
         instructions::initialize_pool::handler(ctx, initial_sqrt_price, fee_tier)
     }
 
+    /// Initializes a new liquidity pool with price-based parameters.
+    ///
+    /// Creates a new concentrated liquidity pool using a human-readable price value
+    /// instead of requiring a sqrt_price in Q64.64 format. This provides a more
+    /// intuitive interface for pool initialization.
+    ///
+    /// # Parameters
+    /// * `ctx` - The context object containing all accounts needed for this operation
+    /// * `initial_price` - The initial price as a floating point value (token_b/token_a)
+    /// * `fee_tier` - The fee tier in basis points (e.g., 3000 = 0.3%)
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or containing an error code
+    ///
+    /// # Errors
+    /// * `InvalidTickSpacing` - If the fee tier is invalid
+    /// * `InvalidInitialPrice` - If the initial price is outside acceptable range
+    pub fn initialize_pool_with_price(
+        ctx: Context<InitializePool>,
+        initial_price: f64,
+        fee_tier: u16,
+    ) -> Result<()> {
+        // Validate initial price
+        if initial_price <= 0.0 {
+            return Err(error!(ErrorCode::InvalidInitialPrice));
+        }
+
+        // Convert price to sqrt_price in Q64.64 format
+        // sqrt_price = sqrt(price) * 2^64
+        let sqrt_price = (initial_price.sqrt() * (1u128 << 64) as f64) as u128;
+
+        // Call standard initialization with converted price
+        instructions::initialize_pool::handler(ctx, sqrt_price, fee_tier)
+    }
+
     /// Creates a new concentrated liquidity position in a pool.
     ///
     /// This allows a liquidity provider to deposit tokens within a specified price range,
@@ -141,6 +177,110 @@ pub mod amm_core {
         upper_tick: i32,
         liquidity_amount: u128,
     ) -> Result<()> {
+        instructions::create_position::handler(ctx, lower_tick, upper_tick, liquidity_amount)
+    }
+
+    /// Creates a new concentrated liquidity position using price range specification.
+    ///
+    /// This enhanced version allows liquidity providers to create positions using
+    /// standard price range presets or explicit price values, providing a more
+    /// intuitive interface than working directly with tick indices.
+    ///
+    /// # Parameters
+    /// * `ctx` - The context object containing all accounts needed for this operation
+    /// * `preset` - Optional preset for standard ranges (Narrow, Medium, Wide)
+    /// * `lower_price` - Optional explicit lower price bound (ignored if preset is used)
+    /// * `upper_price` - Optional explicit upper price bound (ignored if preset is used)
+    /// * `liquidity_amount` - The amount of liquidity to provide
+    ///
+    /// # Accounts Required
+    /// * `owner` - The signer who will own the position
+    /// * `pool` - The pool account where liquidity will be provided
+    /// * `position` - The new position account to be created
+    /// * `token_a_account` - The owner's token A account
+    /// * `token_b_account` - The owner's token B account
+    /// * `token_a_vault` - The pool's token A vault
+    /// * `token_b_vault` - The pool's token B vault
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or containing an error code
+    ///
+    /// # Errors
+    /// * `InvalidPriceRange` - If the provided price range is invalid
+    /// * `RangeTooNarrow` - If the range is narrower than the pool's tick spacing allows
+    pub fn create_position_with_range(
+        ctx: Context<CreatePosition>,
+        preset: Option<u8>,
+        lower_price: Option<f64>,
+        upper_price: Option<f64>,
+        liquidity_amount: u128,
+    ) -> Result<()> {
+        // Get the current pool price as a f64 for price range calculations
+        let pool = &ctx.accounts.pool;
+        let current_tick = pool.current_tick;
+        let current_price = utils::price_range::PriceRange::tick_to_price(current_tick);
+
+        // Store the range preset value for later use
+        let range_preset = preset.unwrap_or(0);
+
+        // Determine ticks based on preset or explicit price values
+        let (lower_tick, upper_tick) = if let Some(preset_value) = preset {
+            // Convert u8 to PriceRangePreset enum
+            let preset_enum = match preset_value {
+                0 => return Err(error!(ErrorCode::InvalidPreset)), // Custom should use explicit prices
+                1 => PriceRangePreset::Narrow,
+                2 => PriceRangePreset::Medium,
+                3 => PriceRangePreset::Wide,
+                _ => return Err(error!(ErrorCode::InvalidPreset)),
+            };
+
+            // Create price range from preset
+            let price_range = PriceRange::new_from_preset(preset_enum, current_price)?;
+            (price_range.lower_tick, price_range.upper_tick)
+        } else if let (Some(lower), Some(upper)) = (lower_price, upper_price) {
+            // Create price range from explicit prices
+            let price_range = PriceRange::new_from_prices(lower, upper)?;
+            (price_range.lower_tick, price_range.upper_tick)
+        } else {
+            // Neither preset nor explicit price range was provided
+            return Err(error!(ErrorCode::InvalidPriceRange));
+        };
+
+        // Check if range width is compatible with pool's tick spacing
+        let tick_spacing = match pool.fee_tier {
+            500 => 10,    // 0.05% fee tier, 0.1% tick spacing
+            3000 => 60,   // 0.3% fee tier, 0.6% tick spacing
+            10000 => 200, // 1% fee tier, 2% tick spacing
+            _ => return Err(error!(ErrorCode::InvalidTickSpacing)),
+        };
+
+        // Verify ticks are properly spaced
+        if lower_tick % tick_spacing != 0 || upper_tick % tick_spacing != 0 {
+            // Round to nearest valid tick if needed
+            let adjusted_lower_tick = (lower_tick / tick_spacing) * tick_spacing;
+            let adjusted_upper_tick = (upper_tick / tick_spacing) * tick_spacing;
+
+            // Ensure adjusted range maintains at least one tick spacing
+            if adjusted_upper_tick - adjusted_lower_tick < tick_spacing {
+                return Err(error!(ErrorCode::RangeTooNarrow));
+            }
+
+            // Set the preset value directly on the position account before calling the handler
+            ctx.accounts.position.range_preset = range_preset;
+
+            // Use adjusted ticks
+            return instructions::create_position::handler(
+                ctx,
+                adjusted_lower_tick,
+                adjusted_upper_tick,
+                liquidity_amount,
+            );
+        }
+
+        // Set the preset value directly on the position account before calling the handler
+        ctx.accounts.position.range_preset = range_preset;
+
+        // Call the standard handler with calculated tick indices
         instructions::create_position::handler(ctx, lower_tick, upper_tick, liquidity_amount)
     }
 
@@ -702,6 +842,18 @@ pub struct Position {
     /// Defines the upper price limit: price = 1.0001^upper_tick
     pub upper_tick: i32,
 
+    /// The lower price boundary (human readable representation)
+    /// This is stored for better UX when displaying position information
+    pub lower_price: u64,
+
+    /// The upper price boundary (human readable representation)
+    /// This is stored for better UX when displaying position information  
+    pub upper_price: u64,
+
+    /// The preset used to create this position, if any
+    /// 0 = Custom, 1 = Narrow, 2 = Medium, 3 = Wide
+    pub range_preset: u8,
+
     /// Amount of liquidity contributed to the pool within this range
     /// Denominated in L units (geometric mean of token amounts)
     pub liquidity: u128,
@@ -727,6 +879,9 @@ impl Position {
         32 + // pool
         4 +  // lower_tick
         4 +  // upper_tick
+        8 +  // lower_price
+        8 +  // upper_price
+        1 +  // range_preset
         16 + // liquidity
         16 + // fee_growth_inside_a
         16 + // fee_growth_inside_b
@@ -741,3 +896,4 @@ pub mod instructions;
 pub mod math;
 pub mod pool_state;
 pub mod token_pair;
+pub mod utils;
