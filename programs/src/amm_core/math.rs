@@ -18,6 +18,9 @@ use anchor_lang::prelude::*;
 /// precision during mathematical operations.
 pub const Q64: u128 = 1u128 << 64;
 
+/// Maximum value for u128
+pub const U128MAX: u128 = u128::MAX;
+
 // Constants for tick-to-sqrt-price calculations
 const _LOG_BASE: u128 = 100; // For precision in log calculation
 const _BPS_PER_TICK: u128 = 1; // 0.01% per tick (1 basis point)
@@ -620,4 +623,131 @@ pub fn price_to_sqrt_price(price: u64) -> Result<u128> {
 
     // x now contains sqrt(price) * 2^64
     Ok(x)
+}
+
+/// Calculates the amount of token A required for a specific liquidity amount in a price range.
+///
+/// This function determines how much of token A is needed to provide the specified liquidity
+/// between the given square root price bounds. It's used during position creation and
+/// liquidity management.
+///
+/// # Parameters
+/// * `liquidity` - The amount of liquidity to be provided
+/// * `sqrt_price_lower` - The lower square root price bound
+/// * `sqrt_price_upper` - The upper square root price bound
+/// * `round_up` - Whether to round up (for deposits) or down (for withdrawals)
+///
+/// # Returns
+/// * `Result<u128>` - The calculated token A amount, or an error
+///
+/// # Errors
+/// * `ErrorCode::MathOverflow` - If any calculation results in an overflow
+pub fn get_amount_a_delta_for_price_range(
+    liquidity: u128,
+    sqrt_price_lower: u128,
+    sqrt_price_upper: u128,
+    round_up: bool,
+) -> Result<u128> {
+    // Safety check: ensure price bounds are valid
+    if sqrt_price_lower > sqrt_price_upper {
+        return Err(ErrorCode::InvalidTickRange.into());
+    }
+
+    // Calculate amount_a = liquidity * (1/sqrt_price_lower - 1/sqrt_price_upper)
+    // Using fixed-point arithmetic for precision
+
+    // Compute (1/sqrt_price_lower) * Q64 - invert the lower bound
+    let inv_lower = Q64
+        .checked_mul(Q64)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_div(sqrt_price_lower)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Compute (1/sqrt_price_upper) * Q64 - invert the upper bound
+    let inv_upper = Q64
+        .checked_mul(Q64)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_div(sqrt_price_upper)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Calculate the difference of the inverses
+    let delta_inv = inv_lower
+        .checked_sub(inv_upper)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Calculate liquidity * (inv_lower - inv_upper)
+    let amount = liquidity
+        .checked_mul(delta_inv)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Apply rounding based on the round_up parameter
+    let result = if round_up {
+        // Rounding up: Add (Q64 - 1) to the numerator before division
+        // This ensures any fractional part becomes 1 more in the result
+        amount
+            .checked_add(Q64 - 1)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(Q64)
+            .ok_or(ErrorCode::MathOverflow)?
+    } else {
+        // Rounding down: Simple division
+        amount.checked_div(Q64).ok_or(ErrorCode::MathOverflow)?
+    };
+
+    Ok(result)
+}
+
+/// Calculates the amount of token B required for a specific liquidity amount in a price range.
+///
+/// This function determines how much of token B is needed to provide the specified liquidity
+/// between the given square root price bounds. It's used during position creation and
+/// liquidity management.
+///
+/// # Parameters
+/// * `liquidity` - The amount of liquidity to be provided
+/// * `sqrt_price_lower` - The lower square root price bound
+/// * `sqrt_price_upper` - The upper square root price bound
+/// * `round_up` - Whether to round up (for deposits) or down (for withdrawals)
+///
+/// # Returns
+/// * `Result<u128>` - The calculated token B amount, or an error
+///
+/// # Errors
+/// * `ErrorCode::MathOverflow` - If any calculation results in an overflow
+pub fn get_amount_b_delta_for_price_range(
+    liquidity: u128,
+    sqrt_price_lower: u128,
+    sqrt_price_upper: u128,
+    round_up: bool,
+) -> Result<u128> {
+    // Safety check: ensure price bounds are valid
+    if sqrt_price_lower > sqrt_price_upper {
+        return Err(ErrorCode::InvalidTickRange.into());
+    }
+
+    // Calculate amount_b = liquidity * (sqrt_price_upper - sqrt_price_lower)
+    let delta_sqrt_price = sqrt_price_upper
+        .checked_sub(sqrt_price_lower)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Calculate liquidity * (sqrt_price_upper - sqrt_price_lower)
+    let amount = liquidity
+        .checked_mul(delta_sqrt_price)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Apply rounding based on the round_up parameter
+    let result = if round_up {
+        // Rounding up: Add (Q64 - 1) to the numerator before division
+        // This ensures any fractional part becomes 1 more in the result
+        amount
+            .checked_add(Q64 - 1)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(Q64)
+            .ok_or(ErrorCode::MathOverflow)?
+    } else {
+        // Rounding down: Simple division
+        amount.checked_div(Q64).ok_or(ErrorCode::MathOverflow)?
+    };
+
+    Ok(result)
 }

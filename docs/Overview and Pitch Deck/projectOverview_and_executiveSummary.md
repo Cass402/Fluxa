@@ -1,5 +1,10 @@
 # Project Overview and Executive Summary
 
+**Document ID:** FLX-EXEC-2025-001
+**Version:** 1.0
+
+---
+
 ## Introduction
 
 Fluxa is a next-generation decentralized finance (DeFi) protocol designed specifically for the Solana ecosystem. It combines a hybrid adaptive automated market maker (AMM) with personalized yield optimization—offering an innovative platform that merges concentrated liquidity, integrated order book capabilities, and dynamic liquidity curve adjustments. Fluxa is built to empower liquidity providers (LPs) with enhanced capital efficiency, reduced impermanent loss, and tailored yield strategies, all while leveraging Solana's high-speed, parallel execution model.
