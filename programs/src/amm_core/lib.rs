@@ -227,9 +227,10 @@ pub mod amm_core {
         let (lower_tick, upper_tick) = if let Some(preset_value) = preset {
             // Convert u8 to PriceRangePreset enum
             let preset_enum = match preset_value {
-                0 => PriceRangePreset::Narrow,
-                1 => PriceRangePreset::Medium,
-                2 => PriceRangePreset::Wide,
+                0 => return Err(error!(ErrorCode::InvalidPreset)), // Custom should use explicit prices
+                1 => PriceRangePreset::Narrow,
+                2 => PriceRangePreset::Medium,
+                3 => PriceRangePreset::Wide,
                 _ => return Err(error!(ErrorCode::InvalidPreset)),
             };
 
