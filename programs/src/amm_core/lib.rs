@@ -739,4 +739,5 @@ pub mod constants;
 pub mod errors;
 pub mod instructions;
 pub mod math;
+pub mod pool_state;
 pub mod token_pair;

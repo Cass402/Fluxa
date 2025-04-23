@@ -6,9 +6,11 @@
 ///
 /// The creation process initializes a new position account and transfers the appropriate
 /// token amounts to the pool vaults based on the current price and specified price range.
-use crate::errors::ErrorCode;
+use crate::pool_state::PoolState;
 use crate::CreatePosition;
 use anchor_lang::prelude::*;
+use anchor_spl::token;
+use anchor_spl::token::Transfer;
 
 /// Handler function for creating a new liquidity position
 ///
@@ -35,34 +37,68 @@ pub fn handler(
 ) -> Result<()> {
     let position = &mut ctx.accounts.position;
     let pool = &mut ctx.accounts.pool;
+    let token_program = &ctx.accounts.token_program;
 
-    // Validate tick range
-    require!(lower_tick < upper_tick, ErrorCode::InvalidTickRange);
-    // TODO: Additional validation for tick spacing
-
-    // Initialize position data
+    // Initialize position owner and pool reference
     position.owner = ctx.accounts.owner.key();
     position.pool = pool.key();
-    position.lower_tick = lower_tick;
-    position.upper_tick = upper_tick;
-    position.liquidity = liquidity_amount;
-    position.fee_growth_inside_a = 0;
-    position.fee_growth_inside_b = 0;
-    position.tokens_owed_a = 0;
-    position.tokens_owed_b = 0;
 
-    // Calculate token amounts needed for this position
-    // TODO: Use math module to calculate token_a_amount and token_b_amount based on
-    // current price, tick range, and liquidity amount
+    // Create pool state manager for handling the concentrated liquidity logic
+    let mut pool_state = PoolState::new(pool);
 
-    // Transfer tokens from user to pool vaults
-    // TODO: Implement token transfers using token_program
+    // Use pool state manager to create the position and calculate token amounts
+    let (amount_a, amount_b) =
+        pool_state.create_position(position, lower_tick, upper_tick, liquidity_amount)?;
 
-    // Update pool state
-    pool.liquidity = pool.liquidity.checked_add(liquidity_amount).unwrap();
-    pool.position_count = pool.position_count.checked_add(1).unwrap();
+    msg!(
+        "Creating position with {} liquidity in range [{}, {}]. Token amounts: A={}, B={}",
+        liquidity_amount,
+        lower_tick,
+        upper_tick,
+        amount_a,
+        amount_b
+    );
 
-    // TODO: Update tick data structures for range
+    // Transfer token A if needed
+    if amount_a > 0 {
+        token::transfer(
+            CpiContext::new(
+                token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.token_a_account.to_account_info(),
+                    to: ctx.accounts.token_a_vault.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
+                },
+            ),
+            amount_a,
+        )?;
+    }
+
+    // Transfer token B if needed
+    if amount_b > 0 {
+        token::transfer(
+            CpiContext::new(
+                token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.token_b_account.to_account_info(),
+                    to: ctx.accounts.token_b_vault.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
+                },
+            ),
+            amount_b,
+        )?;
+    }
+
+    // Increment position count in pool
+    pool.position_count = pool.position_count.checked_add(1).unwrap_or_else(|| {
+        msg!("Warning: Position count overflow");
+        u64::MAX
+    });
+
+    msg!(
+        "Position created successfully. Total pool liquidity: {}",
+        pool.liquidity
+    );
 
     Ok(())
 }

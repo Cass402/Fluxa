@@ -134,4 +134,11 @@ pub enum ErrorCode {
     /// Token vaults must be properly initialized and associated with the correct token mint.
     #[msg("Token vault setup failed")]
     VaultSetupFailed,
+
+    /// Returned when attempting to reference a tick that doesn't exist or has no references
+    ///
+    /// This error prevents operations on uninitialized ticks or attempting to remove
+    /// liquidity from a tick that has no references.
+    #[msg("Invalid tick reference")]
+    InvalidTickReference,
 }
