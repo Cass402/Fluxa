@@ -1,10 +1,10 @@
-// Utility modules for Fluxa AMM Core
-//
-// This module provides helper utilities and specialized functionality
-// to support the core AMM operations.
-
-// Price range utilities for simplified position creation and management
+/// Utility modules for Fluxa AMM Core
+///
+/// This directory contains various utility modules that provide
+/// supporting functionality for the core AMM components.
 pub mod price_range;
 
-/// Re-export the price range module
-pub use price_range::*;
+// Re-export commonly used utilities for easier access
+pub use price_range::calculate_impermanent_loss;
+pub use price_range::PriceRange;
+pub use price_range::PriceRangePreset;
