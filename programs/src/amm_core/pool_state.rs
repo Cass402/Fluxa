@@ -706,6 +706,372 @@ impl<'a> PoolState<'a> {
 
         Ok(())
     }
+
+    /// Calculate current virtual reserves for the pool
+    ///
+    /// Virtual reserves represent the effective amounts of tokens at the current price point,
+    /// which are useful for price impact calculations and other analytics.
+    ///
+    /// # Returns
+    /// * `Result<(u64, u64)>` - A tuple of (virtual_reserve_a, virtual_reserve_b), or an error
+    pub fn get_virtual_reserves(&self) -> Result<(u64, u64)> {
+        // If the pool doesn't have any liquidity, return zeros
+        if self.pool.liquidity == 0 {
+            return Ok((0, 0));
+        }
+
+        // Use the math library to calculate virtual reserves from current liquidity and sqrt price
+        math::calculate_virtual_reserves(self.pool.liquidity, self.pool.sqrt_price)
+    }
+
+    /// Calculate virtual reserve of token A
+    ///
+    /// # Returns
+    /// * `Result<u64>` - The virtual reserve of token A, or an error
+    pub fn get_virtual_reserve_a(&self) -> Result<u64> {
+        math::calculate_virtual_reserve_a(self.pool.liquidity, self.pool.sqrt_price)
+    }
+
+    /// Calculate virtual reserve of token B
+    ///
+    /// # Returns
+    /// * `Result<u64>` - The virtual reserve of token B, or an error
+    pub fn get_virtual_reserve_b(&self) -> Result<u64> {
+        math::calculate_virtual_reserve_b(self.pool.liquidity, self.pool.sqrt_price)
+    }
+
+    /// Verifies that pool state satisfies the constant product formula
+    ///
+    /// This is useful for validating that the pool state is consistent after operations.
+    /// The constant product formula (x * y = k) should hold for virtual reserves,
+    /// where k is approximately equal to the square of the pool's liquidity.
+    ///
+    /// # Returns
+    /// * `bool` - True if the virtual reserves match the constant product formula
+    pub fn verify_constant_product(&self) -> bool {
+        // If the pool doesn't have any liquidity, the test passes trivially
+        if self.pool.liquidity == 0 {
+            return true;
+        }
+
+        // Get virtual reserves
+        if let Ok((reserve_a, reserve_b)) = self.get_virtual_reserves() {
+            // Check if they satisfy the constant product formula using the math utility function
+            math::verify_virtual_reserves_invariant(reserve_a, reserve_b, self.pool.liquidity)
+        } else {
+            // If we can't calculate virtual reserves, the invariant check fails
+            false
+        }
+    }
+
+    /// Find the nearest initialized tick below the current tick
+    #[allow(dead_code)]
+    fn find_nearest_lower_initialized_tick(&self, current_tick: i32) -> i32 {
+        let mut nearest_lower = current_tick;
+        let mut found_initialized = false;
+
+        for (tick_idx, tick) in &self.ticks {
+            if *tick_idx < current_tick
+                && tick.initialized
+                && (!found_initialized || *tick_idx > nearest_lower)
+            {
+                nearest_lower = *tick_idx;
+                found_initialized = true;
+            }
+        }
+
+        // If we didn't find an initialized tick below, use protocol minimum
+        if !found_initialized {
+            nearest_lower = MIN_TICK;
+        }
+
+        nearest_lower
+    }
+
+    /// Find the nearest initialized tick above the current tick
+    #[allow(dead_code)]
+    fn find_nearest_upper_initialized_tick(&self, current_tick: i32) -> i32 {
+        let mut nearest_upper = current_tick;
+        let mut found_initialized = false;
+
+        for (tick_idx, tick) in &self.ticks {
+            if *tick_idx > current_tick
+                && tick.initialized
+                && (!found_initialized || *tick_idx < nearest_upper)
+            {
+                nearest_upper = *tick_idx;
+                found_initialized = true;
+            }
+        }
+
+        // If we didn't find an initialized tick above, use protocol maximum
+        if !found_initialized {
+            nearest_upper = MAX_TICK;
+        }
+
+        nearest_upper
+    }
+
+    /// Calculate price impact of a swap based on virtual reserves
+    ///
+    /// # Parameters
+    /// * `amount_in` - Amount of input token
+    /// * `is_token_a` - Whether the input is token A (true) or token B (false)
+    ///
+    /// # Returns
+    /// * `Result<u64>` - Price impact in basis points (e.g., 100 = 1%)
+    pub fn calculate_price_impact(&self, amount_in: u64, is_token_a: bool) -> Result<u64> {
+        // Get current virtual reserves
+        let (reserve_a, reserve_b) = self.get_virtual_reserves()?;
+
+        // Avoid division by zero
+        if reserve_a == 0 || reserve_b == 0 {
+            return Ok(0);
+        }
+
+        // Calculate k = reserve_a * reserve_b before swap
+        let k_before = reserve_a as u128 * reserve_b as u128;
+
+        // Calculate new reserves after swap (simplified, ignoring fees)
+        let (new_reserve_a, new_reserve_b) = if is_token_a {
+            // Swapping token A for token B
+            let new_a = reserve_a.saturating_add(amount_in);
+            // B = k / A for constant product
+            let new_b = (k_before / new_a as u128) as u64;
+            (new_a, new_b)
+        } else {
+            // Swapping token B for token A
+            let new_b = reserve_b.saturating_add(amount_in);
+            // A = k / B for constant product
+            let new_a = (k_before / new_b as u128) as u64;
+            (new_a, new_b)
+        };
+
+        // Calculate price before: reserve_b / reserve_a
+        let price_before = (reserve_b as f64) / (reserve_a as f64);
+
+        // Calculate price after: new_reserve_b / new_reserve_a
+        let price_after = (new_reserve_b as f64) / (new_reserve_a as f64);
+
+        // Calculate price change as a percentage
+        let price_change_pct = ((price_after - price_before) / price_before).abs() * 100.0;
+
+        // Convert to basis points (1% = 100 basis points)
+        let impact_bps = (price_change_pct * 100.0) as u64;
+
+        Ok(impact_bps)
+    }
+
+    /// Examine impermanent loss implications given the current virtual reserves
+    /// compared to the initial position's virtual reserves
+    ///
+    /// # Parameters
+    /// * `initial_sqrt_price` - The sqrt price when position was created
+    /// * `initial_liquidity` - The liquidity when position was created
+    /// * `current_tick` - The current tick index
+    ///
+    /// # Returns
+    /// * `Result<(u64, f64)>` - (IL amount in smallest token units, IL percentage)
+    pub fn estimate_impermanent_loss(
+        &self,
+        initial_sqrt_price: u128,
+        initial_liquidity: u128,
+    ) -> Result<(u64, f64)> {
+        if initial_liquidity == 0 {
+            return Ok((0, 0.0));
+        }
+
+        // Calculate initial virtual reserves
+        let (init_virt_a, init_virt_b) =
+            math::calculate_virtual_reserves(initial_liquidity, initial_sqrt_price)?;
+
+        // Calculate current virtual reserves for same liquidity
+        let current_sqrt_price = self.pool.sqrt_price;
+        let (curr_virt_a, curr_virt_b) =
+            math::calculate_virtual_reserves(initial_liquidity, current_sqrt_price)?;
+
+        // Calculate hodl value (if user just held the initial tokens)
+        let init_value_a = init_virt_a;
+        let init_value_b = init_virt_b;
+
+        // Calculate current LP value using the current price
+        let current_value_a = curr_virt_a;
+        let current_value_b = curr_virt_b;
+
+        // Convert to a common denominator using current price
+        let price_in_a_terms = (current_sqrt_price as f64 / math::Q96 as f64).powi(2);
+
+        // Calculate total values in terms of token A
+        let hodl_value = init_value_a as f64 + (init_value_b as f64 * price_in_a_terms);
+        let lp_value = current_value_a as f64 + (current_value_b as f64 * price_in_a_terms);
+
+        // Calculate IL as percentage
+        let il_percentage = if hodl_value > 0.0 {
+            ((hodl_value - lp_value) / hodl_value) * 100.0
+        } else {
+            0.0
+        };
+
+        // Calculate IL amount in token A units
+        let il_amount = if hodl_value > lp_value {
+            (hodl_value - lp_value) as u64
+        } else {
+            0
+        };
+
+        Ok((il_amount, il_percentage))
+    }
+
+    /// Get virtual reserves for a specific position
+    ///
+    /// # Parameters
+    /// * `position` - The position to calculate virtual reserves for
+    ///
+    /// # Returns
+    /// * `Result<(u64, u64)>` - Virtual reserves for the position
+    pub fn get_position_virtual_reserves(&self, position: &Position) -> Result<(u64, u64)> {
+        let sqrt_price = self.pool.sqrt_price;
+        let current_tick = self.pool.current_tick;
+        let position_liquidity = position.liquidity;
+
+        // If there's no liquidity in the position, there are no virtual reserves
+        if position_liquidity == 0 {
+            return Ok((0, 0));
+        }
+
+        // Get position boundaries
+        let lower_tick = position.lower_tick;
+        let upper_tick = position.upper_tick;
+
+        // Convert ticks to sqrt prices
+        let sqrt_price_lower = math::tick_to_sqrt_price(lower_tick)?;
+        let sqrt_price_upper = math::tick_to_sqrt_price(upper_tick)?;
+
+        // Calculate virtual reserves based on position's state relative to current price
+        let (virtual_reserve_a, virtual_reserve_b) = if current_tick < lower_tick {
+            // Position is entirely above current price
+            // Only token A is in the position
+            let virt_a = math::calculate_virtual_reserve_a(position_liquidity, sqrt_price_lower)?;
+            (virt_a, 0)
+        } else if current_tick >= upper_tick {
+            // Position is entirely below current price
+            // Only token B is in the position
+            let virt_b = math::calculate_virtual_reserve_b(position_liquidity, sqrt_price_upper)?;
+            (0, virt_b)
+        } else {
+            // Current price is within position bounds
+            // Calculate partial virtual reserves for both tokens
+            let virt_a = math::get_amount_a_delta_for_price_range(
+                position_liquidity,
+                sqrt_price,
+                sqrt_price_upper,
+                false,
+            )? as u64;
+
+            let virt_b = math::get_amount_b_delta_for_price_range(
+                position_liquidity,
+                sqrt_price_lower,
+                sqrt_price,
+                false,
+            )? as u64;
+
+            (virt_a, virt_b)
+        };
+
+        Ok((virtual_reserve_a, virtual_reserve_b))
+    }
+
+    /// Calculate the virtual reserves for a specific tick range
+    ///
+    /// # Parameters
+    /// * `lower_tick` - Lower tick of the range
+    /// * `upper_tick` - Upper tick of the range
+    ///
+    /// # Returns
+    /// * `Result<(u64, u64)>` - Virtual reserves in the range as (token_a, token_b)
+    pub fn get_virtual_reserves_in_range(
+        &self,
+        lower_tick: i32,
+        upper_tick: i32,
+    ) -> Result<(u64, u64)> {
+        // Get the sqrt prices for the ticks
+        let lower_sqrt_price = math::tick_to_sqrt_price(lower_tick)?;
+        let upper_sqrt_price = math::tick_to_sqrt_price(upper_tick)?;
+
+        // Get the liquidity in the range
+        let liquidity_in_range = self.get_liquidity_in_range(lower_tick, upper_tick)?;
+
+        math::calculate_virtual_reserves_in_range(
+            liquidity_in_range,
+            self.pool.sqrt_price,
+            lower_sqrt_price,
+            upper_sqrt_price,
+        )
+    }
+
+    /// Get the liquidity in a specific tick range
+    ///
+    /// This function calculates how much liquidity is currently available in a given
+    /// tick range. It's used for virtual reserve calculations and range-specific queries.
+    ///
+    /// # Parameters
+    /// * `lower_tick` - Lower tick of the range
+    /// * `upper_tick` - Upper tick of the range
+    ///
+    /// # Returns
+    /// * `Result<u128>` - Liquidity in the range
+    fn get_liquidity_in_range(&self, lower_tick: i32, upper_tick: i32) -> Result<u128> {
+        // In a full concentrated liquidity AMM implementation, this would need to:
+        // 1. Track liquidity at each initialized tick boundary
+        // 2. Aggregate it across the specified range
+        // 3. Account for user positions properly
+
+        // For this implementation, we check if the current price is within the range
+        // If so, we return the pool's total liquidity, otherwise zero
+
+        let current_tick = self.pool.current_tick;
+
+        if current_tick >= lower_tick && current_tick < upper_tick {
+            Ok(self.pool.liquidity)
+        } else {
+            // If the current price is outside the range, there's no active liquidity
+            Ok(0)
+        }
+    }
+
+    /// Calculate the virtual reserves for the entire pool based on current liquidity and price
+    pub fn calculate_virtual_reserves(&self) -> Result<(u64, u64)> {
+        math::calculate_virtual_reserves(self.pool.liquidity, self.pool.sqrt_price)
+    }
+
+    /// Calculate the virtual reserves for a specific price range
+    pub fn calculate_virtual_reserves_in_range(
+        &self,
+        lower_tick: i32,
+        upper_tick: i32,
+    ) -> Result<(u64, u64)> {
+        let liquidity_in_range = self.get_liquidity_in_range(lower_tick, upper_tick)?;
+        let lower_sqrt_price = math::tick_to_sqrt_price(lower_tick)?;
+        let upper_sqrt_price = math::tick_to_sqrt_price(upper_tick)?;
+
+        math::calculate_virtual_reserves_in_range(
+            liquidity_in_range,
+            self.pool.sqrt_price,
+            lower_sqrt_price,
+            upper_sqrt_price,
+        )
+    }
+
+    /// Get virtual reserves ratio (price)
+    pub fn get_virtual_reserves_ratio(&self) -> Result<f64> {
+        let (reserve_a, reserve_b) = self.get_virtual_reserves()?;
+
+        if reserve_a == 0 {
+            return Err(ErrorCode::ZeroReserveAmount.into());
+        }
+
+        Ok(reserve_b as f64 / reserve_a as f64)
+    }
 }
 
 /// Event emitted when protocol fees are collected

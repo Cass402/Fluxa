@@ -165,4 +165,11 @@ pub enum ErrorCode {
     /// Price range is too narrow based on tick spacing
     #[msg("Price range is too narrow for the selected fee tier's tick spacing")]
     RangeTooNarrow,
+
+    /// Returned when a zero token reserve amount is provided where a non-zero amount is required
+    ///
+    /// This error prevents operations that would fail due to division by zero or other
+    /// mathematical issues when calculating with reserve amounts.
+    #[msg("Zero reserve amount provided")]
+    ZeroReserveAmount,
 }

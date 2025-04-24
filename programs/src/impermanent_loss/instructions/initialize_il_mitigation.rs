@@ -8,6 +8,7 @@ pub fn handler(
     adjustment_threshold: u64,
     max_adjustment_factor: u64,
     rebalance_cooldown: u64,
+    reserve_imbalance_threshold: u64,
 ) -> Result<()> {
     let il_params = &mut ctx.accounts.il_params;
     let volatility_state = &mut ctx.accounts.volatility_state;
@@ -19,6 +20,7 @@ pub fn handler(
     il_params.adjustment_threshold = adjustment_threshold;
     il_params.max_adjustment_factor = max_adjustment_factor;
     il_params.rebalance_cooldown = rebalance_cooldown;
+    il_params.reserve_imbalance_threshold = reserve_imbalance_threshold;
 
     // Initialize volatility state
     volatility_state.short_term_volatility = 0;

@@ -7,6 +7,7 @@
 // The position management system is designed to work seamlessly with the IL Mitigation module,
 // providing the necessary data structures and interfaces for dynamic position adjustments.
 
+use crate::errors::ErrorCode;
 use crate::math;
 use crate::pool_state::PoolState;
 use crate::utils::price_range::calculate_impermanent_loss;
@@ -816,7 +817,7 @@ pub struct PositionInfo {
 }
 
 /// Extension trait for Position to add analytics methods
-pub trait PositionAnalytics {
+pub trait PositionAnalyticsTrait {
     /// Calculates the percentage of total pool liquidity this position represents
     fn percentage_of_pool(&self, pool: &Pool) -> f64;
 
@@ -836,7 +837,7 @@ pub trait PositionAnalytics {
     fn capital_efficiency(&self, current_tick: i32) -> f64;
 }
 
-impl PositionAnalytics for Position {
+impl PositionAnalyticsTrait for Position {
     fn percentage_of_pool(&self, pool: &Pool) -> f64 {
         if pool.liquidity == 0 {
             return 0.0;
@@ -895,7 +896,7 @@ impl PositionAnalytics for Position {
 }
 
 // We also implement the PositionAnalytics trait for PositionInfo
-impl PositionAnalytics for PositionInfo {
+impl PositionAnalyticsTrait for PositionInfo {
     fn percentage_of_pool(&self, pool: &Pool) -> f64 {
         if pool.liquidity == 0 {
             return 0.0;
@@ -994,4 +995,273 @@ pub enum PositionStatus {
 
     /// Position is approaching range boundary
     ApproachingBoundary,
+}
+
+/// Position Manager Module
+///
+/// This module implements operations for managing liquidity positions in the AMM.
+/// It provides methods for creating, modifying, and analyzing positions.
+/// Creates a new position in a pool with the specified tick range
+///
+/// # Parameters
+/// * `position_account` - The account where position data will be stored
+/// * `pool_state` - The state manager for the pool
+/// * `lower_tick` - The lower tick boundary of the position
+/// * `upper_tick` - The upper tick boundary of the position
+/// * `liquidity_delta` - The amount of liquidity to add to the position
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - The amounts of token A and B required for the position
+pub fn create_position<'a>(
+    position_account: &'a mut Position,
+    pool_state: &'a mut PoolState<'a>,
+    lower_tick: i32,
+    upper_tick: i32,
+    liquidity_delta: u128,
+) -> Result<(u64, u64)> {
+    // Call into pool state manager to create the position
+    pool_state.create_position(position_account, lower_tick, upper_tick, liquidity_delta)
+}
+
+/// Increases liquidity in an existing position
+///
+/// # Parameters
+/// * `position` - The position to modify
+/// * `pool_state` - The state manager for the pool
+/// * `liquidity_delta` - The amount of liquidity to add
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - The amounts of token A and B required for the added liquidity
+pub fn increase_liquidity(
+    position: &mut Position,
+    pool_state: &mut PoolState,
+    liquidity_delta: u128,
+) -> Result<(u64, u64)> {
+    // Call into pool state manager to modify the position
+    pool_state.modify_position(position, liquidity_delta as i128, true)
+}
+
+/// Decreases liquidity in an existing position
+///
+/// # Parameters
+/// * `position` - The position to modify
+/// * `pool_state` - The state manager for the pool
+/// * `liquidity_delta` - The amount of liquidity to remove
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - The amounts of token A and B returned from the removed liquidity
+pub fn decrease_liquidity(
+    position: &mut Position,
+    pool_state: &mut PoolState,
+    liquidity_delta: u128,
+) -> Result<(u64, u64)> {
+    // Ensure we're not removing more liquidity than the position has
+    require!(
+        position.liquidity >= liquidity_delta,
+        ErrorCode::PositionLiquidityTooLow
+    );
+
+    // Call into pool state manager to modify the position
+    pool_state.modify_position(position, liquidity_delta as i128, false)
+}
+
+/// Collects accumulated fees from a position
+///
+/// # Parameters
+/// * `position` - The position to collect fees from
+/// * `pool_state` - The state manager for the pool
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - The amounts of token A and B fees collected
+pub fn collect_fees(position: &mut Position, pool_state: &mut PoolState) -> Result<(u64, u64)> {
+    // Update fee accounting in the position
+    pool_state.update_position_fees(position)?;
+
+    // Get the fees that have accumulated
+    let fees_a = position.tokens_owed_a;
+    let fees_b = position.tokens_owed_b;
+
+    // Reset fees owed in the position
+    position.tokens_owed_a = 0;
+    position.tokens_owed_b = 0;
+
+    Ok((fees_a, fees_b))
+}
+
+/// Gets the current virtual reserves for a specific position
+///
+/// This function calculates how much of the virtual reserves is attributable to a
+/// specific position based on its share of the liquidity in the active range.
+///
+/// # Parameters
+/// * `position` - The position to analyze
+/// * `pool_state` - The state manager for the pool
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - The position's contribution to virtual reserves (A, B)
+pub fn get_position_virtual_reserves(
+    position: &Position,
+    pool_state: &PoolState,
+) -> Result<(u64, u64)> {
+    // Get total pool virtual reserves
+    let (pool_reserve_a, pool_reserve_b) = pool_state.get_virtual_reserves()?;
+
+    // Get current tick and check if position is in range
+    let current_tick = pool_state.pool.current_tick;
+    let is_in_range = current_tick >= position.lower_tick && current_tick < position.upper_tick;
+
+    // If position is not in active range, return zero for both reserves
+    if !is_in_range || pool_state.pool.liquidity == 0 {
+        return Ok((0, 0));
+    }
+
+    // Calculate position's share of the total liquidity
+    let position_share = (position.liquidity as f64) / (pool_state.pool.liquidity as f64);
+
+    // Calculate position's portion of virtual reserves
+    let position_reserve_a = (pool_reserve_a as f64 * position_share) as u64;
+    let position_reserve_b = (pool_reserve_b as f64 * position_share) as u64;
+
+    Ok((position_reserve_a, position_reserve_b))
+}
+
+/// Gets the distribution of tokens in a position at the current price
+///
+/// This function provides a detailed breakdown of a position's token distribution,
+/// including both real token amounts and virtual reserves. This is useful for
+/// analytics and impermanent loss calculations.
+///
+/// # Parameters
+/// * `position` - The position to analyze
+/// * `pool_state` - The state manager for the pool
+///
+/// # Returns
+/// * `Result<PositionAnalytics>` - Detailed position analytics
+pub fn get_position_analytics(
+    position: &Position,
+    pool_state: &PoolState,
+) -> Result<PositionAnalytics> {
+    let current_tick = pool_state.pool.current_tick;
+    let sqrt_price = pool_state.pool.sqrt_price;
+
+    // Calculate the sqrt prices at position boundaries
+    let sqrt_price_lower = math::tick_to_sqrt_price(position.lower_tick)?;
+    let sqrt_price_upper = math::tick_to_sqrt_price(position.upper_tick)?;
+
+    // Determine if position is in current price range
+    let is_in_range = current_tick >= position.lower_tick && current_tick < position.upper_tick;
+
+    // Get real token amounts in the position
+    let (real_token_a, real_token_b) = if is_in_range {
+        // If in range, calculate real token amounts based on current price
+        let amount_a = math::get_amount_a_delta_for_price_range(
+            position.liquidity,
+            sqrt_price,
+            sqrt_price_upper,
+            false, // Round down for more conservative estimate
+        )? as u64;
+
+        let amount_b = math::get_amount_b_delta_for_price_range(
+            position.liquidity,
+            sqrt_price_lower,
+            sqrt_price,
+            false, // Round down for more conservative estimate
+        )? as u64;
+
+        (amount_a, amount_b)
+    } else if current_tick < position.lower_tick {
+        // All value is in token A
+        let amount_a = math::get_amount_a_delta_for_price_range(
+            position.liquidity,
+            sqrt_price_lower,
+            sqrt_price_upper,
+            false, // Round down for more conservative estimate
+        )? as u64;
+
+        (amount_a, 0)
+    } else {
+        // All value is in token B
+        let amount_b = math::get_amount_b_delta_for_price_range(
+            position.liquidity,
+            sqrt_price_lower,
+            sqrt_price_upper,
+            false, // Round down for more conservative estimate
+        )? as u64;
+
+        (0, amount_b)
+    };
+
+    // Get position's virtual reserves contribution
+    let (virtual_reserve_a, virtual_reserve_b) =
+        get_position_virtual_reserves(position, pool_state)?;
+
+    // Calculate fees owed (without updating position state)
+    let fees_a = position.tokens_owed_a;
+    let fees_b = position.tokens_owed_b;
+
+    // Generate a position ID using position data
+    let position_id = Pubkey::new_unique(); // Using a unique key for this instance
+
+    // Create and return the analytics struct
+    Ok(PositionAnalytics {
+        position_id,
+        lower_tick: position.lower_tick,
+        upper_tick: position.upper_tick,
+        liquidity: position.liquidity,
+        is_in_range,
+        real_token_a,
+        real_token_b,
+        virtual_reserve_a,
+        virtual_reserve_b,
+        fees_owed_a: fees_a,
+        fees_owed_b: fees_b,
+        current_tick,
+        sqrt_price,
+    })
+}
+
+/// Detailed analytics for a position
+///
+/// This struct contains comprehensive information about a position's state,
+/// including both real token amounts and virtual reserves distribution.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct PositionAnalytics {
+    /// The position's unique identifier
+    pub position_id: Pubkey,
+
+    /// Lower tick boundary of the position
+    pub lower_tick: i32,
+
+    /// Upper tick boundary of the position
+    pub upper_tick: i32,
+
+    /// Liquidity amount in the position
+    pub liquidity: u128,
+
+    /// Whether the position is in the active price range
+    pub is_in_range: bool,
+
+    /// Actual amount of token A in the position
+    pub real_token_a: u64,
+
+    /// Actual amount of token B in the position
+    pub real_token_b: u64,
+
+    /// Position's contribution to virtual reserve A
+    pub virtual_reserve_a: u64,
+
+    /// Position's contribution to virtual reserve B
+    pub virtual_reserve_b: u64,
+
+    /// Fees owed to the position in token A
+    pub fees_owed_a: u64,
+
+    /// Fees owed to the position in token B
+    pub fees_owed_b: u64,
+
+    /// Current tick of the pool
+    pub current_tick: i32,
+
+    /// Current sqrt price of the pool
+    pub sqrt_price: u128,
 }

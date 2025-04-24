@@ -18,6 +18,11 @@ use anchor_lang::prelude::*;
 /// precision during mathematical operations.
 pub const Q64: u128 = 1u128 << 64;
 
+/// Q64.96 fixed-point representation scaling factor
+///
+/// This constant represents 2^96, used for specific precision-sensitive calculations.
+pub const Q96: u128 = 1u128 << 96;
+
 /// Maximum value for u128
 pub const U128MAX: u128 = u128::MAX;
 
@@ -750,4 +755,313 @@ pub fn get_amount_b_delta_for_price_range(
     };
 
     Ok(result)
+}
+
+/// Calculates the virtual reserves of token A and B at the current price.
+///
+/// In concentrated liquidity AMMs, virtual reserves represent the effective amounts
+/// of tokens that determine the price at the current point. These are calculated
+/// based on the current active liquidity in the pool and the current price.
+///
+/// # Mathematical Formula
+/// For token A: `virtual_reserve_a = liquidity / sqrt_price`
+/// For token B: `virtual_reserve_b = liquidity * sqrt_price`
+///
+/// # Parameters
+/// * `liquidity` - The current active liquidity at the price point
+/// * `sqrt_price` - The current sqrt price in Q64.64 fixed-point format
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - A tuple of (virtual_reserve_a, virtual_reserve_b), or an error
+///
+/// # Errors
+/// * `ErrorCode::MathOverflow` - If any calculation results in an overflow
+/// * `ErrorCode::InsufficientLiquidity` - If the liquidity is zero
+pub fn calculate_virtual_reserves(liquidity: u128, sqrt_price: u128) -> Result<(u64, u64)> {
+    // Calculate individual reserves
+    let virtual_a = calculate_virtual_reserve_a(liquidity, sqrt_price)?;
+    let virtual_b = calculate_virtual_reserve_b(liquidity, sqrt_price)?;
+
+    Ok((virtual_a, virtual_b))
+}
+
+/// Calculate virtual reserve for token A
+///
+/// # Parameters
+/// * `liquidity` - Current liquidity
+/// * `sqrt_price` - Current sqrt price in Q64.64 format
+///
+/// # Returns
+/// * `Result<u64>` - Virtual reserve for token A
+pub fn calculate_virtual_reserve_a(liquidity: u128, sqrt_price: u128) -> Result<u64> {
+    if liquidity == 0 || sqrt_price == 0 {
+        return Ok(0);
+    }
+
+    // For token A: virtual reserve = L / sqrt(P)
+    // Multiply by Q96 to maintain precision, then divide by sqrt_price
+    let numerator = liquidity.checked_mul(Q96).ok_or(ErrorCode::MathOverflow)?;
+
+    // Divide by sqrt_price
+    let result = numerator
+        .checked_div(sqrt_price)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Ensure the result fits in u64
+    if result > u64::MAX as u128 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    Ok(result as u64)
+}
+
+/// Calculate virtual reserve for token B
+///
+/// # Parameters
+/// * `liquidity` - Current liquidity
+/// * `sqrt_price` - Current sqrt price in Q64.64 format
+///
+/// # Returns
+/// * `Result<u64>` - Virtual reserve for token B
+pub fn calculate_virtual_reserve_b(liquidity: u128, sqrt_price: u128) -> Result<u64> {
+    if liquidity == 0 || sqrt_price == 0 {
+        return Ok(0);
+    }
+
+    // For token B: virtual reserve = L * sqrt(P) / Q96
+    // Multiply liquidity by sqrt_price
+    let product = liquidity
+        .checked_mul(sqrt_price)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Divide by Q96 to get the actual value
+    let result = product.checked_div(Q96).ok_or(ErrorCode::MathOverflow)?;
+
+    // Ensure the result fits in u64
+    if result > u64::MAX as u128 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    Ok(result as u64)
+}
+
+/// Calculate virtual reserves in a specific price range
+///
+/// # Parameters
+/// * `liquidity` - Liquidity in the range
+/// * `current_sqrt_price` - Current sqrt price
+/// * `lower_sqrt_price` - Lower bound sqrt price
+/// * `upper_sqrt_price` - Upper bound sqrt price
+///
+/// # Returns
+/// * `Result<(u64, u64)>` - Virtual reserves in the range as (token_a, token_b)
+pub fn calculate_virtual_reserves_in_range(
+    liquidity: u128,
+    current_sqrt_price: u128,
+    lower_sqrt_price: u128,
+    upper_sqrt_price: u128,
+) -> Result<(u64, u64)> {
+    if liquidity == 0 {
+        return Ok((0, 0));
+    }
+
+    if current_sqrt_price <= lower_sqrt_price {
+        // All liquidity is in token A
+        let amount_a = get_amount_a_delta_for_price_range(
+            liquidity,
+            lower_sqrt_price,
+            upper_sqrt_price,
+            false,
+        )? as u64;
+        Ok((amount_a, 0))
+    } else if current_sqrt_price >= upper_sqrt_price {
+        // All liquidity is in token B
+        let amount_b = get_amount_b_delta_for_price_range(
+            liquidity,
+            lower_sqrt_price,
+            upper_sqrt_price,
+            false,
+        )? as u64;
+        Ok((0, amount_b))
+    } else {
+        // Liquidity is split between token A and token B
+        let amount_a = get_amount_a_delta_for_price_range(
+            liquidity,
+            current_sqrt_price,
+            upper_sqrt_price,
+            false,
+        )? as u64;
+
+        let amount_b = get_amount_b_delta_for_price_range(
+            liquidity,
+            lower_sqrt_price,
+            current_sqrt_price,
+            false,
+        )? as u64;
+
+        Ok((amount_a, amount_b))
+    }
+}
+
+/// Calculates the effective liquidity from token amounts at the current price.
+///
+/// This function performs the reverse calculation of `calculate_virtual_reserves`,
+/// determining how much liquidity corresponds to given token amounts at the current price.
+///
+/// # Mathematical Formula
+/// From token A: `liquidity = virtual_reserve_a * sqrt_price`
+/// From token B: `liquidity = virtual_reserve_b / sqrt_price`
+///
+/// # Parameters
+/// * `reserve_a` - The virtual reserve of token A
+/// * `reserve_b` - The virtual reserve of token B
+/// * `sqrt_price` - The current sqrt price in Q64.64 fixed-point format
+/// * `from_token_a` - If true, calculate from token A; if false, calculate from token B
+///
+/// # Returns
+/// * `Result<u128>` - The calculated liquidity value, or an error
+///
+/// # Errors
+/// * `ErrorCode::MathOverflow` - If any calculation results in an overflow
+/// * `ErrorCode::ZeroReserveAmount` - If the token amount is zero
+pub fn calculate_liquidity_from_reserves(
+    reserve_a: u64,
+    reserve_b: u64,
+    sqrt_price: u128,
+    from_token_a: bool,
+) -> Result<u128> {
+    if from_token_a {
+        if reserve_a == 0 {
+            return Err(ErrorCode::ZeroReserveAmount.into());
+        }
+
+        // L = virtual_reserve_a * sqrt(P)
+        (reserve_a as u128)
+            .checked_mul(sqrt_price)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(Q64)
+            .ok_or(ErrorCode::MathOverflow.into())
+    } else {
+        if reserve_b == 0 {
+            return Err(ErrorCode::ZeroReserveAmount.into());
+        }
+
+        // L = virtual_reserve_b / sqrt(P)
+        (reserve_b as u128)
+            .checked_mul(Q64)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(sqrt_price)
+            .ok_or(ErrorCode::MathOverflow.into())
+    }
+}
+
+/// Verifies the virtual reserves match the constant product formula.
+///
+/// In a concentrated liquidity AMM, the product of virtual reserves should equal the
+/// square of the liquidity at the current price point. This function verifies this
+/// invariant holds, within a small tolerance for rounding errors.
+///
+/// # Mathematical Formula
+/// `virtual_reserve_a * virtual_reserve_b ≈ liquidity^2`
+///
+/// # Parameters
+/// * `virtual_reserve_a` - Virtual reserve of token A
+/// * `virtual_reserve_b` - Virtual reserve of token B  
+/// * `expected_liquidity` - Current liquidity at the price point
+///
+/// # Returns
+/// * `bool` - True if the invariant holds, false otherwise
+pub fn verify_virtual_reserves_invariant(
+    virtual_reserve_a: u64,
+    virtual_reserve_b: u64,
+    expected_liquidity: u128,
+) -> bool {
+    // Early return for edge cases
+    if virtual_reserve_a == 0 || virtual_reserve_b == 0 {
+        return expected_liquidity == 0;
+    }
+
+    // Calculate the product of virtual reserves
+    let reserve_product = (virtual_reserve_a as u128).checked_mul(virtual_reserve_b as u128);
+    if reserve_product.is_none() {
+        return false;
+    }
+
+    // Calculate liquidity squared
+    let liquidity_squared = expected_liquidity.checked_mul(expected_liquidity);
+    if liquidity_squared.is_none() {
+        return false;
+    }
+
+    // Compare with a small tolerance for rounding errors
+    let reserve_product = reserve_product.unwrap();
+    let liquidity_squared = liquidity_squared.unwrap();
+
+    // Allow for small rounding errors - 0.1% tolerance (1 part in 1000)
+    let tolerance = liquidity_squared / 1000;
+
+    // Check if the difference between the products is within tolerance
+    let difference = if reserve_product > liquidity_squared {
+        reserve_product - liquidity_squared
+    } else {
+        liquidity_squared - reserve_product
+    };
+
+    difference <= tolerance
+}
+
+/// Helper function for dividing a value by sqrt price
+#[allow(dead_code)]
+fn div_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
+    if sqrt_price_x64 == 0 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    // value * 2^64 / sqrt_price_x64
+    let result = (value << 64)
+        .checked_div(sqrt_price_x64)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Convert to u64, ensuring it doesn't overflow
+    Ok(result.try_into().map_err(|_| ErrorCode::MathOverflow)?)
+}
+
+/// Helper function for multiplying a value by sqrt price
+#[allow(dead_code)]
+fn mul_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
+    // value * sqrt_price_x64 / 2^64
+    let result = value
+        .checked_mul(sqrt_price_x64)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_shr(64)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Convert to u64, ensuring it doesn't overflow
+    Ok(result.try_into().map_err(|_| ErrorCode::MathOverflow)?)
+}
+
+/// Calculate square root of a u128 value
+///
+/// # Parameters
+/// * `value` - The value to calculate the square root of
+///
+/// # Returns
+/// * `u128` - The square root of the input value
+#[allow(dead_code)]
+fn sqrt_u128(value: u128) -> u128 {
+    if value == 0 {
+        return 0;
+    }
+
+    // Initial estimate
+    let mut x = value;
+    let mut y = (x + 1) >> 1; // (x + 1) / 2
+
+    // Newton's method for square root approximation
+    while y < x {
+        x = y;
+        y = (x + value / x) >> 1;
+    }
+
+    x
 }

@@ -47,6 +47,9 @@ pub fn handler(
     require!(amount_in > 0, ErrorCode::InsufficientInputAmount);
     require!(min_amount_out > 0, ErrorCode::InsufficientInputAmount);
 
+    // Store the pool key before borrowing pool mutably
+    let pool_key = ctx.accounts.pool.key();
+
     let pool = &mut ctx.accounts.pool;
 
     // Store protocol fee percentage before creating pool state
@@ -55,8 +58,14 @@ pub fn handler(
     // Initialize pool state manager
     let mut pool_state = PoolState::new(pool);
 
+    // Get the pre-swap virtual reserves for price impact calculation
+    let pre_swap_virtual_reserves = pool_state.get_virtual_reserves()?;
+
     // Perform the swap calculation with precise math
     let (amount_out, fee_amount) = execute_swap(&mut pool_state, amount_in, is_token_a)?;
+
+    // Get the post-swap virtual reserves to calculate price impact
+    let post_swap_virtual_reserves = pool_state.get_virtual_reserves()?;
 
     // Verify slippage constraint
     require!(amount_out >= min_amount_out, ErrorCode::SlippageExceeded);
@@ -81,6 +90,21 @@ pub fn handler(
     let fee_amount_a = if is_token_a { fee_amount } else { 0 };
     let fee_amount_b = if is_token_a { 0 } else { fee_amount };
     pool_state.update_fees(fee_amount_a, fee_amount_b)?;
+
+    // Emit event with swap details including virtual reserves for tracking
+    emit!(SwapEvent {
+        pool: pool_key,
+        input_token: if is_token_a { 0 } else { 1 },
+        input_amount: amount_in,
+        output_amount: amount_out,
+        fee_amount,
+        pre_virtual_reserve_a: pre_swap_virtual_reserves.0,
+        pre_virtual_reserve_b: pre_swap_virtual_reserves.1,
+        post_virtual_reserve_a: post_swap_virtual_reserves.0,
+        post_virtual_reserve_b: post_swap_virtual_reserves.1,
+        sqrt_price: pool_state.pool.sqrt_price,
+        liquidity: pool_state.pool.liquidity,
+    });
 
     // Transfer tokens from user to pool (input token)
     let (source_token_account, destination_token_vault) = if is_token_a {
@@ -306,5 +330,48 @@ fn execute_swap(
     let final_tick = sqrt_price_to_tick(current_sqrt_price)?;
     pool_state.update_price(current_sqrt_price, final_tick)?;
 
+    // Verify invariant: virtual reserves match the constant product formula
+    debug_assert!(
+        pool_state.verify_constant_product(),
+        "Constant product invariant violated after swap"
+    );
+
     Ok((amount_out, fee_amount))
+}
+
+/// Event emitted when a swap is executed
+#[event]
+pub struct SwapEvent {
+    /// The pool where the swap was executed
+    pub pool: Pubkey,
+
+    /// Which token was input (0 = A, 1 = B)
+    pub input_token: u8,
+
+    /// Amount of input tokens
+    pub input_amount: u64,
+
+    /// Amount of output tokens
+    pub output_amount: u64,
+
+    /// Amount of tokens taken as fee
+    pub fee_amount: u64,
+
+    /// Virtual reserve of token A before swap
+    pub pre_virtual_reserve_a: u64,
+
+    /// Virtual reserve of token B before swap
+    pub pre_virtual_reserve_b: u64,
+
+    /// Virtual reserve of token A after swap
+    pub post_virtual_reserve_a: u64,
+
+    /// Virtual reserve of token B after swap
+    pub post_virtual_reserve_b: u64,
+
+    /// Final sqrt price after swap
+    pub sqrt_price: u128,
+
+    /// Final liquidity after swap
+    pub liquidity: u128,
 }
