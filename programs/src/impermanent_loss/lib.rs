@@ -19,6 +19,7 @@ pub mod impermanent_loss {
         adjustment_threshold: u64,
         max_adjustment_factor: u64,
         rebalance_cooldown: u64,
+        reserve_imbalance_threshold: u64,
     ) -> Result<()> {
         instructions::initialize_il_mitigation::handler(
             ctx,
@@ -27,6 +28,7 @@ pub mod impermanent_loss {
             adjustment_threshold,
             max_adjustment_factor,
             rebalance_cooldown,
+            reserve_imbalance_threshold,
         )
     }
 
@@ -112,15 +114,23 @@ pub struct CalculateVolatility<'info> {
 /// Accounts required to check rebalance condition
 #[derive(Accounts)]
 pub struct CheckRebalanceCondition<'info> {
+    /// Authority that can check rebalance conditions
     #[account(mut)]
     pub authority: Signer<'info>,
 
+    /// Rebalance state account
     #[account(mut)]
     pub rebalance_state: Account<'info, RebalanceState>,
 
+    /// Volatility state account
     pub volatility_state: Account<'info, VolatilityState>,
 
+    /// IL mitigation parameters
     pub il_params: Account<'info, ILMitigationParams>,
+
+    /// Pool account from the AMM Core
+    #[account(mut)]
+    pub pool: Account<'info, amm_core::Pool>,
 }
 
 /// Accounts required to execute a rebalance
@@ -156,6 +166,9 @@ pub struct ILMitigationParams {
 
     /// Minimum time between rebalances (in seconds)
     pub rebalance_cooldown: u64,
+
+    /// Threshold for reserve imbalance to trigger rebalance (in basis points)
+    pub reserve_imbalance_threshold: u64,
 }
 
 impl ILMitigationParams {
@@ -163,7 +176,8 @@ impl ILMitigationParams {
         8 +  // volatility_window
         8 +  // adjustment_threshold
         8 +  // max_adjustment_factor
-        8; // rebalance_cooldown
+         8 +  // rebalance_cooldown
+        8; // reserve_imbalance_threshold
 }
 
 /// State tracking for volatility calculations
@@ -268,6 +282,8 @@ pub enum ErrorCode {
     VolatilityBelowThreshold,
     #[msg("Rebalance would not improve position")]
     NoRebalanceNeeded,
+    #[msg("Invalid reserve amount, cannot be zero")]
+    InvalidReserveAmount,
 }
 
 // Import instruction implementations
