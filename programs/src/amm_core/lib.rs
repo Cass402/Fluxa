@@ -895,5 +895,6 @@ pub mod errors;
 pub mod instructions;
 pub mod math;
 pub mod pool_state;
+pub mod position_manager;
 pub mod token_pair;
 pub mod utils;
