@@ -167,7 +167,7 @@ impl ObservationStorage {
     /// Get the most recent observation
     pub fn get_latest_observation(&self) -> Result<Observation> {
         if self.observation_count == 0 {
-            return Err(ErrorCode::NoObservationsAvailable.into());
+            return Err(ErrorCode::NoObservations.into());
         }
 
         self.get_observation(self.current_observation_index as usize)
@@ -198,7 +198,7 @@ impl ObservationStorage {
             .ok_or(ErrorCode::MathOverflow)?;
 
         if time_delta < 0 || time_delta > u16::MAX as i64 {
-            return Err(ErrorCode::ObservationTimeDeltaOutOfBounds.into());
+            return Err(ErrorCode::ObservationTimeDeltaTooLarge.into());
         }
 
         let sqrt_price_delta = observation
@@ -241,7 +241,7 @@ impl ObservationStorage {
             .ok_or(ErrorCode::MathOverflow)?;
 
         if time_delta < 0 || time_delta > u16::MAX as i64 {
-            return Err(ErrorCode::ObservationTimeDeltaOutOfBounds.into());
+            return Err(ErrorCode::ObservationTimeDeltaTooLarge.into());
         }
 
         // Calculate price delta from previous observation
@@ -416,11 +416,11 @@ impl ObservationStorage {
     /// Get TWAP (Time Weighted Average Price) between two timestamps
     pub fn get_twap(&self, start_timestamp: i64, end_timestamp: i64) -> Result<u128> {
         if self.observation_count < 2 {
-            return Err(ErrorCode::InsufficientObservationsForTWAP.into());
+            return Err(ErrorCode::OracleInsufficientData.into());
         }
 
         if end_timestamp <= start_timestamp {
-            return Err(ErrorCode::InvalidTimeRange.into());
+            return Err(ErrorCode::InvalidInput.into());
         }
 
         // Find the nearest observations
@@ -433,7 +433,7 @@ impl ObservationStorage {
             .ok_or(ErrorCode::MathOverflow)?;
 
         if time_delta <= 0 {
-            return Err(ErrorCode::InvalidTimeRange.into());
+            return Err(ErrorCode::InvalidInput.into());
         }
 
         let tick_delta = end_observation
@@ -454,7 +454,7 @@ impl ObservationStorage {
     /// Find the observation nearest to (but not after) the given timestamp
     fn get_observation_at_or_before_timestamp(&self, timestamp: i64) -> Result<Observation> {
         if self.observation_count == 0 {
-            return Err(ErrorCode::NoObservationsAvailable.into());
+            return Err(ErrorCode::NoObservations.into());
         }
 
         // Get the latest observation
@@ -467,7 +467,7 @@ impl ObservationStorage {
 
         // If we only have one observation and it's after the requested timestamp, we can't provide data
         if self.observation_count == 1 {
-            return Err(ErrorCode::NoObservationsAvailableForTimestamp.into());
+            return Err(ErrorCode::ObservationBoundaryError.into());
         }
 
         // Binary search through observations to find the closest one before or at timestamp
@@ -496,7 +496,7 @@ impl ObservationStorage {
 
         // If we get here, return the observation at index 'high'
         if high < 0 {
-            return Err(ErrorCode::NoObservationsAvailableForTimestamp.into());
+            return Err(ErrorCode::ObservationBoundaryError.into());
         }
 
         self.get_observation(high as usize)

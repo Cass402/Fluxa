@@ -8,7 +8,6 @@
 
 use anchor_lang::prelude::*;
 use crate::errors::ErrorCode;
-use std::convert::TryInto;
 
 /// Maximum number of observations that can be stored in the oracle
 pub const MAX_ORACLE_OBSERVATIONS: usize = 64;
@@ -166,7 +165,7 @@ impl Oracle {
                 liquidity: u128) -> Result<()> {
         
         // Ensure we're only writing at increasing timestamps
-        let last_observation = self.get_last_observation()?;
+        let last_observation = self.get_last_observation()?.clone();
         if block_timestamp <= last_observation.block_timestamp {
             return Err(ErrorCode::OracleInvalidTimestamp.into());
         }
@@ -180,8 +179,8 @@ impl Oracle {
         // Calculate seconds per liquidity
         let seconds_per_liquidity_delta = if liquidity > 0 {
             // Scale time elapsed by 2^128 and divide by liquidity
-            (((time_elapsed as u128).checked_shl(128).ok_or(ErrorCode::MathOverflow)?)
-                .checked_div(liquidity).ok_or(ErrorCode::MathOverflow)?)
+            ((time_elapsed as u128).checked_shl(128).ok_or(ErrorCode::MathOverflow)?)
+                .checked_div(liquidity).ok_or(ErrorCode::MathOverflow)?
         } else {
             0 // If no liquidity, increment is 0
         };
@@ -211,7 +210,7 @@ impl Oracle {
         }
         
         // Write the new observation
-        self.observations[new_index as usize] = new_observation;
+        self.observations[new_index as usize] = new_observation.clone();
         
         // If compression is enabled, also store a compressed version
         if self.compression_enabled {
@@ -328,7 +327,7 @@ impl Oracle {
         }
         
         // Calculate the weighted average using linear interpolation
-        let time_point = target.wrapping_sub(observation_before.block_timestamp);
+        let _time_point = target.wrapping_sub(observation_before.block_timestamp);
         let time_delta = observation_after.block_timestamp.wrapping_sub(observation_before.block_timestamp);
         
         if time_delta == 0 {
@@ -376,11 +375,12 @@ impl Oracle {
                     let idx = i as usize;
                     let prev_idx = if idx == 0 { self.observation_cardinality as usize - 1 } else { idx - 1 };
                     
-                    let observation = &self.observations[idx];
-                    let prev_observation = &self.observations[prev_idx];
+                    // Clone the observations to avoid borrowing self when we call add_compressed_observation
+                    let observation_clone = self.observations[idx].clone();
+                    let prev_observation_clone = self.observations[prev_idx].clone();
                     
-                    if observation.initialized && prev_observation.initialized {
-                        let _ = self.add_compressed_observation(observation, prev_observation);
+                    if observation_clone.initialized && prev_observation_clone.initialized {
+                        let _ = self.add_compressed_observation(&observation_clone, &prev_observation_clone);
                     }
                 }
             }
@@ -560,7 +560,7 @@ fn tick_to_sqrt_price(tick: i32) -> Result<u128> {
     let mut sqrt_price = 1u128 << 96;  // Q64.96 representation of 1.0
     
     // Calculate 1.0001^tick
-    for i in 0..tick_abs {
+    for _i in 0..tick_abs {
         if tick < 0 {
             sqrt_price = sqrt_price * 9999 / 10000;
         } else {
