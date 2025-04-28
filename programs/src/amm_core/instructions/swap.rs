@@ -1,8 +1,7 @@
-use crate::constants::{MAX_TICK, MIN_SQRT_PRICE, MIN_TICK};
+use crate::constants::{MAX_TICK, MIN_SQRT_PRICE};
 use crate::errors::ErrorCode;
 use crate::math::{self, sqrt_price_to_tick};
 use crate::pool_state::PoolState;
-use crate::tick_bitmap::TickBitmap; // Add this import
 use crate::Swap;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Transfer};
@@ -199,7 +198,8 @@ fn execute_swap(
     let sqrt_price = pool_state.pool.sqrt_price;
     let liquidity = pool_state.pool.liquidity;
     let fee_tier = pool_state.pool.fee_tier;
-    let tick_spacing = pool_state.pool.tick_spacing;
+    // Get tick spacing from fee tier using the helper function
+    let _tick_spacing = PoolState::get_tick_spacing_for_fee_tier(fee_tier)? as u16;
 
     // Cannot swap if there's zero liquidity
     require!(liquidity > 0, ErrorCode::InsufficientLiquidity);
@@ -221,25 +221,20 @@ fn execute_swap(
     let mut current_liquidity = liquidity;
     let mut current_tick = pool_state.pool.current_tick;
 
-    // Get reference to the tick bitmap for efficient tick navigation
-    let tick_bitmap = &pool_state.tick_bitmap;
-
     // Swap until the entire input amount is consumed or we run out of liquidity
     while amount_remaining > 0 && current_liquidity > 0 {
         // Calculate next tick boundary
         let next_tick = if is_token_a {
             // When swapping A for B (selling A), price decreases
-            // Use tick_bitmap to efficiently find the next lower initialized tick
-            match tick_bitmap.prev_initialized_tick(current_tick, tick_spacing) {
-                Ok(tick) => tick,
-                Err(_) => MIN_TICK, // If no initialized tick found, use MIN_TICK
+            // Use pool_state to find the next lower initialized tick
+            match pool_state.prev_initialized_tick(current_tick)? {
+                tick => tick,
             }
         } else {
             // When swapping B for A (selling B), price increases
-            // Use tick_bitmap to efficiently find the next higher initialized tick
-            match tick_bitmap.next_initialized_tick(current_tick, tick_spacing) {
-                Ok(tick) => tick,
-                Err(_) => MAX_TICK, // If no initialized tick found, use MAX_TICK
+            // Use pool_state to find the next higher initialized tick
+            match pool_state.next_initialized_tick(current_tick)? {
+                tick => tick,
             }
         };
 

@@ -9,6 +9,7 @@
 use crate::errors::ErrorCode;
 use anchor_lang::prelude::*;
 use std::collections::HashMap;
+use std::ops::{BitAnd, BitOr, BitXor, Not, Shl};
 
 // Import the U256 type from ethereum_types
 use ethereum_types::U256;
@@ -16,11 +17,150 @@ use ethereum_types::U256;
 /// Number of bits in a word
 pub const WORD_SIZE: usize = 256;
 
+/// A wrapper around U256 that implements AnchorSerialize and AnchorDeserialize
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct U256Wrapper(U256);
+
+impl U256Wrapper {
+    /// Create a new U256Wrapper
+    pub fn new(value: U256) -> Self {
+        Self(value)
+    }
+
+    /// Convert from u32
+    pub fn from_u32(value: u32) -> Self {
+        Self(U256::from(value))
+    }
+
+    /// Get the inner U256 value
+    pub fn value(&self) -> U256 {
+        self.0
+    }
+
+    /// Check if the wrapper is zero
+    pub fn is_zero(&self) -> bool {
+        self.0 == U256::zero()
+    }
+
+    /// Get leading zeros
+    pub fn leading_zeros(&self) -> u32 {
+        self.0.leading_zeros()
+    }
+
+    /// Get trailing zeros
+    pub fn trailing_zeros(&self) -> u32 {
+        self.0.trailing_zeros()
+    }
+
+    /// Check equality with zero
+    pub fn eq_zero(&self) -> bool {
+        self.0 == U256::zero()
+    }
+
+    /// Get max value
+    pub fn max_value() -> Self {
+        Self(U256::max_value())
+    }
+
+    /// Get zero value
+    pub fn zero() -> Self {
+        Self(U256::zero())
+    }
+}
+
+// Implement BitAnd for U256Wrapper
+impl BitAnd for U256Wrapper {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+// Implement BitOr for U256Wrapper
+impl BitOr for U256Wrapper {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+// Implement BitXor for U256Wrapper
+impl BitXor for U256Wrapper {
+    type Output = Self;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        Self(self.0 ^ rhs.0)
+    }
+}
+
+// Implement Not for U256Wrapper
+impl Not for U256Wrapper {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self(!self.0)
+    }
+}
+
+// Implement Shl for U256Wrapper and u8
+impl Shl<u8> for U256Wrapper {
+    type Output = Self;
+
+    fn shl(self, rhs: u8) -> Self::Output {
+        Self(self.0 << rhs)
+    }
+}
+
+// Implement Sub for U256Wrapper
+impl std::ops::Sub for U256Wrapper {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
+
+// Implement AnchorSerialize for U256Wrapper
+impl AnchorSerialize for U256Wrapper {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Convert U256 to bytes and serialize
+        let mut bytes = [0u8; 32];
+        self.0.to_big_endian(&mut bytes);
+        writer.write_all(&bytes)
+    }
+}
+
+// Implement AnchorDeserialize for U256Wrapper
+impl AnchorDeserialize for U256Wrapper {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        if buf.len() < 32 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "buffer too small for U256",
+            ));
+        }
+
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(&buf[..32]);
+        *buf = &buf[32..];
+
+        Ok(Self(U256::from_big_endian(&bytes)))
+    }
+
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut bytes = [0u8; 32];
+        reader.read_exact(&mut bytes)?;
+        Ok(Self(U256::from_big_endian(&bytes)))
+    }
+}
+
 /// Represents a single bitmap word that tracks 256 adjacent ticks
 #[derive(Debug, Default, Copy, Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct TickBitmapWord {
     /// The bitmap data - each bit represents an initialized tick
-    pub bitmap: U256,
+    pub bitmap: U256Wrapper,
 }
 
 /// Wrapper struct for managing the tick bitmap
@@ -152,7 +292,7 @@ pub fn position(tick: i32) -> (i16, u8) {
 /// # Returns
 /// * `bool` - Whether the tick is initialized
 pub fn is_initialized(bitmap: &TickBitmapWord, bit_pos: u8) -> bool {
-    (bitmap.bitmap & (U256::from(1u32) << bit_pos)) != U256::zero()
+    (bitmap.bitmap & (U256Wrapper::from_u32(1) << bit_pos)) != U256Wrapper::zero()
 }
 
 /// Flips the bit for a tick in the bitmap to mark it as initialized or uninitialized
@@ -165,7 +305,7 @@ pub fn is_initialized(bitmap: &TickBitmapWord, bit_pos: u8) -> bool {
 /// * `TickBitmapWord` - The updated bitmap
 pub fn flip_tick(bitmap: &TickBitmapWord, bit_pos: u8) -> TickBitmapWord {
     TickBitmapWord {
-        bitmap: bitmap.bitmap ^ (U256::from(1u32) << bit_pos),
+        bitmap: bitmap.bitmap ^ (U256Wrapper::from_u32(1) << bit_pos),
     }
 }
 
@@ -191,15 +331,15 @@ pub fn next_initialized_tick_within_word(
     if lte {
         // Create a mask for all bits at positions <= bit_pos
         let mask = if bit_pos == 255 {
-            U256::max_value() // All bits set
+            U256Wrapper::max_value() // All bits set
         } else {
-            (U256::from(1u32) << (bit_pos + 1)) - U256::from(1u32)
+            (U256Wrapper::from_u32(1) << (bit_pos + 1)) - U256Wrapper::from_u32(1)
         };
 
         let masked_bitmap = bitmap_data & mask;
 
         // If no initialized ticks <= bit_pos
-        if masked_bitmap == U256::zero() {
+        if masked_bitmap.is_zero() {
             return Ok((false, 0));
         }
 
@@ -210,12 +350,12 @@ pub fn next_initialized_tick_within_word(
     // If searching for ticks greater than the current position
     else {
         // Create a mask for all bits at positions > bit_pos
-        let mask = !((U256::from(1u32) << (bit_pos + 1)) - U256::from(1u32));
+        let mask = !((U256Wrapper::from_u32(1) << (bit_pos + 1)) - U256Wrapper::from_u32(1));
 
         let masked_bitmap = bitmap_data & mask;
 
         // If no initialized ticks > bit_pos
-        if masked_bitmap == U256::zero() {
+        if masked_bitmap.is_zero() {
             return Ok((false, 0));
         }
 
@@ -284,7 +424,7 @@ pub fn next_initialized_tick_in_direction(
             };
 
             // Skip if the word is empty (no initialized ticks)
-            if bitmap_word.bitmap == U256::zero() {
+            if bitmap_word.bitmap == U256Wrapper::zero() {
                 continue;
             }
 
@@ -371,7 +511,9 @@ mod tests {
     fn test_is_initialized() {
         // Create a bitmap with bits 1, 3, and 5 set
         let mut bitmap = TickBitmapWord::default();
-        bitmap.bitmap = (U256::from(1u32) << 1) | (U256::from(1u32) << 3) | (U256::from(1u32) << 5);
+        bitmap.bitmap = (U256Wrapper::from_u32(1) << 1)
+            | (U256Wrapper::from_u32(1) << 3)
+            | (U256Wrapper::from_u32(1) << 5);
 
         assert!(is_initialized(&bitmap, 1));
         assert!(is_initialized(&bitmap, 3));
@@ -400,7 +542,9 @@ mod tests {
     fn test_next_initialized_tick_within_word() {
         // Create a bitmap with bits 10, 20, and 30 set
         let mut bitmap = TickBitmapWord::default();
-        bitmap.bitmap = (U256::from(1u32) << 10) | (U256::from(1u32) << 20) | (U256::from(1u32) << 30);
+        bitmap.bitmap = (U256Wrapper::from_u32(1) << 10)
+            | (U256Wrapper::from_u32(1) << 20)
+            | (U256Wrapper::from_u32(1) << 30);
 
         // Test searching for a tick <= position
         let (found, pos) = next_initialized_tick_within_word(&bitmap, 25, true).unwrap();

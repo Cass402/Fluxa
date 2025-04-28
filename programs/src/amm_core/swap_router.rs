@@ -8,7 +8,7 @@ use crate::constants::{MAX_SQRT_PRICE, MAX_TICK, MIN_TICK};
 use crate::errors::ErrorCode;
 use crate::math;
 use crate::oracle::Oracle;
-use crate::pool_state::{PoolState, Tick};
+use crate::pool_state::PoolState;
 use crate::Pool;
 use anchor_lang::prelude::*;
 
@@ -227,7 +227,7 @@ fn get_next_initialized_tick(
     };
 
     // Find the next initialized tick
-    let mut initialized = false;
+    let mut _initialized = false;
     for _ in 0..1000 {
         // Safety limit to avoid infinite loops
         // Check if this tick exists and is initialized
@@ -663,11 +663,11 @@ impl<'a> MultiHopAccounts<'a> {
 
 /// Helper function for CPI to router's execute function
 /// Structure will depend on the specific router being integrated with
-fn router_execute_route<'a>(
-    ctx: CpiContext<'a, RouterAccounts<'a>>,
-    amount_in: u64,
-    min_amount_out: u64,
-    route_data: &[u8],
+fn router_execute_route<'a, 'b, 'c, 'info>(
+    _ctx: CpiContext<'a, 'b, 'c, 'info, RouterAccounts<'info>>,
+    _amount_in: u64,
+    _min_amount_out: u64,
+    _route_data: &[u8],
 ) -> Result<()> {
     // Make CPI call to router's execute function
     // The exact structure depends on the router's interface
@@ -689,19 +689,35 @@ pub struct RouterAccounts<'a> {
 impl<'a> anchor_lang::ToAccountMetas for RouterAccounts<'a> {
     fn to_account_metas(
         &self,
-        is_signer: Option<bool>,
+        _is_signer: Option<bool>,
     ) -> Vec<anchor_lang::solana_program::instruction::AccountMeta> {
         let mut account_metas = Vec::new();
 
-        // Convert each field to AccountMeta
-        account_metas.push((&self.user).to_account_meta(is_signer));
-        account_metas.push((&self.source_token).to_account_meta(None));
-        account_metas.push((&self.destination_token).to_account_meta(None));
-        account_metas.push((&self.token_program).to_account_meta(None));
+        // Convert each field to AccountMeta directly
+        account_metas.push(AccountMeta::new(self.user.key(), true));
+        account_metas.push(AccountMeta::new(self.source_token.key(), false));
+        account_metas.push(AccountMeta::new(self.destination_token.key(), false));
+        account_metas.push(AccountMeta::new(self.token_program.key(), false));
 
         // Add other accounts as needed for your specific router integration
 
         account_metas
+    }
+}
+
+impl<'a> anchor_lang::ToAccountInfos<'a> for RouterAccounts<'a> {
+    fn to_account_infos(&self) -> Vec<anchor_lang::prelude::AccountInfo<'a>> {
+        let mut account_infos = Vec::new();
+
+        // Add each account info to the vector
+        account_infos.push(self.user.clone());
+        account_infos.push(self.source_token.clone());
+        account_infos.push(self.destination_token.clone());
+        account_infos.push(self.token_program.clone());
+
+        // Add other accounts as needed for your specific router integration
+
+        account_infos
     }
 }
 

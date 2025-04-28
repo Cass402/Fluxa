@@ -312,4 +312,11 @@ pub enum ErrorCode {
     /// a deadline beyond which the transaction should not execute.
     #[msg("Transaction deadline has passed")]
     DeadlineExceeded,
+
+    /// Returned when an unsupported fee tier is specified
+    ///
+    /// This error occurs when trying to create a pool with a fee tier that is not
+    /// supported by the protocol. Only specific fee tiers are allowed.
+    #[msg("The specified fee tier is not supported")]
+    InvalidFeeTier,
 }

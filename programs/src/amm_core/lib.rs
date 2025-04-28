@@ -469,8 +469,8 @@ pub mod amm_core {
     /// # Errors
     /// * `SlippageExceeded` - If the minimum output amount isn't met
     /// * `InvalidInput` - If route parameters are invalid
-    pub fn multi_hop_swap(
-        ctx: Context<MultiHopSwap>,
+    pub fn multi_hop_swap<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, MultiHopSwap<'info>>,
         amount_in: u64,
         min_amount_out: u64,
         routes: Vec<SwapRoute>,
