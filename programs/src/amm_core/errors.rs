@@ -305,4 +305,11 @@ pub enum ErrorCode {
     /// This prevents issues when working with timestamp differences.
     #[msg("Timestamp calculation would overflow")]
     TimestampOverflow,
+
+    /// Returned when a transaction deadline has passed
+    ///
+    /// This protects users from transaction delays by allowing them to specify
+    /// a deadline beyond which the transaction should not execute.
+    #[msg("Transaction deadline has passed")]
+    DeadlineExceeded,
 }

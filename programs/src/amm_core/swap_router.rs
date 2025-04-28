@@ -4,6 +4,7 @@
 // as described in the Core Protocol Technical Design document. It handles complex swaps
 // that may cross multiple tick boundaries, properly updating liquidity and fees along the way.
 
+use crate::constants::{MAX_SQRT_PRICE, MAX_TICK, MIN_TICK};
 use crate::errors::ErrorCode;
 use crate::math;
 use crate::oracle::Oracle;
@@ -36,6 +37,7 @@ pub struct SwapState {
 }
 
 /// Result of a swap operation
+#[derive(Clone, Copy)]
 pub struct SwapResult {
     /// Amount of input token consumed
     pub amount_in: u64,
@@ -179,7 +181,7 @@ fn initialize_swap_state(
         );
         // Ensure the price limit is less than the max price
         require!(
-            sqrt_price_limit < math::MAX_SQRT_PRICE,
+            sqrt_price_limit < MAX_SQRT_PRICE,
             ErrorCode::InvalidSqrtPriceLimit
         );
     }
@@ -239,28 +241,14 @@ fn get_next_initialized_tick(
         tick_index += search_direction * tick_spacing as i32;
 
         // Safety bounds check
-        if tick_index < math::MIN_TICK || tick_index > math::MAX_TICK {
+        if tick_index < MIN_TICK || tick_index > MAX_TICK {
             // If we've gone beyond the allowed tick range, return the boundary tick
-            return Ok((
-                if zero_for_one {
-                    math::MIN_TICK
-                } else {
-                    math::MAX_TICK
-                },
-                false,
-            ));
+            return Ok((if zero_for_one { MIN_TICK } else { MAX_TICK }, false));
         }
     }
 
     // If we didn't find an initialized tick, return the min/max tick
-    Ok((
-        if zero_for_one {
-            math::MIN_TICK
-        } else {
-            math::MAX_TICK
-        },
-        false,
-    ))
+    Ok((if zero_for_one { MIN_TICK } else { MAX_TICK }, false))
 }
 
 /// Calculate the target sqrt price for this step of the swap
@@ -437,14 +425,14 @@ fn compute_sqrt_price_after_amount(
     if zero_for_one {
         // X to Y (token0 to token1): price decreases
         // (liquidity * sqrt_price) / (liquidity + amount * sqrt_price)
-        let product = math::mul_div(liquidity, sqrt_price, 1)?;
-        let denominator = liquidity + math::mul_div(amount as u128, sqrt_price, 1)?;
-        math::mul_div(product, 1, denominator)
+        let product = math::mul_q96(liquidity, sqrt_price)?;
+        let denominator = liquidity + math::mul_q96(amount as u128, sqrt_price)?;
+        math::div_q96(product, denominator)
     } else {
         // Y to X (token1 to token0): price increases
         // sqrt_price + (amount / liquidity)
-        let amount_scaled = math::mul_div(amount as u128, math::Q96, 1)?;
-        let quotient = math::mul_div(amount_scaled, 1, liquidity)?;
+        let amount_scaled = math::mul_q96(amount as u128, math::Q96)?;
+        let quotient = math::div_q96(amount_scaled, liquidity)?;
         Ok(sqrt_price + quotient)
     }
 }
@@ -528,13 +516,21 @@ pub fn execute_multi_hop_swap(
         }
 
         // Execute the swap on this pool
-        let swap_result = execute_swap(
-            pools[i],
-            oracles[i].as_mut(),
-            current_amount,
-            paths[i].1, // sqrt_price_limit
-            paths[i].0, // zero_for_one
-        )?;
+        let swap_result = {
+            // Create a temporary reference to the oracle option without moving it
+            let oracle_ref = match &mut oracles[i] {
+                Some(oracle) => Some(&mut **oracle),
+                None => None,
+            };
+
+            execute_swap(
+                pools[i],
+                oracle_ref,
+                current_amount,
+                paths[i].1, // sqrt_price_limit
+                paths[i].0, // zero_for_one
+            )?
+        };
 
         // Store the result for analysis and event emission
         hop_results.push(swap_result);
@@ -620,7 +616,7 @@ pub fn router_callback_swap(
 /// Route a swap through multiple pools using an external router program
 /// This function can be called via CPI from external router programs
 pub fn external_route_swap<'a>(
-    router_program_id: &Pubkey,
+    router_program: &AccountInfo<'a>,
     multi_hop_accounts: &MultiHopAccounts<'a>,
     amount_in: u64,
     min_amount_out: u64,
@@ -628,7 +624,7 @@ pub fn external_route_swap<'a>(
 ) -> Result<u64> {
     // Create a CPI context for calling back to the router
     let router_cpi_context = CpiContext::new(
-        router_program_id.clone().to_account_info(),
+        router_program.clone(),
         multi_hop_accounts.to_router_accounts(),
     );
 
@@ -683,6 +679,30 @@ fn router_execute_route<'a>(
 /// This would be customized based on the specific router being integrated with
 pub struct RouterAccounts<'a> {
     // Router-specific account structure
+    pub user: AccountInfo<'a>,
+    pub source_token: AccountInfo<'a>,
+    pub destination_token: AccountInfo<'a>,
+    pub token_program: AccountInfo<'a>,
+    // Add other required accounts based on your specific router integration
+}
+
+impl<'a> anchor_lang::ToAccountMetas for RouterAccounts<'a> {
+    fn to_account_metas(
+        &self,
+        is_signer: Option<bool>,
+    ) -> Vec<anchor_lang::solana_program::instruction::AccountMeta> {
+        let mut account_metas = Vec::new();
+
+        // Convert each field to AccountMeta
+        account_metas.push((&self.user).to_account_meta(is_signer));
+        account_metas.push((&self.source_token).to_account_meta(None));
+        account_metas.push((&self.destination_token).to_account_meta(None));
+        account_metas.push((&self.token_program).to_account_meta(None));
+
+        // Add other accounts as needed for your specific router integration
+
+        account_metas
+    }
 }
 
 /// Multi-hop swap event for tracking complex routes

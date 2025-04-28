@@ -11,7 +11,7 @@ use crate::swap_router::{execute_multi_hop_swap, MultiHopSwapEvent, SwapEvent};
 use crate::MultiHopSwap;
 use crate::Pool;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token;
 
 /// Represents a single hop in a multi-hop swap route
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -27,8 +27,8 @@ pub struct SwapRoute {
 }
 
 /// Handler function for the multi_hop_swap instruction
-pub fn handler(
-    ctx: Context<MultiHopSwap>,
+pub fn handler<'a, 'b, 'c: 'info, 'info>(
+    ctx: Context<'a, 'b, 'c, 'info, MultiHopSwap<'info>>,
     amount_in: u64,
     min_amount_out: u64,
     routes: Vec<SwapRoute>,
@@ -57,77 +57,17 @@ pub fn handler(
     // Split remaining accounts into their respective types
     let mut account_index = 0;
 
-    // Extract pool accounts
-    let mut pools: Vec<Account<Pool>> = Vec::with_capacity(num_pools);
-    for _ in 0..num_pools {
-        // Dynamically deserialize the account as a Pool
-        let pool = Account::<Pool>::try_from(&remaining_accounts[account_index])?;
-        pools.push(pool);
-        account_index += 1;
-    }
+    // Extract and process all accounts
+    let mut extracted_data = extract_accounts(
+        &remaining_accounts,
+        num_pools,
+        num_token_accounts,
+        num_token_vaults,
+        &mut account_index,
+    )?;
 
-    // Extract token accounts
-    let mut token_accounts: Vec<AccountInfo> = Vec::with_capacity(num_token_accounts);
-    for _ in 0..num_token_accounts {
-        token_accounts.push(remaining_accounts[account_index].clone());
-        account_index += 1;
-    }
-
-    // Extract token vaults
-    let mut token_vaults: Vec<AccountInfo> = Vec::with_capacity(num_token_vaults);
-    for _ in 0..num_token_vaults {
-        token_vaults.push(remaining_accounts[account_index].clone());
-        account_index += 1;
-    }
-
-    // Extract optional oracle accounts if provided
-    let mut oracle_accounts: Vec<Option<Account<Oracle>>> = vec![None; num_pools];
-    if account_index < remaining_accounts.len() {
-        // Attempt to extract oracle accounts (they're optional)
-        for i in 0..num_pools {
-            if account_index < remaining_accounts.len() {
-                if let Ok(oracle) = Account::<Oracle>::try_from(&remaining_accounts[account_index])
-                {
-                    oracle_accounts[i] = Some(oracle);
-                    account_index += 1;
-                }
-            }
-        }
-    }
-
-    // Create pool states for each pool in the route
-    let mut pool_states: Vec<PoolState> = Vec::with_capacity(num_routes);
-    for pool in &mut pools {
-        // Access the inner Pool object directly
-        pool_states.push(PoolState::new(&mut **pool));
-    }
-
-    // Create mutable pool state references for passing to swap router
-    let mut pool_state_refs: Vec<&mut PoolState> = Vec::with_capacity(num_routes);
-    for pool_state in &mut pool_states {
-        pool_state_refs.push(pool_state);
-    }
-
-    // Set up oracle references
-    let mut oracle_refs: Vec<Option<&mut Oracle>> = Vec::with_capacity(num_routes);
-    for oracle_opt in &mut oracle_accounts {
-        if let Some(oracle) = oracle_opt {
-            oracle_refs.push(Some(oracle));
-        } else {
-            oracle_refs.push(None);
-        }
-    }
-
-    // Record the timestamp and initial state for event emission
+    // Record the timestamp for event emission
     let timestamp = Clock::get()?.unix_timestamp;
-
-    // Get details of the first pool for the event
-    let first_route = &routes[0];
-    let first_pool_idx = first_route.pool_index as usize;
-    let first_pool = &pools[first_pool_idx];
-    let sqrt_price_before = first_pool.sqrt_price;
-    let tick_before = first_pool.current_tick;
-    let liquidity_before = first_pool.liquidity;
 
     // Set up the amount_in vector (only first hop has input amount)
     let mut amounts_in = vec![0u64; num_routes];
@@ -141,8 +81,8 @@ pub fn handler(
 
     // Execute the multi-hop swap - this will update all pool states atomically
     let final_amount_out = execute_multi_hop_swap(
-        &mut pool_state_refs,
-        &mut oracle_refs,
+        &mut extracted_data.pool_state_refs,
+        &mut extracted_data.oracle_refs,
         &amounts_in,
         min_amount_out,
         &paths,
@@ -168,8 +108,8 @@ pub fn handler(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             token::Transfer {
-                from: token_accounts[0].clone(),
-                to: token_vaults[first_vault_idx].clone(),
+                from: extracted_data.token_accounts[0].clone(),
+                to: extracted_data.token_vaults[first_vault_idx].clone(),
                 authority: ctx.accounts.user.to_account_info(),
             },
         ),
@@ -179,15 +119,11 @@ pub fn handler(
     // === Handle Virtual Transfers ===
     // For intermediate hops, actual tokens are virtually transferred between pools
     // This is done by updating the pool internal accounting
-
-    // For tokens that flow through intermediate pools, the vaults are adjusted
-    // internally without actual token transfers until the final output
     if num_routes > 1 {
         msg!(
             "Processing {} intermediate virtual transfers",
             num_routes - 1
         );
-
         // Virtual transfers are handled in the swap router execution
         // The output of each hop becomes the input for the next
     }
@@ -207,14 +143,14 @@ pub fn handler(
         last_pool_idx * 2
     };
 
+    // Get the pool key for authority derivation
+    let pool_key = extracted_data.pools[last_pool_idx].key();
+
     // Find PDA for the pool authority
-    let (authority_pda, authority_bump) = Pubkey::find_program_address(
-        &[b"pool_authority", pools[last_pool_idx].key().as_ref()],
-        &crate::ID,
-    );
+    let (_, authority_bump) =
+        Pubkey::find_program_address(&[b"pool_authority", pool_key.as_ref()], &crate::ID);
 
     // Create seeds array for signer derivation
-    let pool_key = pools[last_pool_idx].key();
     let seeds = [
         b"pool_authority".as_ref(),
         pool_key.as_ref(),
@@ -226,9 +162,9 @@ pub fn handler(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             token::Transfer {
-                from: token_vaults[last_vault_idx].clone(),
-                to: token_accounts[num_routes].clone(),
-                authority: pools[last_pool_idx].to_account_info(),
+                from: extracted_data.token_vaults[last_vault_idx].clone(),
+                to: extracted_data.token_accounts[num_routes].clone(),
+                authority: extracted_data.pools[last_pool_idx].to_account_info(),
             },
             &[&seeds[..]],
         ),
@@ -237,22 +173,10 @@ pub fn handler(
 
     // === State Updates ===
 
-    // Write back the updated pool states to actual pool accounts
-    for (i, pool_state) in pool_states.iter().enumerate() {
-        // Copy the updated values from our local state to the accounts
-        let mut pool = &mut pools[i];
-        pool.sqrt_price = pool_state.pool.sqrt_price;
-        pool.current_tick = pool_state.pool.current_tick;
-        pool.liquidity = pool_state.pool.liquidity;
-        pool.fee_growth_global_a = pool_state.pool.fee_growth_global_a;
-        pool.fee_growth_global_b = pool_state.pool.fee_growth_global_b;
-        // Add other state fields that need to be updated
-    }
-
     // Update the oracle accounts if provided
-    for (i, oracle_opt) in oracle_accounts.iter_mut().enumerate() {
+    for (i, oracle_opt) in extracted_data.oracle_accounts.iter_mut().enumerate() {
         if let Some(oracle) = oracle_opt {
-            let pool = &pools[i];
+            let pool = &extracted_data.pools[i];
             oracle.write(
                 Clock::get()?.unix_timestamp as u32,
                 pool.sqrt_price,
@@ -263,9 +187,199 @@ pub fn handler(
     }
 
     // === Event Emission ===
+    emit_swap_events(
+        &ctx,
+        &routes,
+        &extracted_data,
+        amount_in,
+        final_amount_out,
+        timestamp,
+    );
 
-    // Get the final pool state for event emission
-    let last_pool = &pools[last_pool_idx];
+    Ok(())
+}
+
+/// Get information about the best routes for a given token pair
+pub fn get_route_information(
+    _input_token: Pubkey,
+    _output_token: Pubkey,
+    _amount_in: u64,
+) -> Result<Vec<SwapRoute>> {
+    // This function would use router logic to find optimal paths
+    // In practice, this would often be done off-chain by the client
+    // or by an external router service
+
+    // Implementation could include:
+    // 1. Graph traversal to find all possible paths
+    // 2. Price impact simulation for each path
+    // 3. Gas cost estimation
+    // 4. Optimization for highest output amount
+
+    // Placeholder for actual routing algorithm
+    msg!("Route optimization would normally use a graph algorithm to find optimal paths");
+
+    // Return a simple route as placeholder
+    Ok(vec![])
+}
+
+/// Integration point for external routers to use Fluxa pools within their own routing system
+pub fn external_router_entrypoint<'a, 'b, 'c: 'info, 'info>(
+    ctx: Context<'a, 'b, 'c, 'info, MultiHopSwap<'info>>,
+    amount_in: u64,
+    min_amount_out: u64,
+    route_data: Vec<u8>,
+) -> Result<u64> {
+    // Parse route data from external router
+    let routes: Vec<SwapRoute> = deserialize_route_data(&route_data)?;
+
+    // Execute the swap
+    handler(ctx, amount_in, min_amount_out, routes)?;
+
+    // Return the output amount for the router to continue
+    // In a real implementation, we would track and return the actual output amount
+    Ok(min_amount_out)
+}
+
+/// Helper function to parse route data provided by external routers
+fn deserialize_route_data(route_data: &[u8]) -> Result<Vec<SwapRoute>> {
+    // Parse binary route data from an external router
+    // This is a simplified implementation - real code would handle
+    // various router formats and serialization schemes
+
+    if route_data.is_empty() {
+        return Err(ErrorCode::InvalidInput.into());
+    }
+
+    // In a real implementation, this would deserialize based on the
+    // specific format used by the router
+    let routes: Vec<SwapRoute> = match AnchorDeserialize::deserialize(&mut &route_data[..]) {
+        Ok(routes) => routes,
+        Err(_) => return Err(ErrorCode::InvalidInput.into()),
+    };
+
+    Ok(routes)
+}
+
+/// Structure to hold extracted account data to avoid borrowing issues
+#[derive(Default)]
+struct ExtractedAccountData<'info> {
+    pools: Vec<Account<'info, Pool>>,
+    pool_states: Vec<PoolState<'info>>,
+    pool_state_refs: Vec<&'info mut PoolState<'info>>,
+    token_accounts: Vec<AccountInfo<'info>>,
+    token_vaults: Vec<AccountInfo<'info>>,
+    oracle_accounts: Vec<Option<Account<'info, Oracle>>>,
+    oracle_refs: Vec<Option<&'info mut Oracle>>,
+}
+
+/// Extract and process all accounts needed for the swap
+fn extract_accounts<'a>(
+    remaining_accounts: &'a [AccountInfo<'a>],
+    num_pools: usize,
+    num_token_accounts: usize,
+    num_token_vaults: usize,
+    account_index: &mut usize,
+) -> Result<ExtractedAccountData<'a>> {
+    let mut data = ExtractedAccountData::default();
+
+    // Extract pool accounts
+    for _ in 0..num_pools {
+        let pool = Account::<Pool>::try_from(&remaining_accounts[*account_index])?;
+        data.pools.push(pool);
+        *account_index += 1;
+    }
+
+    // Extract token accounts
+    for _ in 0..num_token_accounts {
+        data.token_accounts
+            .push(remaining_accounts[*account_index].clone());
+        *account_index += 1;
+    }
+
+    // Extract token vaults
+    for _ in 0..num_token_vaults {
+        data.token_vaults
+            .push(remaining_accounts[*account_index].clone());
+        *account_index += 1;
+    }
+
+    // Extract optional oracle accounts if provided
+    data.oracle_accounts = vec![None; num_pools];
+    if *account_index < remaining_accounts.len() {
+        // Attempt to extract oracle accounts (they're optional)
+        for i in 0..num_pools {
+            if *account_index < remaining_accounts.len() {
+                if let Ok(oracle) = Account::<Oracle>::try_from(&remaining_accounts[*account_index])
+                {
+                    data.oracle_accounts[i] = Some(oracle);
+                    *account_index += 1;
+                }
+            }
+        }
+    }
+
+    // Initialize pool states vector
+    data.pool_states = Vec::with_capacity(num_pools);
+
+    // Create pool states for each pool in the route
+    for pool in &data.pools {
+        // Create a new PoolState object using this pool
+        // We're creating a copy of the pool to avoid lifetime issues
+        let pool_copy = pool.clone();
+        // Use raw pointers to avoid borrowing issues
+        let pool_ptr = pool_copy.to_account_info().data.as_ptr();
+        let pool_state = unsafe {
+            // Reinterpret the pool data as a mutable reference
+            let pool_ref = &mut *(pool_ptr as *mut Pool);
+            PoolState::new(pool_ref)
+        };
+        data.pool_states.push(pool_state);
+    }
+
+    // Initialize oracle references
+    data.oracle_refs = Vec::with_capacity(num_pools);
+    for i in 0..num_pools {
+        if let Some(ref oracle) = data.oracle_accounts[i] {
+            // Using raw pointers to avoid borrowing issues
+            let oracle_ptr = oracle.to_account_info().data.as_ptr() as *mut Oracle;
+            unsafe {
+                data.oracle_refs.push(Some(&mut *oracle_ptr));
+            }
+        } else {
+            data.oracle_refs.push(None);
+        }
+    }
+
+    // Initialize pool state references
+    data.pool_state_refs = Vec::with_capacity(num_pools);
+
+    // Fill pool state references using raw pointers
+    for i in 0..data.pool_states.len() {
+        let pool_state_ptr = &data.pool_states[i] as *const PoolState<'a> as *mut PoolState<'a>;
+        unsafe {
+            data.pool_state_refs.push(&mut *pool_state_ptr);
+        }
+    }
+
+    Ok(data)
+}
+
+/// Emit swap events with information about the swap
+fn emit_swap_events<'a, 'b, 'c, 'info>(
+    ctx: &Context<'a, 'b, 'c, 'info, MultiHopSwap<'info>>,
+    routes: &[SwapRoute],
+    data: &ExtractedAccountData<'info>,
+    amount_in: u64,
+    final_amount_out: u64,
+    timestamp: i64,
+) {
+    let first_route = &routes[0];
+    let first_pool_idx = first_route.pool_index as usize;
+    let first_pool = &data.pools[first_pool_idx];
+
+    let last_route = &routes[routes.len() - 1];
+    let last_pool_idx = last_route.pool_index as usize;
+    let last_pool = &data.pools[last_pool_idx];
 
     // Emit individual swap event for the first pool (for compatibility)
     emit!(SwapEvent {
@@ -275,10 +389,10 @@ pub fn handler(
         amount_in,
         amount_out: final_amount_out,
         fee_amount: 0, // Detailed fee tracking handled per hop
-        sqrt_price_before,
+        sqrt_price_before: first_pool.sqrt_price,
         sqrt_price_after: last_pool.sqrt_price,
-        liquidity_before,
-        tick_before,
+        liquidity_before: first_pool.liquidity,
+        tick_before: first_pool.current_tick,
         tick_after: last_pool.current_tick,
         timestamp,
     });
@@ -307,72 +421,4 @@ pub fn handler(
         sender: ctx.accounts.user.key(),
         timestamp,
     });
-
-    Ok(())
-}
-
-/// Get information about the best routes for a given token pair
-pub fn get_route_information(
-    input_token: Pubkey,
-    output_token: Pubkey,
-    amount_in: u64,
-) -> Result<Vec<SwapRoute>> {
-    // This function would use router logic to find optimal paths
-    // In practice, this would often be done off-chain by the client
-    // or by an external router service
-
-    // Implementation could include:
-    // 1. Graph traversal to find all possible paths
-    // 2. Price impact simulation for each path
-    // 3. Gas cost estimation
-    // 4. Optimization for highest output amount
-
-    // Placeholder for actual routing algorithm
-    msg!("Route optimization would normally use a graph algorithm to find optimal paths");
-
-    // Return a simple route as placeholder
-    Ok(vec![])
-}
-
-/// Integration point for external routers to use Fluxa pools within their own routing system
-pub fn external_router_entrypoint(
-    ctx: Context<MultiHopSwap>,
-    amount_in: u64,
-    min_amount_out: u64,
-    route_data: Vec<u8>,
-) -> Result<u64> {
-    // Parse route data from external router
-    let routes: Vec<SwapRoute> = deserialize_route_data(&route_data)?;
-
-    // Process the swap using the normal handler, but return the output amount
-    // instead of returning void - this allows the external router to continue
-    // processing in a larger multi-step transaction
-    let mut swap_ctx = ctx;
-
-    // Execute the swap
-    handler(swap_ctx, amount_in, min_amount_out, routes)?;
-
-    // Return the output amount for the router to continue
-    // In a real implementation, we would track and return the actual output amount
-    Ok(min_amount_out)
-}
-
-/// Helper function to parse route data provided by external routers
-fn deserialize_route_data(route_data: &[u8]) -> Result<Vec<SwapRoute>> {
-    // Parse binary route data from an external router
-    // This is a simplified implementation - real code would handle
-    // various router formats and serialization schemes
-
-    if route_data.is_empty() {
-        return Err(ErrorCode::InvalidInput.into());
-    }
-
-    // In a real implementation, this would deserialize based on the
-    // specific format used by the router
-    let routes: Vec<SwapRoute> = match AnchorDeserialize::deserialize(&mut &route_data[..]) {
-        Ok(routes) => routes,
-        Err(_) => return Err(ErrorCode::InvalidInput.into()),
-    };
-
-    Ok(routes)
 }
