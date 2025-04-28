@@ -10,6 +10,9 @@ use crate::errors::ErrorCode;
 use anchor_lang::prelude::*;
 use std::collections::HashMap;
 
+// Import the U256 type from ethereum_types
+use ethereum_types::U256;
+
 /// Number of bits in a word
 pub const WORD_SIZE: usize = 256;
 
@@ -17,7 +20,7 @@ pub const WORD_SIZE: usize = 256;
 #[derive(Debug, Default, Copy, Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct TickBitmapWord {
     /// The bitmap data - each bit represents an initialized tick
-    pub bitmap: u256,
+    pub bitmap: U256,
 }
 
 /// Wrapper struct for managing the tick bitmap
@@ -149,7 +152,7 @@ pub fn position(tick: i32) -> (i16, u8) {
 /// # Returns
 /// * `bool` - Whether the tick is initialized
 pub fn is_initialized(bitmap: &TickBitmapWord, bit_pos: u8) -> bool {
-    (bitmap.bitmap & (1u256 << bit_pos)) != 0u256
+    (bitmap.bitmap & (U256::from(1u32) << bit_pos)) != U256::zero()
 }
 
 /// Flips the bit for a tick in the bitmap to mark it as initialized or uninitialized
@@ -162,7 +165,7 @@ pub fn is_initialized(bitmap: &TickBitmapWord, bit_pos: u8) -> bool {
 /// * `TickBitmapWord` - The updated bitmap
 pub fn flip_tick(bitmap: &TickBitmapWord, bit_pos: u8) -> TickBitmapWord {
     TickBitmapWord {
-        bitmap: bitmap.bitmap ^ (1u256 << bit_pos),
+        bitmap: bitmap.bitmap ^ (U256::from(1u32) << bit_pos),
     }
 }
 
@@ -188,15 +191,15 @@ pub fn next_initialized_tick_within_word(
     if lte {
         // Create a mask for all bits at positions <= bit_pos
         let mask = if bit_pos == 255 {
-            u256::MAX // All bits set
+            U256::max_value() // All bits set
         } else {
-            (1u256 << (bit_pos + 1)) - 1u256
+            (U256::from(1u32) << (bit_pos + 1)) - U256::from(1u32)
         };
 
         let masked_bitmap = bitmap_data & mask;
 
         // If no initialized ticks <= bit_pos
-        if masked_bitmap == 0u256 {
+        if masked_bitmap == U256::zero() {
             return Ok((false, 0));
         }
 
@@ -207,12 +210,12 @@ pub fn next_initialized_tick_within_word(
     // If searching for ticks greater than the current position
     else {
         // Create a mask for all bits at positions > bit_pos
-        let mask = !((1u256 << (bit_pos + 1)) - 1u256);
+        let mask = !((U256::from(1u32) << (bit_pos + 1)) - U256::from(1u32));
 
         let masked_bitmap = bitmap_data & mask;
 
         // If no initialized ticks > bit_pos
-        if masked_bitmap == 0u256 {
+        if masked_bitmap == U256::zero() {
             return Ok((false, 0));
         }
 
@@ -281,7 +284,7 @@ pub fn next_initialized_tick_in_direction(
             };
 
             // Skip if the word is empty (no initialized ticks)
-            if bitmap_word.bitmap == 0u256 {
+            if bitmap_word.bitmap == U256::zero() {
                 continue;
             }
 
@@ -368,7 +371,7 @@ mod tests {
     fn test_is_initialized() {
         // Create a bitmap with bits 1, 3, and 5 set
         let mut bitmap = TickBitmapWord::default();
-        bitmap.bitmap = (1u256 << 1) | (1u256 << 3) | (1u256 << 5);
+        bitmap.bitmap = (U256::from(1u32) << 1) | (U256::from(1u32) << 3) | (U256::from(1u32) << 5);
 
         assert!(is_initialized(&bitmap, 1));
         assert!(is_initialized(&bitmap, 3));
@@ -397,7 +400,7 @@ mod tests {
     fn test_next_initialized_tick_within_word() {
         // Create a bitmap with bits 10, 20, and 30 set
         let mut bitmap = TickBitmapWord::default();
-        bitmap.bitmap = (1u256 << 10) | (1u256 << 20) | (1u256 << 30);
+        bitmap.bitmap = (U256::from(1u32) << 10) | (U256::from(1u32) << 20) | (U256::from(1u32) << 30);
 
         // Test searching for a tick <= position
         let (found, pos) = next_initialized_tick_within_word(&bitmap, 25, true).unwrap();
