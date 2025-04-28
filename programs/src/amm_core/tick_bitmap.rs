@@ -315,11 +315,11 @@ pub fn flip_tick(bitmap: &TickBitmapWord, bit_pos: u8) -> TickBitmapWord {
 /// * `bitmap` - The bitmap word to search
 /// * `bit_pos` - The starting bit position
 /// * `lte` - If true, search for ticks less than or equal to bit_pos;
-///           if false, search for ticks greater than bit_pos
+///   if false, search for ticks greater than bit_pos
 ///
 /// # Returns
 /// * `Result<(bool, u8)>` - Tuple of (found, position) where position is the bit position
-///                          of the next initialized tick, or an error if not found
+///   of the next initialized tick, or an error if not found
 pub fn next_initialized_tick_within_word(
     bitmap: &TickBitmapWord,
     bit_pos: u8,
@@ -345,7 +345,7 @@ pub fn next_initialized_tick_within_word(
 
         // Find the most significant (highest) bit that is set
         let msb_pos = 255 - masked_bitmap.leading_zeros() as u8;
-        return Ok((true, msb_pos));
+        Ok((true, msb_pos))
     }
     // If searching for ticks greater than the current position
     else {
@@ -361,7 +361,7 @@ pub fn next_initialized_tick_within_word(
 
         // Find the least significant (lowest) bit that is set
         let lsb_pos = masked_bitmap.trailing_zeros() as u8;
-        return Ok((true, lsb_pos));
+        Ok((true, lsb_pos))
     }
 }
 
@@ -371,11 +371,11 @@ pub fn next_initialized_tick_within_word(
 /// * `tick_current` - The current tick index
 /// * `tick_spacing` - The spacing between ticks
 /// * `lte` - If true, search for a tick less than or equal to the current tick;
-///           if false, search for a tick greater than the current tick
+///   if false, search for a tick greater than the current tick
 ///
 /// # Returns
 /// * `Result<(i32, bool)>` - Tuple of (next_tick, initialized)
-///                         - If initialized is false, next_tick will be a boundary tick
+///   - If initialized is false, next_tick will be a boundary tick
 pub fn next_initialized_tick_in_direction(
     tick_bitmap_map: &std::collections::HashMap<i16, TickBitmapWord>,
     tick_current: i32,
@@ -408,7 +408,7 @@ pub fn next_initialized_tick_in_direction(
                 .ok_or(ErrorCode::InvalidTickRange)?;
 
             // Check boundaries based on direction
-            if (lte && word_pos < -0x8000) || (!lte && word_pos > 0x7FFF) {
+            if (lte && word_pos == i16::MIN) || (!lte && word_pos == i16::MAX) {
                 // Return boundary ticks based on direction
                 return if lte {
                     Ok((-0x80000000, false))
@@ -474,9 +474,7 @@ pub fn update_tick_bitmap(
     let (word_pos, bit_pos) = position(compressed_tick);
 
     // Get or create the bitmap word
-    let bitmap_word = tick_bitmap_map
-        .entry(word_pos)
-        .or_insert(TickBitmapWord::default());
+    let bitmap_word = tick_bitmap_map.entry(word_pos).or_default();
 
     // Check current status
     let is_already_initialized = is_initialized(bitmap_word, bit_pos);
@@ -510,10 +508,11 @@ mod tests {
     #[test]
     fn test_is_initialized() {
         // Create a bitmap with bits 1, 3, and 5 set
-        let mut bitmap = TickBitmapWord::default();
-        bitmap.bitmap = (U256Wrapper::from_u32(1) << 1)
-            | (U256Wrapper::from_u32(1) << 3)
-            | (U256Wrapper::from_u32(1) << 5);
+        let bitmap = TickBitmapWord {
+            bitmap: (U256Wrapper::from_u32(1) << 1)
+                | (U256Wrapper::from_u32(1) << 3)
+                | (U256Wrapper::from_u32(1) << 5),
+        };
 
         assert!(is_initialized(&bitmap, 1));
         assert!(is_initialized(&bitmap, 3));
@@ -541,10 +540,11 @@ mod tests {
     #[test]
     fn test_next_initialized_tick_within_word() {
         // Create a bitmap with bits 10, 20, and 30 set
-        let mut bitmap = TickBitmapWord::default();
-        bitmap.bitmap = (U256Wrapper::from_u32(1) << 10)
-            | (U256Wrapper::from_u32(1) << 20)
-            | (U256Wrapper::from_u32(1) << 30);
+        let bitmap = TickBitmapWord {
+            bitmap: (U256Wrapper::from_u32(1) << 10)
+                | (U256Wrapper::from_u32(1) << 20)
+                | (U256Wrapper::from_u32(1) << 30),
+        };
 
         // Test searching for a tick <= position
         let (found, pos) = next_initialized_tick_within_word(&bitmap, 25, true).unwrap();

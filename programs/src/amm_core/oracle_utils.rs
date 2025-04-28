@@ -478,28 +478,35 @@ impl ObservationStorage {
             let mid = (low + high) / 2;
             let mid_observation = self.get_observation(mid)?;
 
-            if mid_observation.timestamp == timestamp {
-                return Ok(mid_observation);
-            } else if mid_observation.timestamp < timestamp {
-                // Check if next observation exceeds timestamp
-                if mid < self.observation_count as usize - 1 {
-                    let next_observation = self.get_observation(mid + 1)?;
-                    if next_observation.timestamp > timestamp {
-                        return Ok(mid_observation);
-                    }
+            match mid_observation.timestamp.cmp(&timestamp) {
+                std::cmp::Ordering::Equal => {
+                    return Ok(mid_observation);
                 }
-                low = mid + 1;
-            } else {
-                high = mid - 1;
+                std::cmp::Ordering::Less => {
+                    // Check if next observation exceeds timestamp
+                    if mid < self.observation_count as usize - 1 {
+                        let next_observation = self.get_observation(mid + 1)?;
+                        if next_observation.timestamp > timestamp {
+                            return Ok(mid_observation);
+                        }
+                    }
+                    low = mid + 1;
+                }
+                std::cmp::Ordering::Greater => {
+                    // Since high is unsigned, make sure we don't underflow
+                    if mid == 0 {
+                        // If we're already at the first observation and it's too late,
+                        // return an error as we have no valid observation before timestamp
+                        return Err(ErrorCode::ObservationBoundaryError.into());
+                    }
+                    high = mid - 1;
+                }
             }
         }
 
-        // If we get here, return the observation at index 'high'
-        if high < 0 {
-            return Err(ErrorCode::ObservationBoundaryError.into());
-        }
-
-        self.get_observation(high as usize)
+        // If the binary search completed without finding an exact match,
+        // 'high' will be the index of the closest observation before timestamp
+        self.get_observation(high)
     }
 }
 
@@ -546,7 +553,7 @@ mod tests {
         let read1 = storage.get_latest_observation().unwrap();
         assert_eq!(read1.timestamp, 1000);
         assert_eq!(read1.sqrt_price, 1 << 96);
-        assert_eq!(read1.initialized, true);
+        assert!(read1.initialized);
 
         // Write a second observation
         let observation2 = Observation {

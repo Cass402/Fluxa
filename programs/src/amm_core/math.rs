@@ -85,10 +85,10 @@ pub fn mul_q96(a: u128, b: u128) -> Result<u128> {
     // Combine results and shift to maintain Q64.96 format
     let mut result = lo_lo >> 96;
     result = result
-        .checked_add(hi_lo >> (96 - 64)) // Changed from << (64-96) to >> (96-64)
+        .checked_add(hi_lo >> 32) // Instead of shifting left by (64-96), shift right by 32
         .ok_or(ErrorCode::MathOverflow)?;
     result = result
-        .checked_add(lo_hi >> (96 - 64)) // Changed from << (64-96) to >> (96-64)
+        .checked_add(lo_hi >> 32) // Instead of shifting left by (64-96), shift right by 32
         .ok_or(ErrorCode::MathOverflow)?;
 
     Ok(result)
@@ -475,12 +475,12 @@ pub fn get_token_b_from_liquidity_q96(
     // Using fixed-point arithmetic for precision with Q64.96 format
 
     // If the current/lower price <= lower price, then delta is zero or negative
-    if sqrt_price_to_use_q96 <= sqrt_price_lower_q96 {
+    if sqrt_price_to_use <= sqrt_price_lower_q96 {
         return Ok(0);
     }
 
     // Calculate difference: (sqrt_price_to_use - sqrt_price_lower)
-    let delta_q96 = sub_q96(sqrt_price_to_use_q96, sqrt_price_lower_q96)?;
+    let delta_q96 = sub_q96(sqrt_price_to_use, sqrt_price_lower_q96)?;
 
     // Convert liquidity from Q64.64 to Q64.96
     let liquidity_q96 = convert_sqrt_price_to_q96(liquidity)?;

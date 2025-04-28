@@ -34,7 +34,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     routes: Vec<SwapRoute>,
 ) -> Result<()> {
     // Validate input parameters
-    require!(routes.len() > 0, ErrorCode::InvalidInput);
+    require!(!routes.is_empty(), ErrorCode::InvalidInput);
     require!(amount_in > 0, ErrorCode::InsufficientInputAmount);
     require!(min_amount_out > 0, ErrorCode::InsufficientInputAmount);
 
@@ -59,7 +59,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
 
     // Extract and process all accounts
     let mut extracted_data = extract_accounts(
-        &remaining_accounts,
+        remaining_accounts,
         num_pools,
         num_token_accounts,
         num_token_vaults,
@@ -79,10 +79,32 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         paths.push((route.zero_for_one, route.sqrt_price_limit));
     }
 
+    // Create the mutable references to PoolState and Oracle that execute_multi_hop_swap expects
+    let mut pool_state_refs: Vec<&mut PoolState> = Vec::with_capacity(num_routes);
+    let mut oracle_refs: Vec<Option<&mut Oracle>> = Vec::with_capacity(num_routes);
+
+    // SAFETY: We're carefully managing the raw pointers to avoid multiple mutable references
+    // to the same data. Each pointer will be dereferenced exactly once.
+    unsafe {
+        // Create references from the raw pointers
+        for ptr in &extracted_data.pool_state_refs {
+            pool_state_refs.push(&mut **ptr);
+        }
+
+        // Create references for oracles if they exist
+        for maybe_ptr in &extracted_data.oracle_refs {
+            if let Some(ptr) = maybe_ptr {
+                oracle_refs.push(Some(&mut **ptr));
+            } else {
+                oracle_refs.push(None);
+            }
+        }
+    }
+
     // Execute the multi-hop swap - this will update all pool states atomically
     let final_amount_out = execute_multi_hop_swap(
-        &mut extracted_data.pool_state_refs,
-        &mut extracted_data.oracle_refs,
+        &mut pool_state_refs,
+        &mut oracle_refs,
         &amounts_in,
         min_amount_out,
         &paths,
@@ -265,11 +287,11 @@ fn deserialize_route_data(route_data: &[u8]) -> Result<Vec<SwapRoute>> {
 struct ExtractedAccountData<'info> {
     pools: Vec<Account<'info, Pool>>,
     pool_states: Vec<PoolState<'info>>,
-    pool_state_refs: Vec<&'info mut PoolState<'info>>,
+    pool_state_refs: Vec<*mut PoolState<'info>>, // Using raw pointers
     token_accounts: Vec<AccountInfo<'info>>,
     token_vaults: Vec<AccountInfo<'info>>,
     oracle_accounts: Vec<Option<Account<'info, Oracle>>>,
-    oracle_refs: Vec<Option<&'info mut Oracle>>,
+    oracle_refs: Vec<Option<*mut Oracle>>, // Using raw pointers
 }
 
 /// Extract and process all accounts needed for the swap
@@ -319,45 +341,32 @@ fn extract_accounts<'a>(
     }
 
     // Initialize pool states vector
-    data.pool_states = Vec::with_capacity(num_pools);
-
-    // Create pool states for each pool in the route
-    for pool in &data.pools {
-        // Create a new PoolState object using this pool
-        // We're creating a copy of the pool to avoid lifetime issues
-        let pool_copy = pool.clone();
-        // Use raw pointers to avoid borrowing issues
-        let pool_ptr = pool_copy.to_account_info().data.as_ptr();
-        let pool_state = unsafe {
-            // Reinterpret the pool data as a mutable reference
-            let pool_ref = &mut *(pool_ptr as *mut Pool);
-            PoolState::new(pool_ref)
-        };
-        data.pool_states.push(pool_state);
-    }
-
-    // Initialize oracle references
-    data.oracle_refs = Vec::with_capacity(num_pools);
     for i in 0..num_pools {
-        if let Some(ref oracle) = data.oracle_accounts[i] {
-            // Using raw pointers to avoid borrowing issues
-            let oracle_ptr = oracle.to_account_info().data.as_ptr() as *mut Oracle;
-            unsafe {
-                data.oracle_refs.push(Some(&mut *oracle_ptr));
-            }
-        } else {
-            data.oracle_refs.push(None);
+        // Get a raw pointer to the pool
+        let pool_ptr = data.pools[i].to_account_info().data.as_ptr() as *mut Pool;
+
+        // SAFETY: We're taking ownership of the data and not creating multiple mutable references
+        unsafe {
+            let pool_ref = &mut *pool_ptr;
+            let pool_state = PoolState::new(pool_ref);
+            data.pool_states.push(pool_state);
         }
     }
 
-    // Initialize pool state references
-    data.pool_state_refs = Vec::with_capacity(num_pools);
+    // Initialize pool state pointers
+    for i in 0..num_pools {
+        let ptr = &mut data.pool_states[i] as *mut PoolState;
+        data.pool_state_refs.push(ptr);
+    }
 
-    // Fill pool state references using raw pointers
-    for i in 0..data.pool_states.len() {
-        let pool_state_ptr = &data.pool_states[i] as *const PoolState<'a> as *mut PoolState<'a>;
-        unsafe {
-            data.pool_state_refs.push(&mut *pool_state_ptr);
+    // Initialize oracle references if they exist
+    for i in 0..num_pools {
+        if let Some(ref oracle) = data.oracle_accounts[i] {
+            // Get a raw pointer to the oracle
+            let oracle_ptr = oracle.to_account_info().data.as_ptr() as *mut Oracle;
+            data.oracle_refs.push(Some(oracle_ptr));
+        } else {
+            data.oracle_refs.push(None);
         }
     }
 
@@ -365,8 +374,8 @@ fn extract_accounts<'a>(
 }
 
 /// Emit swap events with information about the swap
-fn emit_swap_events<'a, 'b, 'c, 'info>(
-    ctx: &Context<'a, 'b, 'c, 'info, MultiHopSwap<'info>>,
+fn emit_swap_events<'info>(
+    ctx: &Context<'_, '_, '_, 'info, MultiHopSwap<'info>>,
     routes: &[SwapRoute],
     data: &ExtractedAccountData<'info>,
     amount_in: u64,
