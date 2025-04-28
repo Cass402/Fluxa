@@ -85,10 +85,10 @@ pub fn mul_q96(a: u128, b: u128) -> Result<u128> {
     // Combine results and shift to maintain Q64.96 format
     let mut result = lo_lo >> 96;
     result = result
-        .checked_add(hi_lo << (64 - 96))
+        .checked_add(hi_lo >> (96 - 64)) // Changed from << (64-96) to >> (96-64)
         .ok_or(ErrorCode::MathOverflow)?;
     result = result
-        .checked_add(lo_hi << (64 - 96))
+        .checked_add(lo_hi >> (96 - 64)) // Changed from << (64-96) to >> (96-64)
         .ok_or(ErrorCode::MathOverflow)?;
 
     Ok(result)
@@ -146,7 +146,7 @@ pub fn sqrt_q96(value: u128) -> Result<u128> {
         // r = (r + x/r) / 2
         let value_div_result = div_q96(value, result)?;
         result = add_q96(result, value_div_result)?;
-        result = result / 2;
+        result /= 2; // Changed from: result = result / 2;
     }
 
     Ok(result)

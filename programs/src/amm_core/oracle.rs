@@ -260,12 +260,12 @@ impl Oracle {
             observation
                 .tick_cumulative
                 .checked_sub(previous.tick_cumulative)
-                .ok_or(ErrorCode::MathOverflow)? as i64
+                .ok_or(ErrorCode::MathOverflow)?
         } else {
             -(previous
                 .tick_cumulative
                 .checked_sub(observation.tick_cumulative)
-                .ok_or(ErrorCode::MathOverflow)? as i64)
+                .ok_or(ErrorCode::MathOverflow)?)
         };
         
         // Calculate seconds per liquidity delta
@@ -341,7 +341,7 @@ impl Oracle {
         let avg_tick = ((tick_cumulative_delta as f64) / (time_delta as f64)).round() as i32;
         
         // Convert average tick to sqrt price
-        Ok(tick_to_sqrt_price(avg_tick)?)
+        tick_to_sqrt_price(avg_tick)
     }
 
     /// Enable compression for future observations
@@ -546,9 +546,7 @@ impl Oracle {
         }
         
         let savings = uncompressed_size.saturating_sub(compressed_size) as f64;
-        let ratio = (savings / uncompressed_size as f64) * 100.0;
-        
-        ratio
+        (savings / uncompressed_size as f64) * 100.0
     }
 }
 
@@ -556,7 +554,7 @@ impl Oracle {
 fn tick_to_sqrt_price(tick: i32) -> Result<u128> {
     // Implementation should match the one in math.rs
     // For now, using a simplified version
-    let tick_abs = tick.abs() as u32;
+    let tick_abs = tick.unsigned_abs();
     let mut sqrt_price = 1u128 << 96;  // Q64.96 representation of 1.0
     
     // Calculate 1.0001^tick

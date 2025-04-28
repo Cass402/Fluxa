@@ -1,3 +1,8 @@
+## 3. Simplified Tier Messaging
+
+**Document:** Fluxa Tokenomics & Protocol Fee Design (FLUXA-TOKEN-2025-001)  
+**Section:** 3.1.2 Fee Discounts and Benefits
+
 # Fluxa: Tokenomics and Protocol Fee Design
 
 **Document ID:** FLUXA-TOKEN-2025-001  
@@ -89,12 +94,34 @@ Fluxa's token model adheres to the following key principles:
 
 #### 3.1.2 Fee Discounts and Benefits
 
-| Staking Tier | Required FLUXA | Trading Fee Discount | IL Protection Discount | Yield Strategy Discount |
-| ------------ | -------------- | -------------------- | ---------------------- | ----------------------- |
-| **Basic**    | 1,000          | 5%                   | 5%                     | 5%                      |
-| **Silver**   | 5,000          | 10%                  | 10%                    | 10%                     |
-| **Gold**     | 25,000         | 15%                  | 15%                    | 15%                     |
-| **Platinum** | 100,000        | 20%                  | 20%                    | 20%                     |
+Fluxa implements a streamlined "Stake & Lock" system that combines both staking amount and lock duration into a simple benefit calculation:
+
+##### Unified Staking Benefits Formula
+
+Benefits scale linearly based on both stake amount and lock duration:
+
+```
+Fee Discount % = Base Discount + (Stake Amount Factor × Lock Duration Factor)
+```
+
+Where:
+
+- Base Discount: 5% (minimum discount for any staker)
+- Stake Amount Factor: Ranges from 0 to 15% based on FLUXA staked
+- Lock Duration Factor: Ranges from 1.0x to 2.0x based on lock time
+
+**Interactive Benefit Scale:**
+
+Simply adjust your stake amount and lock duration to see your benefits:
+
+| FLUXA Staked | No Lock | 1 Month Lock | 3 Month Lock | 6 Month Lock | 12 Month Lock |
+| ------------ | ------- | ------------ | ------------ | ------------ | ------------- |
+| 1,000        | 5%      | 6%           | 7.5%         | 9%           | 10%           |
+| 5,000        | 7%      | 8.4%         | 10.5%        | 12.6%        | 14%           |
+| 25,000       | 12%     | 14.4%        | 15.6%        | 16.8%        | 18%           |
+| 100,000      | 20%     | 22%          | 24%          | 26%          | 30%           |
+
+_This simplified system replaces the previous tiered approach, providing a more intuitive and flexible way for users to understand their benefits. The same scaling applies to liquidity mining multipliers, IL protection discounts, and yield strategy discounts._
 
 #### 3.1.3 Liquidity Mining Boosts
 

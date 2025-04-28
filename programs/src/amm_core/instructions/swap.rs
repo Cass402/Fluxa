@@ -1,11 +1,3 @@
-use crate::constants::{MAX_TICK, MIN_SQRT_PRICE};
-use crate::errors::ErrorCode;
-use crate::math::{self, sqrt_price_to_tick};
-use crate::pool_state::PoolState;
-use crate::Swap;
-use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Transfer};
-
 /// Swap Instruction Module
 ///
 /// This module implements the core swap functionality for the Fluxa AMM.
@@ -15,6 +7,13 @@ use anchor_spl::token::{self, Transfer};
 ///
 /// The swap execution updates the pool's price and transfers tokens between
 /// the user's accounts and the pool's vaults, collecting fees in the process.
+use crate::constants::{MAX_TICK, MIN_SQRT_PRICE};
+use crate::errors::ErrorCode;
+use crate::math::{self, sqrt_price_to_tick};
+use crate::pool_state::PoolState;
+use crate::Swap;
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Transfer};
 
 /// Handler function for executing a token swap
 ///
@@ -227,15 +226,11 @@ fn execute_swap(
         let next_tick = if is_token_a {
             // When swapping A for B (selling A), price decreases
             // Use pool_state to find the next lower initialized tick
-            match pool_state.prev_initialized_tick(current_tick)? {
-                tick => tick,
-            }
+            pool_state.prev_initialized_tick(current_tick)?
         } else {
             // When swapping B for A (selling B), price increases
             // Use pool_state to find the next higher initialized tick
-            match pool_state.next_initialized_tick(current_tick)? {
-                tick => tick,
-            }
+            pool_state.next_initialized_tick(current_tick)?
         };
 
         // Calculate target sqrt price at the next tick boundary

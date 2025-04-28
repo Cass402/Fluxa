@@ -117,6 +117,88 @@ impl Default for Tick {
     }
 }
 
+/// Parameters for fee growth calculations
+#[derive(Debug, Clone, Copy)]
+pub struct FeeGrowthParams {
+    /// Current tick index
+    pub tick_current: i32,
+    /// Lower tick boundary
+    pub tick_lower: i32,
+    /// Upper tick boundary
+    pub tick_upper: i32,
+    /// Global fee growth for token A
+    pub fee_growth_global_a: u128,
+    /// Global fee growth for token B
+    pub fee_growth_global_b: u128,
+    /// Fee growth outside lower tick for token A
+    pub fee_growth_outside_lower_a: u128,
+    /// Fee growth outside lower tick for token B
+    pub fee_growth_outside_lower_b: u128,
+    /// Fee growth outside upper tick for token A
+    pub fee_growth_outside_upper_a: u128,
+    /// Fee growth outside upper tick for token B
+    pub fee_growth_outside_upper_b: u128,
+}
+
+/// Calculate fee growth inside a specific tick range
+///
+/// This function is used to determine how much fee growth has occurred
+/// within a position's tick range, accounting for fee growth that
+/// happened outside the range.
+///
+/// # Parameters
+/// * `params` - The fee growth parameters
+///
+/// # Returns
+/// * `(u128, u128)` - The fee growth inside the range for tokens A and B
+pub fn compute_fee_growth_inside(params: &FeeGrowthParams) -> (u128, u128) {
+    // Calculate fee growth inside based on where current tick is relative to the range
+    let (fee_growth_below_a, fee_growth_below_b) = if params.tick_current >= params.tick_lower {
+        (
+            params.fee_growth_outside_lower_a,
+            params.fee_growth_outside_lower_b,
+        )
+    } else {
+        (
+            params
+                .fee_growth_global_a
+                .wrapping_sub(params.fee_growth_outside_lower_a),
+            params
+                .fee_growth_global_b
+                .wrapping_sub(params.fee_growth_outside_lower_b),
+        )
+    };
+
+    let (fee_growth_above_a, fee_growth_above_b) = if params.tick_current < params.tick_upper {
+        (
+            params.fee_growth_outside_upper_a,
+            params.fee_growth_outside_upper_b,
+        )
+    } else {
+        (
+            params
+                .fee_growth_global_a
+                .wrapping_sub(params.fee_growth_outside_upper_a),
+            params
+                .fee_growth_global_b
+                .wrapping_sub(params.fee_growth_outside_upper_b),
+        )
+    };
+
+    // Fee growth inside = global growth - growth below - growth above
+    let fee_growth_inside_a = params
+        .fee_growth_global_a
+        .wrapping_sub(fee_growth_below_a)
+        .wrapping_sub(fee_growth_above_a);
+
+    let fee_growth_inside_b = params
+        .fee_growth_global_b
+        .wrapping_sub(fee_growth_below_b)
+        .wrapping_sub(fee_growth_above_b);
+
+    (fee_growth_inside_a, fee_growth_inside_b)
+}
+
 /// Manages the global state of a liquidity pool
 ///
 /// This struct provides methods for tracking active positions, computing fees,
@@ -1094,58 +1176,13 @@ impl<'a> PoolState<'a> {
     /// happened outside the range.
     ///
     /// # Parameters
-    /// * `tick_current` - The current tick
-    /// * `tick_lower` - The lower tick boundary
-    /// * `tick_upper` - The upper tick boundary
-    /// * `fee_growth_global_a` - The global fee growth for token A
-    /// * `fee_growth_global_b` - The global fee growth for token B
-    /// * `fee_growth_outside_lower_a` - Fee growth outside the lower tick for token A
-    /// * `fee_growth_outside_lower_b` - Fee growth outside the lower tick for token B
-    /// * `fee_growth_outside_upper_a` - Fee growth outside the upper tick for token A
-    /// * `fee_growth_outside_upper_b` - Fee growth outside the upper tick for token B
+    /// * `params` - The fee growth parameters
     ///
     /// # Returns
     /// * `(u128, u128)` - The fee growth inside the range for tokens A and B
-    pub fn compute_fee_growth_inside(
-        tick_current: i32,
-        tick_lower: i32,
-        tick_upper: i32,
-        fee_growth_global_a: u128,
-        fee_growth_global_b: u128,
-        fee_growth_outside_lower_a: u128,
-        fee_growth_outside_lower_b: u128,
-        fee_growth_outside_upper_a: u128,
-        fee_growth_outside_upper_b: u128,
-    ) -> (u128, u128) {
-        // Calculate fee growth inside based on where current tick is relative to the range
-        let (fee_growth_below_a, fee_growth_below_b) = if tick_current >= tick_lower {
-            (fee_growth_outside_lower_a, fee_growth_outside_lower_b)
-        } else {
-            (
-                fee_growth_global_a.wrapping_sub(fee_growth_outside_lower_a),
-                fee_growth_global_b.wrapping_sub(fee_growth_outside_lower_b),
-            )
-        };
-
-        let (fee_growth_above_a, fee_growth_above_b) = if tick_current < tick_upper {
-            (fee_growth_outside_upper_a, fee_growth_outside_upper_b)
-        } else {
-            (
-                fee_growth_global_a.wrapping_sub(fee_growth_outside_upper_a),
-                fee_growth_global_b.wrapping_sub(fee_growth_outside_upper_b),
-            )
-        };
-
-        // Fee growth inside = global growth - growth below - growth above
-        let fee_growth_inside_a = fee_growth_global_a
-            .wrapping_sub(fee_growth_below_a)
-            .wrapping_sub(fee_growth_above_a);
-
-        let fee_growth_inside_b = fee_growth_global_b
-            .wrapping_sub(fee_growth_below_b)
-            .wrapping_sub(fee_growth_above_b);
-
-        (fee_growth_inside_a, fee_growth_inside_b)
+    pub fn compute_fee_growth_inside(params: &FeeGrowthParams) -> (u128, u128) {
+        // Delegate to the standalone function that already uses the FeeGrowthParams struct
+        compute_fee_growth_inside(params)
     }
 
     /// Gets the appropriate tick spacing for a fee tier

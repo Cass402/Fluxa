@@ -241,7 +241,7 @@ fn get_next_initialized_tick(
         tick_index += search_direction * tick_spacing as i32;
 
         // Safety bounds check
-        if tick_index < MIN_TICK || tick_index > MAX_TICK {
+        if !(MIN_TICK..=MAX_TICK).contains(&tick_index) {
             // If we've gone beyond the allowed tick range, return the boundary tick
             return Ok((if zero_for_one { MIN_TICK } else { MAX_TICK }, false));
         }
@@ -518,10 +518,7 @@ pub fn execute_multi_hop_swap(
         // Execute the swap on this pool
         let swap_result = {
             // Create a temporary reference to the oracle option without moving it
-            let oracle_ref = match &mut oracles[i] {
-                Some(oracle) => Some(&mut **oracle),
-                None => None,
-            };
+            let oracle_ref = oracles[i].as_deref_mut();
 
             execute_swap(
                 pools[i],
@@ -578,7 +575,6 @@ pub fn execute_multi_hop_swap(
 /// This section implements the router integration functionality described in
 /// section 4.3 of the Core Protocol Technical Design document, enabling
 /// integration with external routers like Jupiter.
-
 /// Standard interface for router callbacks to execute swaps in Fluxa pools
 pub fn router_callback_swap(
     pool_state: &mut PoolState,
@@ -615,9 +611,10 @@ pub fn router_callback_swap(
 
 /// Route a swap through multiple pools using an external router program
 /// This function can be called via CPI from external router programs
+#[allow(clippy::needless_lifetimes)]
 pub fn external_route_swap<'a>(
-    router_program: &AccountInfo<'a>,
-    multi_hop_accounts: &MultiHopAccounts<'a>,
+    router_program: &'a AccountInfo<'a>,
+    multi_hop_accounts: &'a MultiHopAccounts<'a>,
     amount_in: u64,
     min_amount_out: u64,
     route_data: &[u8],
@@ -663,8 +660,8 @@ impl<'a> MultiHopAccounts<'a> {
 
 /// Helper function for CPI to router's execute function
 /// Structure will depend on the specific router being integrated with
-fn router_execute_route<'a, 'b, 'c, 'info>(
-    _ctx: CpiContext<'a, 'b, 'c, 'info, RouterAccounts<'info>>,
+fn router_execute_route<'info>(
+    _ctx: CpiContext<'_, '_, '_, 'info, RouterAccounts<'info>>,
     _amount_in: u64,
     _min_amount_out: u64,
     _route_data: &[u8],
@@ -686,18 +683,17 @@ pub struct RouterAccounts<'a> {
     // Add other required accounts based on your specific router integration
 }
 
-impl<'a> anchor_lang::ToAccountMetas for RouterAccounts<'a> {
+impl anchor_lang::ToAccountMetas for RouterAccounts<'_> {
     fn to_account_metas(
         &self,
         _is_signer: Option<bool>,
     ) -> Vec<anchor_lang::solana_program::instruction::AccountMeta> {
-        let mut account_metas = Vec::new();
-
-        // Convert each field to AccountMeta directly
-        account_metas.push(AccountMeta::new(self.user.key(), true));
-        account_metas.push(AccountMeta::new(self.source_token.key(), false));
-        account_metas.push(AccountMeta::new(self.destination_token.key(), false));
-        account_metas.push(AccountMeta::new(self.token_program.key(), false));
+        let account_metas = vec![
+            AccountMeta::new(self.user.key(), true),
+            AccountMeta::new(self.source_token.key(), false),
+            AccountMeta::new(self.destination_token.key(), false),
+            AccountMeta::new(self.token_program.key(), false),
+        ];
 
         // Add other accounts as needed for your specific router integration
 
@@ -707,13 +703,12 @@ impl<'a> anchor_lang::ToAccountMetas for RouterAccounts<'a> {
 
 impl<'a> anchor_lang::ToAccountInfos<'a> for RouterAccounts<'a> {
     fn to_account_infos(&self) -> Vec<anchor_lang::prelude::AccountInfo<'a>> {
-        let mut account_infos = Vec::new();
-
-        // Add each account info to the vector
-        account_infos.push(self.user.clone());
-        account_infos.push(self.source_token.clone());
-        account_infos.push(self.destination_token.clone());
-        account_infos.push(self.token_program.clone());
+        let account_infos = vec![
+            self.user.clone(),
+            self.source_token.clone(),
+            self.destination_token.clone(),
+            self.token_program.clone(),
+        ];
 
         // Add other accounts as needed for your specific router integration
 
