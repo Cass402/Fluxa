@@ -13820,4 +13820,1285 @@ impl DataProtectionService {
         self.storage_service.record_protection_event(
             protected_data,
             context,
+            ProtectionEventType::Accessed,
+        ).await?;
+
+        // Verify data integrity
+        let data_hash = hash_data(&original_data);
+        if data_hash != protected_data.original_data_hash {
+            return Err(DataProtectionError::DataIntegrityViolation(
+                "Data integrity check failed".to_string()
+            ));
+        }
+
+        Ok(original_data)
+    }
+
+    fn check_unprotect_authorization(
+        &self,
+        protected_data: &ProtectedData,
+        context: &SecurityContext,
+    ) -> Result<(), DataProtectionError> {
+        // Check if user has permission to unprotect data of this classification
+        match protected_data.classification.sensitivity_level {
+            SensitivityLevel::Public => {
+                // Anyone can access public data
+                Ok(())
+            },
+            SensitivityLevel::Internal => {
+                // Any authenticated user can access internal data
+                Ok(())
+            },
+            SensitivityLevel::Confidential => {
+                // Need specific permission for confidential data
+                if context.permissions.contains(&"data:access:confidential".to_string()) {
+                    Ok(())
+                } else {
+                    Err(DataProtectionError::AccessDenied(
+                        "Missing permission to access confidential data".to_string()
+                    ))
+                }
+            },
+            SensitivityLevel::Restricted => {
+                // Need specific permission for restricted data
+                if context.permissions.contains(&"data:access:restricted".to_string()) {
+                    Ok(())
+                } else {
+                    Err(DataProtectionError::AccessDenied(
+                        "Missing permission to access restricted data".to_string()
+                    ))
+                }
+            },
+        }
+    }
+
+    pub async fn store_protected_data(
+        &self,
+        protected_data: &ProtectedData,
+        context: &SecurityContext,
+    ) -> Result<String, DataProtectionError> {
+        // Store protected data in secure storage
+        let storage_id = self.storage_service.store(protected_data).await?;
+
+        // Record the storage action
+        self.storage_service.record_protection_event(
+            protected_data,
+            context,
+            ProtectionEventType::Stored,
+        ).await?;
+
+        Ok(storage_id)
+    }
+
+    pub async fn retrieve_protected_data(
+        &self,
+        storage_id: &str,
+        context: &SecurityContext,
+    ) -> Result<ProtectedData, DataProtectionError> {
+        // Retrieve protected data from secure storage
+        let protected_data = self.storage_service.retrieve(storage_id).await?;
+
+        // Record the retrieval action
+        self.storage_service.record_protection_event(
+            &protected_data,
+            context,
+            ProtectionEventType::Retrieved,
+        ).await?;
+
+        Ok(protected_data)
+    }
+
+    pub fn classify_data(
+        &self,
+        data: &str,
+        data_type: &str,
+    ) -> Result<DataClassification, DataProtectionError> {
+        // Classify data without protecting it
+        let classification = self.data_classifier.classify(data, data_type)?;
+        Ok(classification)
+    }
+
+    pub async fn rotate_encryption_keys(&self) -> Result<(), DataProtectionError> {
+        // Rotate encryption keys
+        println!("Rotating encryption keys...");
+
+        // In a real implementation, this would:
+        // 1. Generate new encryption keys
+        // 2. Re-encrypt data with new keys
+        // 3. Update key metadata
+
+        Ok(())
+    }
+
+    pub async fn audit_data_access(
+        &self,
+        time_range: (u64, u64),
+    ) -> Result<Vec<ProtectionEvent>, DataProtectionError> {
+        // Retrieve audit records for data access
+        self.storage_service.get_protection_events(
+            time_range,
+            Some(&[
+                ProtectionEventType::Accessed,
+                ProtectionEventType::Retrieved,
+            ]),
+        ).await
+    }
+}
+
+fn hash_data(data: &str) -> String {
+    use sha2::{Sha256, Digest};
+
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    let result = hasher.finalize();
+
+    format!("{:x}", result)
+}
+```
+
+### 9.3 API Security Controls
+
+```rust
+pub struct ApiSecurityManager {
+    config: ApiSecurityConfig,
+    auth_service: Arc<AuthorizationService>,
+    throttling_service: ThrottlingService,
+    input_validator: InputValidator,
+    csp_manager: ContentSecurityPolicyManager,
+    cors_manager: CorsManager,
+}
+
+pub struct ApiSecurityConfig {
+    enable_rate_limiting: bool,
+    rate_limit_by_ip: bool,
+    rate_limit_by_user: bool,
+    rate_limit_anonymous_requests: u32,
+    rate_limit_authenticated_requests: u32,
+    enable_input_validation: bool,
+    allowed_origins: Vec<String>,
+    content_security_policy: String,
+    enable_jwt_auth: bool,
+    jwt_secret: String,
+    jwt_expiry_seconds: u64,
+}
+
+impl ApiSecurityManager {
+    pub fn new(
+        config: ApiSecurityConfig,
+        auth_service: Arc<AuthorizationService>,
+    ) -> Self {
+        Self {
+            throttling_service: ThrottlingService::new(
+                config.enable_rate_limiting,
+                config.rate_limit_by_ip,
+                config.rate_limit_by_user,
+                config.rate_limit_anonymous_requests,
+                config.rate_limit_authenticated_requests,
+            ),
+            input_validator: InputValidator::new(config.enable_input_validation),
+            csp_manager: ContentSecurityPolicyManager::new(&config.content_security_policy),
+            cors_manager: CorsManager::new(&config.allowed_origins),
+            auth_service,
+            config,
+        }
+    }
+
+    pub async fn initialize(&mut self) -> Result<(), ApiSecurityError> {
+        // Initialize throttling service
+        self.throttling_service.initialize().await?;
+
+        // Initialize input validator
+        self.input_validator.initialize()?;
+
+        // Initialize CSP manager
+        self.csp_manager.initialize()?;
+
+        // Initialize CORS manager
+        self.cors_manager.initialize()?;
+
+        println!("API security manager initialized");
+
+        Ok(())
+    }
+
+    pub async fn process_request(
+        &self,
+        request: &ApiRequest,
+        context: Option<&SecurityContext>,
+    ) -> Result<ApiSecurityDecision, ApiSecurityError> {
+        let mut decision = ApiSecurityDecision {
+            allow: true,
+            rate_limited: false,
+            validation_errors: Vec::new(),
+            cors_headers: HashMap::new(),
+            csp_headers: HashMap::new(),
+            security_headers: self.get_security_headers(),
+            error_message: None,
+        };
+
+        // Check rate limits
+        let rate_limit_result = self.throttling_service.check_rate_limit(
+            &request.source_ip,
+            context.map(|c| c.user_id.clone()),
+        ).await;
+
+        if let Err(ThrottlingError::RateLimitExceeded(limit_info)) = rate_limit_result {
+            decision.rate_limited = true;
+            decision.allow = false;
+            decision.error_message = Some(format!("Rate limit exceeded. Try again in {} seconds", limit_info.retry_after));
+
+            // Add rate limit headers
+            decision.security_headers.insert(
+                "X-RateLimit-Limit".to_string(),
+                limit_info.limit.to_string(),
+            );
+            decision.security_headers.insert(
+                "X-RateLimit-Remaining".to_string(),
+                "0".to_string(),
+            );
+            decision.security_headers.insert(
+                "X-RateLimit-Reset".to_string(),
+                limit_info.reset_at.to_string(),
+            );
+            decision.security_headers.insert(
+                "Retry-After".to_string(),
+                limit_info.retry_after.to_string(),
+            );
+
+            return Ok(decision);
+        }
+
+        // Check CORS
+        if let Some(origin) = &request.origin {
+            let cors_result = self.cors_manager.check_origin(origin, &request.method);
+
+            decision.cors_headers = match cors_result {
+                Ok(headers) => headers,
+                Err(e) => {
+                    decision.allow = false;
+                    decision.error_message = Some(format!("CORS error: {}", e));
+                    HashMap::new()
+                }
+            };
+        }
+
+        // Validate input
+        if self.config.enable_input_validation && request.body.is_some() {
+            let validation_result = self.input_validator.validate(
+                request.body.as_ref().unwrap(),
+                &request.path,
+                &request.method,
+            );
+
+            if let Err(ValidationError::InvalidInput(errors)) = validation_result {
+                decision.validation_errors = errors;
+                decision.allow = false;
+                decision.error_message = Some("Invalid input data".to_string());
+            }
+        }
+
+        // Add CSP headers
+        decision.csp_headers = self.csp_manager.get_csp_headers();
+
+        Ok(decision)
+    }
+
+    pub fn validate_token(&self, token: &str) -> Result<SecurityContext, ApiSecurityError> {
+        if !self.config.enable_jwt_auth {
+            return Err(ApiSecurityError::JwtAuthDisabled);
+        }
+
+        // Decode and validate JWT
+        let token_data = jsonwebtoken::decode::<JwtClaims>(
+            token,
+            &jsonwebtoken::DecodingKey::from_secret(self.config.jwt_secret.as_bytes()),
+            &jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),
+        ).map_err(|e| ApiSecurityError::InvalidToken(format!("JWT validation failed: {}", e)))?;
+
+        // Check expiration
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        if token_data.claims.exp < now {
+            return Err(ApiSecurityError::TokenExpired);
+        }
+
+        // Create security context from claims
+        let context = SecurityContext {
+            user_id: token_data.claims.sub,
+            username: token_data.claims.preferred_username
+                .unwrap_or_else(|| "unknown".to_string()),
+            roles: token_data.claims.roles.unwrap_or_else(Vec::new),
+            permissions: token_data.claims.permissions.unwrap_or_else(Vec::new),
+            source_ip: "unknown".to_string(), // Will be filled by caller
+            user_agent: "unknown".to_string(), // Will be filled by caller
+            request_id: Uuid::new_v4().to_string(),
+            timestamp: now,
+        };
+
+        Ok(context)
+    }
+
+    pub fn generate_token(
+        &self,
+        user_id: &str,
+        username: &str,
+        roles: &[String],
+        permissions: &[String],
+    ) -> Result<String, ApiSecurityError> {
+        if !self.config.enable_jwt_auth {
+            return Err(ApiSecurityError::JwtAuthDisabled);
+        }
+
+        // Get current time
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Create claims
+        let claims = JwtClaims {
+            sub: user_id.to_string(),
+            exp: now + self.config.jwt_expiry_seconds,
+            iat: now,
+            preferred_username: Some(username.to_string()),
+            roles: Some(roles.to_vec()),
+            permissions: Some(permissions.to_vec()),
+            email: None,
+            tier: None,
+            org_id: None,
+        };
+
+        // Generate token
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret(self.config.jwt_secret.as_bytes()),
+        ).map_err(|e| ApiSecurityError::TokenGenerationFailed(format!("Failed to generate JWT: {}", e)))?;
+
+        Ok(token)
+    }
+
+    fn get_security_headers(&self) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+
+        // Add standard security headers
+        headers.insert("X-Content-Type-Options".to_string(), "nosniff".to_string());
+        headers.insert("X-Frame-Options".to_string(), "DENY".to_string());
+        headers.insert("X-XSS-Protection".to_string(), "1; mode=block".to_string());
+        headers.insert("Strict-Transport-Security".to_string(), "max-age=31536000; includeSubDomains".to_string());
+        headers.insert("Referrer-Policy".to_string(), "strict-origin-when-cross-origin".to_string());
+
+        headers
+    }
+}
+
+struct ThrottlingService {
+    enabled: bool,
+    limit_by_ip: bool,
+    limit_by_user: bool,
+    anonymous_limit: u32,
+    authenticated_limit: u32,
+    rate_limits: Arc<DashMap<String, RateLimitInfo>>,
+}
+
+struct RateLimitInfo {
+    count: u32,
+    limit: u32,
+    window_start: u64,
+    last_request: u64,
+    reset_at: u64,
+}
+
+impl ThrottlingService {
+    fn new(
+        enabled: bool,
+        limit_by_ip: bool,
+        limit_by_user: bool,
+        anonymous_limit: u32,
+        authenticated_limit: u32,
+    ) -> Self {
+        Self {
+            enabled,
+            limit_by_ip,
+            limit_by_user,
+            anonymous_limit,
+            authenticated_limit,
+            rate_limits: Arc::new(DashMap::new()),
+        }
+    }
+
+    async fn initialize(&self) -> Result<(), ThrottlingError> {
+        // Start cleanup task for expired rate limits
+        let rate_limits = self.rate_limits.clone();
+
+        tokio::spawn(async move {
+            let cleanup_interval = Duration::from_secs(60);
+
+            loop {
+                tokio::time::sleep(cleanup_interval).await;
+
+                // Get current time
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+
+                // Remove expired entries (older than 1 hour)
+                rate_limits.retain(|_, info| now - info.last_request < 3600);
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn check_rate_limit(
+        &self,
+        ip: &str,
+        user_id: Option<String>,
+    ) -> Result<(), ThrottlingError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        // Get current time
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Window size: 60 seconds
+        let window_size = 60;
+
+        // Check user-based limit if enabled and user is authenticated
+        if self.limit_by_user && user_id.is_some() {
+            let user = user_id.unwrap();
+            let key = format!("user:{}", user);
+
+            let mut info = self.rate_limits.entry(key.clone())
+                .or_insert_with(|| RateLimitInfo {
+                    count: 0,
+                    limit: self.authenticated_limit,
+                    window_start: now,
+                    last_request: now,
+                    reset_at: now + window_size,
+                });
+
+            // Reset window if needed
+            if now - info.window_start >= window_size {
+                info.count = 0;
+                info.window_start = now;
+                info.reset_at = now + window_size;
+            }
+
+            // Increment count
+            info.count += 1;
+            info.last_request = now;
+
+            // Check limit
+            if info.count > info.limit {
+                let retry_after = info.reset_at - now;
+                return Err(ThrottlingError::RateLimitExceeded(RateLimitExceeded {
+                    limit: info.limit,
+                    current: info.count,
+                    reset_at: info.reset_at,
+                    retry_after,
+                }));
+            }
+        }
+
+        // Check IP-based limit if enabled
+        if self.limit_by_ip {
+            let key = format!("ip:{}", ip);
+
+            let mut info = self.rate_limits.entry(key.clone())
+                .or_insert_with(|| RateLimitInfo {
+                    count: 0,
+                    limit: if user_id.is_some() { self.authenticated_limit } else { self.anonymous_limit },
+                    window_start: now,
+                    last_request: now,
+                    reset_at: now + window_size,
+                });
+
+            // Reset window if needed
+            if now - info.window_start >= window_size {
+                info.count = 0;
+                info.window_start = now;
+                info.reset_at = now + window_size;
+            }
+
+            // Increment count
+            info.count += 1;
+            info.last_request = now;
+
+            // Check limit
+            if info.count > info.limit {
+                let retry_after = info.reset_at - now;
+                return Err(ThrottlingError::RateLimitExceeded(RateLimitExceeded {
+                    limit: info.limit,
+                    current: info.count,
+                    reset_at: info.reset_at,
+                    retry_after,
+                }));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+struct InputValidator {
+    enabled: bool,
+    validation_schemas: HashMap<String, serde_json::Value>,
+}
+
+impl InputValidator {
+    fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            validation_schemas: HashMap::new(),
+        }
+    }
+
+    fn initialize(&mut self) -> Result<(), ValidationError> {
+        // Load validation schemas
+        // In a real implementation, this would load JSON Schema definitions
+
+        // Example schema for a POST /integrations request
+        let integration_schema = serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["name", "protocol_id", "config"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                },
+                "protocol_id": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "config": {
+                    "type": "object"
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                }
+            },
+            "additionalProperties": false
+        });
+
+        self.validation_schemas.insert("POST:/integrations".to_string(), integration_schema);
+
+        Ok(())
+    }
+
+    fn validate(
+        &self,
+        body: &str,
+        path: &str,
+        method: &str,
+    ) -> Result<(), ValidationError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        // Get schema for this endpoint
+        let key = format!("{}:{}", method, path);
+        let schema = self.validation_schemas.get(&key);
+
+        if let Some(schema) = schema {
+            // Parse request body
+            let data: serde_json::Value = match serde_json::from_str(body) {
+                Ok(data) => data,
+                Err(e) => {
+                    return Err(ValidationError::InvalidInput(vec![
+                        format!("Invalid JSON: {}", e)
+                    ]));
+                }
+            };
+
+            // Validate against schema
+            let schema_obj: jsonschema::JSONSchema = match jsonschema::JSONSchema::options()
+                .with_draft(jsonschema::Draft::Draft7)
+                .compile(schema) {
+                Ok(schema) => schema,
+                Err(e) => {
+                    return Err(ValidationError::SchemaError(format!("Invalid schema: {}", e)));
+                }
+            };
+
+            // Perform validation
+            let validation_result = schema_obj.validate(&data);
+
+            if let Err(errors) = validation_result {
+                let error_messages = errors
+                    .map(|e| format!("{}: {}", e.instance_path, e.kind))
+                    .collect();
+
+                return Err(ValidationError::InvalidInput(error_messages));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+struct ContentSecurityPolicyManager {
+    csp_value: String,
+}
+
+impl ContentSecurityPolicyManager {
+    fn new(csp_value: &str) -> Self {
+        Self {
+            csp_value: csp_value.to_string(),
+        }
+    }
+
+    fn initialize(&self) -> Result<(), ApiSecurityError> {
+        // Validate CSP syntax
+        if self.csp_value.is_empty() {
+            return Ok(());
+        }
+
+        // In a real implementation, this would validate the CSP syntax
+
+        Ok(())
+    }
+
+    fn get_csp_headers(&self) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+
+        if !self.csp_value.is_empty() {
+            headers.insert("Content-Security-Policy".to_string(), self.csp_value.clone());
+        }
+
+        headers
+    }
+}
+
+struct CorsManager {
+    allowed_origins: Vec<String>,
+}
+
+impl CorsManager {
+    fn new(allowed_origins: &[String]) -> Self {
+        Self {
+            allowed_origins: allowed_origins.to_vec(),
+        }
+    }
+
+    fn initialize(&self) -> Result<(), ApiSecurityError> {
+        // Validate allowed origins
+        for origin in &self.allowed_origins {
+            if origin != "*" && !origin.starts_with("http") {
+                return Err(ApiSecurityError::InvalidCorsOrigin(format!(
+                    "Invalid CORS origin: {}", origin
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_origin(
+        &self,
+        origin: &str,
+        method: &str,
+    ) -> Result<HashMap<String, String>, ApiSecurityError> {
+        let mut headers = HashMap::new();
+
+        // Check if origin is allowed
+        let is_allowed = self.allowed_origins.contains(&"*".to_string()) ||
+                         self.allowed_origins.contains(&origin.to_string());
+
+        if is_allowed {
+            headers.insert("Access-Control-Allow-Origin".to_string(), origin.to_string());
+            headers.insert("Access-Control-Allow-Methods".to_string(), "GET, POST, PUT, DELETE, OPTIONS".to_string());
+            headers.insert("Access-Control-Allow-Headers".to_string(), "Content-Type, Authorization, X-Requested-With".to_string());
+            headers.insert("Access-Control-Allow-Credentials".to_string(), "true".to_string());
+            headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
+
+            Ok(headers)
+        } else {
+            Err(ApiSecurityError::CorsOriginNotAllowed(format!(
+                "Origin not allowed: {}", origin
+            )))
+        }
+    }
+}
+```
+
+### 9.4 Vulnerability Management
+
+```rust
+pub struct VulnerabilityManager {
+    config: VulnerabilityConfig,
+    scanner: VulnerabilityScanner,
+    dependency_analyzer: DependencyAnalyzer,
+    vulnerability_database: VulnerabilityDatabase,
+    policy_enforcer: PolicyEnforcer,
+    notification_service: NotificationService,
+}
+
+pub struct VulnerabilityConfig {
+    scan_schedule_cron: String,
+    minimum_severity_to_fix: VulnerabilitySeverity,
+    auto_remediation_enabled: bool,
+    notification_channels: Vec<String>,
+    ignore_patterns: Vec<String>,
+    vulnerability_db_url: String,
+    scan_timeout_seconds: u64,
+}
+
+impl VulnerabilityManager {
+    pub fn new(config: VulnerabilityConfig) -> Self {
+        Self {
+            scanner: VulnerabilityScanner::new(config.scan_timeout_seconds),
+            dependency_analyzer: DependencyAnalyzer::new(),
+            vulnerability_database: VulnerabilityDatabase::new(&config.vulnerability_db_url),
+            policy_enforcer: PolicyEnforcer::new(config.minimum_severity_to_fix),
+            notification_service: NotificationService::new(config.notification_channels.clone()),
+            config,
+        }
+    }
+
+    pub async fn initialize(&mut self) -> Result<(), VulnerabilityError> {
+        // Initialize vulnerability scanner
+        self.scanner.initialize().await?;
+
+        // Initialize dependency analyzer
+        self.dependency_analyzer.initialize().await?;
+
+        // Initialize vulnerability database
+        self.vulnerability_database.initialize().await?;
+
+        // Initialize policy enforcer
+        self.policy_enforcer.initialize().await?;
+
+        // Schedule regular scans
+        self.schedule_regular_scans()?;
+
+        println!("Vulnerability manager initialized");
+
+        Ok(())
+    }
+
+    pub async fn scan_integration(
+        &self,
+        integration_id: &str,
+        code_path: &str,
+    ) -> Result<VulnerabilityScanResult, VulnerabilityError> {
+        println!("Scanning integration {} at {}", integration_id, code_path);
+
+        // Analyze dependencies
+        let dependencies = self.dependency_analyzer.analyze_dependencies(code_path).await?;
+
+        // Scan for vulnerabilities
+        let scan_results = self.scanner.scan(code_path, &self.config.ignore_patterns).await?;
+
+        // Check dependencies for vulnerabilities
+        let dependency_vulnerabilities = self.vulnerability_database
+            .check_dependencies(&dependencies)
+            .await?;
+
+        // Combine results
+        let mut all_vulnerabilities = scan_results.vulnerabilities;
+        all_vulnerabilities.extend(dependency_vulnerabilities);
+
+        // Apply policy checks
+        let policy_violations = self.policy_enforcer.check_policy(&all_vulnerabilities)?;
+
+        // Create scan result
+        let scan_result = VulnerabilityScanResult {
+            integration_id: integration_id.to_string(),
+            scan_id: Uuid::new_v4().to_string(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            vulnerabilities: all_vulnerabilities.clone(),
+            dependency_count: dependencies.len(),
+            policy_violations,
+            summary: self.generate_summary(&all_vulnerabilities),
+            remediation_plan: self.generate_remediation_plan(&all_vulnerabilities),
+        };
+
+        // Send notifications if needed
+        if has_critical_vulnerabilities(&all_vulnerabilities) {
+            self.notification_service.send_vulnerability_notification(
+                &scan_result,
+                NotificationPriority::High,
+            ).await?;
+        } else if has_high_vulnerabilities(&all_vulnerabilities) {
+            self.notification_service.send_vulnerability_notification(
+                &scan_result,
+                NotificationPriority::Medium,
+            ).await?;
+        }
+
+        Ok(scan_result)
+    }
+
+    pub async fn remediate_vulnerabilities(
+        &self,
+        scan_result: &VulnerabilityScanResult,
+        code_path: &str,
+    ) -> Result<RemediationResult, VulnerabilityError> {
+        if !self.config.auto_remediation_enabled {
+            return Err(VulnerabilityError::AutoRemediationDisabled);
+        }
+
+        println!("Attempting to remediate vulnerabilities for {}", scan_result.integration_id);
+
+        // Filter vulnerabilities that can be automatically fixed
+        let fixable_vulnerabilities = scan_result.vulnerabilities
+            .iter()
+            .filter(|v| v.auto_fixable && v.severity >= self.config.minimum_severity_to_fix)
+            .collect::<Vec<_>>();
+
+        if fixable_vulnerabilities.is_empty() {
+            return Ok(RemediationResult {
+                scan_id: scan_result.scan_id.clone(),
+                integration_id: scan_result.integration_id.clone(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                fixed_vulnerabilities: Vec::new(),
+                remaining_vulnerabilities: scan_result.vulnerabilities.clone(),
+                success: false,
+                summary: "No automatically fixable vulnerabilities found".to_string(),
+            });
+        }
+
+        // Apply fixes
+        let mut fixed_vulnerabilities = Vec::new();
+        let mut remaining_vulnerabilities = scan_result.vulnerabilities.clone();
+
+        for vulnerability in &fixable_vulnerabilities {
+            match self.apply_fix(vulnerability, code_path).await {
+                Ok(_) => {
+                    // Mark as fixed
+                    fixed_vulnerabilities.push(vulnerability.clone());
+
+                    // Remove from remaining
+                    remaining_vulnerabilities.retain(|v| v.id != vulnerability.id);
+                },
+                Err(e) => {
+                    println!("Failed to fix vulnerability {}: {}", vulnerability.id, e);
+                }
+            }
+        }
+
+        // Generate result
+        let result = RemediationResult {
+            scan_id: scan_result.scan_id.clone(),
+            integration_id: scan_result.integration_id.clone(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            fixed_vulnerabilities,
+            remaining_vulnerabilities,
+            success: !fixed_vulnerabilities.is_empty(),
+            summary: format!(
+                "Fixed {} vulnerabilities, {} remaining",
+                fixed_vulnerabilities.len(),
+                remaining_vulnerabilities.len()
+            ),
+        };
+
+        // Send notification
+        self.notification_service.send_remediation_notification(
+            &result,
+            NotificationPriority::Medium,
+        ).await?;
+
+        Ok(result)
+    }
+
+    pub async fn get_vulnerability_trends(
+        &self,
+        integration_id: &str,
+        time_range: (u64, u64),
+    ) -> Result<VulnerabilityTrends, VulnerabilityError> {
+        // Get historical scan results
+        let scan_results = self.vulnerability_database
+            .get_historical_scans(integration_id, time_range)
+            .await?;
+
+        if scan_results.is_empty() {
+            return Ok(VulnerabilityTrends {
+                integration_id: integration_id.to_string(),
+                start_time: time_range.0,
+                end_time: time_range.1,
+                scan_count: 0,
+                trends_by_severity: HashMap::new(),
+                top_recurring_vulnerabilities: Vec::new(),
+                average_time_to_fix: None,
+            });
+        }
+
+        // Calculate trends
+        let mut trends_by_severity = HashMap::new();
+        let mut vulnerability_counts = HashMap::new();
+        let mut fixed_vulnerabilities = HashMap::new();
+
+        for scan in &scan_results {
+            // Count by severity
+            for vuln in &scan.vulnerabilities {
+                *trends_by_severity
+                    .entry(vuln.severity)
+                    .or_insert(0) += 1;
+
+                // Count occurrences of each vulnerability
+                *vulnerability_counts
+                    .entry(vuln.id.clone())
+                    .or_insert(0) += 1;
+            }
+
+            // Track fixed vulnerabilities
+            if scan.vulnerabilities.len() < scan_results[0].vulnerabilities.len() {
+                // This scan has fewer vulnerabilities than the first one,
+                // so some vulnerabilities may have been fixed
+                let previous_scan = scan_results
+                    .iter()
+                    .find(|s| s.timestamp < scan.timestamp)
+                    .unwrap_or(&scan_results[0]);
+
+                for vuln in &previous_scan.vulnerabilities {
+                    if !scan.vulnerabilities.iter().any(|v| v.id == vuln.id) {
+                        // This vulnerability was present in the previous scan but not in this one
+                        fixed_vulnerabilities.insert(
+                            vuln.id.clone(),
+                            scan.timestamp - previous_scan.timestamp
+                        );
+                    }
+                }
+            }
+        }
+
+        // Calculate average time to fix
+        let average_time_to_fix = if !fixed_vulnerabilities.is_empty() {
+            let total_time: u64 = fixed_vulnerabilities.values().sum();
+            Some(total_time / fixed_vulnerabilities.len() as u64)
+        } else {
+            None
+        };
+
+        // Get top recurring vulnerabilities
+        let mut top_vulnerabilities = vulnerability_counts
+            .iter()
+            .map(|(id, count)| {
+                let vulnerability = scan_results
+                    .iter()
+                    .flat_map(|s| &s.vulnerabilities)
+                    .find(|v| v.id == *id)
+                    .unwrap()
+                    .clone();
+
+                (vulnerability, *count)
+            })
+            .collect::<Vec<_>>();
+
+        top_vulnerabilities.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let top_recurring = top_vulnerabilities
+            .into_iter()
+            .take(5)
+            .map(|(vuln, count)| RecurringVulnerability {
+                vulnerability: vuln,
+                occurrence_count: count,
+                first_seen: scan_results.first().unwrap().timestamp,
+                last_seen: scan_results.last().unwrap().timestamp,
+            })
+            .collect();
+
+        Ok(VulnerabilityTrends {
+            integration_id: integration_id.to_string(),
+            start_time: time_range.0,
+            end_time: time_range.1,
+            scan_count: scan_results.len(),
+            trends_by_severity,
+            top_recurring_vulnerabilities: top_recurring,
+            average_time_to_fix,
+        })
+    }
+
+    fn schedule_regular_scans(&self) -> Result<(), VulnerabilityError> {
+        // In a real implementation, this would set up a scheduled task using the cron expression
+        // For this design document, we'll just log the schedule
+
+        println!("Scheduled vulnerability scans with schedule: {}", self.config.scan_schedule_cron);
+
+        Ok(())
+    }
+
+    async fn apply_fix(
+        &self,
+        vulnerability: &Vulnerability,
+        code_path: &str,
+    ) -> Result<(), VulnerabilityError> {
+        // In a real implementation, this would apply fixes to the code
+        // For this design document, we'll just log the fix attempt
+
+        println!("Applying fix for vulnerability {} at {}", vulnerability.id, vulnerability.location);
+
+        Ok(())
+    }
+
+    fn generate_summary(&self, vulnerabilities: &[Vulnerability]) -> VulnerabilitySummary {
+        let mut counts_by_severity = HashMap::new();
+        let mut counts_by_type = HashMap::new();
+
+        for vuln in vulnerabilities {
+            *counts_by_severity.entry(vuln.severity).or_insert(0) += 1;
+            *counts_by_type.entry(vuln.vulnerability_type.clone()).or_insert(0) += 1;
+        }
+
+        VulnerabilitySummary {
+            total_count: vulnerabilities.len(),
+            counts_by_severity,
+            counts_by_type,
+            auto_fixable_count: vulnerabilities.iter().filter(|v| v.auto_fixable).count(),
+            cve_count: vulnerabilities.iter().filter(|v| v.cve_id.is_some()).count(),
+        }
+    }
+
+    fn generate_remediation_plan(&self, vulnerabilities: &[Vulnerability]) -> RemediationPlan {
+        // Sort vulnerabilities by severity (highest first)
+        let mut sorted_vulnerabilities = vulnerabilities.to_vec();
+        sorted_vulnerabilities.sort_by(|a, b| b.severity.cmp(&a.severity));
+
+        // Group by whether they're automatically fixable
+        let (auto_fixable, manual_fixes): (Vec<_>, Vec<_>) = sorted_vulnerabilities
+            .into_iter()
+            .partition(|v| v.auto_fixable);
+
+        RemediationPlan {
+            automatic_fixes: auto_fixable
+                .iter()
+                .map(|v| RemediationStep {
+                    vulnerability_id: v.id.clone(),
+                    severity: v.severity,
+                    description: format!("Automatically fix {} in {}", v.name, v.location),
+                    estimated_effort: "Low".to_string(),
+                    recommended_action: "Run automatic remediation".to_string(),
+                })
+                .collect(),
+            manual_fixes: manual_fixes
+                .iter()
+                .map(|v| RemediationStep {
+                    vulnerability_id: v.id.clone(),
+                    severity: v.severity,
+                    description: format!("Manually fix {} in {}", v.name, v.location),
+                    estimated_effort: match v.severity {
+                        VulnerabilitySeverity::Critical | VulnerabilitySeverity::High => "High".to_string(),
+                        VulnerabilitySeverity::Medium => "Medium".to_string(),
+                        VulnerabilitySeverity::Low => "Low".to_string(),
+                    },
+                    recommended_action: v.fix_recommendation.clone().unwrap_or_else(|| "Review code".to_string()),
+                })
+                .collect(),
+        }
+    }
+}
+
+fn has_critical_vulnerabilities(vulnerabilities: &[Vulnerability]) -> bool {
+    vulnerabilities.iter().any(|v| v.severity == VulnerabilitySeverity::Critical)
+}
+
+fn has_high_vulnerabilities(vulnerabilities: &[Vulnerability]) -> bool {
+    vulnerabilities.iter().any(|v| v.severity == VulnerabilitySeverity::High)
+}
+
+## 10. Implementation Roadmap
+
+The integration roadmap outlines a phased approach to implementing the Fluxa integrations over time, ensuring a systematic and prioritized delivery of integration capabilities.
+
+### 10.1 Phase 1: Core Integrations
+
+**Timeline: Q3 2025 (2 months)**
+
+This phase focuses on delivering the essential protocol integrations needed for the initial MVP launch of Fluxa.
+
+#### Milestones:
+1. **Week 1-2:** Set up Integration Framework
+   - Implement Protocol Adapter Interface
+   - Create Protocol Registry
+   - Implement Error Handling system
+   - Set up test harness
+
+2. **Week 3-4:** Jupiter Integration
+   - Develop Jupiter Adapter
+   - Implement pricing and quotes functionality
+   - Add route optimization
+   - Implement transaction building
+
+3. **Week 5-6:** Oracle Integration
+   - Implement Pyth Network adapter
+   - Create Oracle Failover system
+   - Add price validation logic
+   - Set up monitoring for oracle health
+
+4. **Week 7-8:** Marinade Finance Integration
+   - Develop liquid staking integration
+   - Implement mSOL conversion functions
+   - Add stake/unstake functions
+   - Set up validation system
+
+#### Deliverables:
+- Complete Integration Framework with core interfaces
+- Jupiter Swap functionality
+- Price Oracle with fallback mechanism
+- Liquid staking through Marinade
+- Comprehensive test suite for all integrations
+- Basic monitoring and alerting
+
+### 10.2 Phase 2: Extended Integrations
+
+**Timeline: Q4 2025 (2 months)**
+
+This phase expands the integration surface to include additional protocols and enhanced functionality.
+
+#### Milestones:
+1. **Week 1-2:** Lending Protocol Integration
+   - Implement Solend Adapter
+   - Add deposit/withdraw functionality
+   - Implement borrow/repay operations
+   - Create lending optimization system
+
+2. **Week 3-4:** Additional AMMs
+   - Implement Orca Whirlpools Adapter
+   - Develop Raydium Integration
+   - Add concentrated liquidity position management
+   - Implement position analytics
+
+3. **Week 5-6:** Advanced Oracle Features
+   - Implement Switchboard adapter
+   - Create custom price feeds
+   - Develop derived price calculations
+   - Implement historical price analysis
+
+4. **Week 7-8:** Yield Optimization
+   - Implement auto-compounding
+   - Create yield comparison tools
+   - Add automated position rebalancing
+   - Develop yield projection models
+
+#### Deliverables:
+- Expanded protocol support (Solend, Orca, Raydium)
+- Advanced lending operations with optimization
+- Enhanced oracle functionality with multiple data sources
+- Comprehensive yield optimization systems
+- Extended test coverage for new integrations
+- Advanced monitoring with protocol-specific metrics
+
+### 10.3 Phase 3: Partner API
+
+**Timeline: Q1 2026 (2 months)**
+
+This phase focuses on extending the integration layer to external partners through robust API endpoints.
+
+#### Milestones:
+1. **Week 1-2:** API Design and Implementation
+   - Finalize REST API specifications
+   - Implement GraphQL schema
+   - Create WebSocket event system
+   - Develop authentication and authorization
+
+2. **Week 3-4:** API Gateway and Management
+   - Implement rate limiting and throttling
+   - Set up API key management
+   - Create developer portal
+   - Implement analytics tracking
+
+3. **Week 5-6:** SDK Development
+   - Create JavaScript/TypeScript SDK
+   - Develop Python SDK
+   - Build Rust SDK
+   - Write comprehensive documentation
+
+4. **Week 7-8:** Partner Onboarding and Testing
+   - Create partner onboarding process
+   - Develop sample applications
+   - Run beta testing with partners
+   - Gather feedback and iterate
+
+#### Deliverables:
+- Complete REST and GraphQL APIs
+- Real-time WebSocket API for events
+- Multiple SDKs for different languages
+- Developer portal and documentation
+- Comprehensive monitoring and analytics
+- Partner onboarding materials
+
+### 10.4 Phase 4: Enterprise Integration Suite
+
+**Timeline: Q2 2026 (3 months)**
+
+This phase expands the integration capabilities to enterprise-grade features and additional protocols.
+
+#### Milestones:
+1. **Week 1-3:** Enterprise Security Features
+   - Implement advanced authentication
+   - Add audit logging
+   - Create compliance reporting
+   - Set up advanced encryption
+
+2. **Week 4-6:** Integration Administration
+   - Create admin dashboard
+   - Implement integration governance
+   - Add protocol upgrade management
+   - Develop configuration management
+
+3. **Week 7-9:** Performance Optimization
+   - Implement caching systems
+   - Add parallel processing
+   - Optimize transaction bundling
+   - Create performance analytics
+
+4. **Week 10-12:** Advanced Integrations
+   - Implement cross-chain bridges
+   - Add enterprise asset management
+   - Create institutional-grade reporting
+   - Develop risk management tools
+
+#### Deliverables:
+- Enterprise-grade security and compliance features
+- Advanced administration and governance tools
+- Optimized performance for high-volume operations
+- Cross-chain integration capabilities
+- Comprehensive documentation and training materials
+- SLA and support framework
+
+## 11. Appendices
+
+### 11.1 API Specifications
+
+#### 11.1.1 REST API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/protocols` | GET | List all available protocols |
+| `/api/v1/protocols/{id}` | GET | Get details for a specific protocol |
+| `/api/v1/quotes` | POST | Get swap quotes across protocols |
+| `/api/v1/swap` | POST | Execute a token swap |
+| `/api/v1/stake` | POST | Stake SOL via Marinade |
+| `/api/v1/unstake` | POST | Unstake SOL from Marinade |
+| `/api/v1/prices` | GET | Get token prices from oracles |
+| `/api/v1/lending/markets` | GET | List lending markets |
+| `/api/v1/lending/deposit` | POST | Deposit assets into lending platform |
+| `/api/v1/lending/withdraw` | POST | Withdraw assets from lending platform |
+| `/api/v1/lending/borrow` | POST | Borrow assets from lending platform |
+| `/api/v1/lending/repay` | POST | Repay borrowed assets |
+| `/api/v1/positions` | GET | Get user's active positions |
+| `/api/v1/health` | GET | Get system health status |
+
+#### 11.1.2 GraphQL Schema (Excerpt)
 ```

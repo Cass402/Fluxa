@@ -172,4 +172,137 @@ pub enum ErrorCode {
     /// mathematical issues when calculating with reserve amounts.
     #[msg("Zero reserve amount provided")]
     ZeroReserveAmount,
+
+    /// Oracle not initialized
+    #[msg("Oracle not initialized")]
+    OracleNotInitialized,
+
+    /// Oracle timestamp invalid
+    #[msg("Oracle timestamp invalid")]
+    OracleInvalidTimestamp,
+
+    /// Oracle insufficient data
+    #[msg("Oracle insufficient data")]
+    OracleInsufficientData,
+
+    /// Oracle cardinality too large
+    #[msg("Oracle cardinality too large")]
+    OracleCardinalityTooLarge,
+
+    /// Invalid input parameters provided
+    #[msg("Invalid input parameters provided for operation")]
+    InvalidInput,
+
+    /// Invalid sqrt price limit
+    #[msg("Invalid sqrt price limit")]
+    InvalidSqrtPriceLimit,
+
+    /// Returned when attempting to close a position that still has liquidity
+    ///
+    /// Positions can only be closed if they have zero liquidity. This error
+    /// ensures users must remove all liquidity before closing a position.
+    #[msg("Position still has liquidity and cannot be closed")]
+    PositionNotEmpty,
+
+    /// Returned when attempting to close a position that has uncollected fees
+    ///
+    /// Fees must be collected before closing a position to avoid loss of funds.
+    #[msg("Position has uncollected fees that must be claimed before closing")]
+    PositionFeesNotCollected,
+
+    /// Returned when attempting to adjust position boundaries with invalid parameters
+    ///
+    /// Position adjustment must follow protocol rules for tick spacing and ranges.
+    #[msg("Invalid position boundary adjustment parameters")]
+    InvalidPositionAdjustment,
+
+    /// Returned when attempting to add or remove zero liquidity
+    ///
+    /// Liquidity delta must be non-zero to avoid wasting gas on no-op transactions.
+    #[msg("Liquidity delta must be non-zero")]
+    ZeroLiquidityDelta,
+
+    /// Returned when observation time delta is too large for compression
+    ///
+    /// The time between observations exceeds what can be stored in the compressed format.
+    #[msg("Observation time delta too large for compression")]
+    ObservationTimeDeltaTooLarge,
+
+    /// Returned when observation value delta exceeds compressible range
+    ///
+    /// The difference between observation values is too large for the compressed format.
+    #[msg("Observation delta too large for compression")]
+    ObservationDeltaOverflow,
+
+    /// Returned when a counter value decreases instead of increasing
+    ///
+    /// Cumulative values should only increase over time.
+    #[msg("Observation value decreased unexpectedly")]
+    ObservationValueDecreased,
+
+    /// Returned when an observation timestamp is too large for compression
+    ///
+    /// The timestamp exceeds what can be stored in the compressed format.
+    #[msg("Observation timestamp too large for compression")]
+    ObservationTimestampTooLarge,
+
+    /// Returned when an observation value is too large for compression
+    ///
+    /// The value exceeds what can be stored in the compressed format.
+    #[msg("Observation value too large for compression")]
+    ObservationValueTooLarge,
+
+    /// Returned when trying to query an oracle with no observations
+    ///
+    /// Observations must be written to the oracle before querying.
+    #[msg("No observations available in oracle")]
+    NoObservations,
+
+    /// Returned when an observation query hits boundary conditions
+    ///
+    /// The query cannot be satisfied with the available observation data.
+    #[msg("Cannot interpolate observations at boundary")]
+    ObservationBoundaryError,
+
+    /// Returned when attempting to grow observations to an invalid size
+    ///
+    /// New observation capacity must be larger than current capacity.
+    #[msg("Invalid observation growth parameters")]
+    InvalidObservationGrowth,
+
+    /// Returned when attempting to grow observations beyond maximum allowed
+    ///
+    /// The requested capacity exceeds implementation limits.
+    #[msg("Maximum observation capacity exceeded")]
+    MaxObservationsExceeded,
+
+    /// Returned when attempting to access an observation index outside the buffer bounds
+    ///
+    /// The requested observation index is greater than or equal to the cardinality.
+    #[msg("Observation index out of bounds")]
+    ObservationIndexOutOfBounds,
+
+    /// Returned when attempting to access an observation that is not initialized
+    ///
+    /// The requested observation slot exists but has not been populated with data.
+    #[msg("Observation not initialized")]
+    ObservationNotInitialized,
+
+    /// Returned when the binary search for surrounding observations fails
+    ///
+    /// This likely indicates a problem with the observation buffer structure.
+    #[msg("Observation search failed to find valid surrounding observations")]
+    ObservationSearch,
+
+    /// Returned when attempting to grow observation cardinality with invalid parameters
+    ///
+    /// New cardinality must be greater than current cardinality.
+    #[msg("Invalid observation cardinality")]
+    InvalidObservationCardinality,
+
+    /// Returned when timestamp calculations would overflow
+    ///
+    /// This prevents issues when working with timestamp differences.
+    #[msg("Timestamp calculation would overflow")]
+    TimestampOverflow,
 }

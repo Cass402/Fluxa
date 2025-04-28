@@ -13,6 +13,8 @@
 /// 4. **Trading** - Execute swaps between tokens using the provided liquidity
 /// 5. **Fee Collection** - Collect accumulated fees from positions
 /// 6. **Position Modification** - Increase or decrease liquidity in existing positions
+/// 7. **Position Closure** - Close positions with zero liquidity to reclaim rent
+/// 8. **Protocol Fee Collection** - Transfer protocol fees to the treasury
 ///
 /// Each instruction is isolated in its own module with clear documentation on
 /// the accounts required and the constraints that must be satisfied.
@@ -29,15 +31,18 @@
 /// ## Fee Structure
 ///
 /// Fluxa AMM supports multiple fee tiers (similar to Uniswap v3):
-/// - Low: For stable pairs with minimal price movements
-/// - Medium: For standard pairs with moderate volatility
-/// - High: For exotic pairs with high volatility
+/// - Low: 0.01% - For stable pairs with minimal price movements
+/// - Medium: 0.05% - For standard pairs with moderate volatility
+/// - High: 0.3% - For exotic pairs with high volatility
 ///
 /// A portion of all fees (the protocol fee) is reserved for protocol governance,
 /// while the majority goes to liquidity providers proportional to their contribution.
+pub mod close_position;
 pub mod collect_fees;
+pub mod collect_protocol_fees;
 pub mod create_position;
 pub mod create_token_pair;
 pub mod initialize_pool;
 pub mod modify_position;
+pub mod multi_hop_swap;
 pub mod swap;
