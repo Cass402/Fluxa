@@ -1,8 +1,3 @@
-## 3. Simplified Tier Messaging
-
-**Document:** Fluxa Tokenomics & Protocol Fee Design (FLUXA-TOKEN-2025-001)  
-**Section:** 3.1.2 Fee Discounts and Benefits
-
 # Fluxa: Tokenomics and Protocol Fee Design
 
 **Document ID:** FLUXA-TOKEN-2025-001  

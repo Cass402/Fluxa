@@ -1,0 +1,138 @@
+name: Provision Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to provision (development, staging, production)"
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      terraform_action:
+        description: "Terraform action to perform"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+        default: "plan"
+
+env:
+  TF_VAR_env: ${{ github.event.inputs.environment }}
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate environment input
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" != "development" && \
+                "${{ github.event.inputs.environment }}" != "staging" && \
+                "${{ github.event.inputs.environment }}" != "production" ]]; then
+            echo "Invalid environment. Must be one of: development, staging, production"
+            exit 1
+          fi
+
+  provision:
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: infrastructure/${{ github.event.inputs.environment }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: infrastructure/${{ github.event.inputs.environment }}
+
+      - name: Terraform Plan
+        if: github.event.inputs.terraform_action == 'plan' || github.event.inputs.terraform_action == 'apply'
+        id: plan
+        run: terraform plan -out=tfplan.out
+        working-directory: infrastructure/${{ github.event.inputs.environment }}
+
+      - name: Upload Plan
+        if: github.event.inputs.terraform_action == 'plan'
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-plan
+          path: infrastructure/${{ github.event.inputs.environment }}/tfplan.out
+          retention-days: 5
+
+      - name: Terraform Apply
+        if: github.event.inputs.terraform_action == 'apply'
+        run: terraform apply -auto-approve tfplan.out
+        working-directory: infrastructure/${{ github.event.inputs.environment }}
+
+      - name: Terraform Destroy
+        if: github.event.inputs.terraform_action == 'destroy'
+        run: terraform destroy -auto-approve
+        working-directory: infrastructure/${{ github.event.inputs.environment }}
+
+      - name: Generate Infrastructure Report
+        if: github.event.inputs.terraform_action == 'apply'
+        run: |
+          # Generate a report of the provisioned resources
+          terraform output -json > terraform-output.json
+          echo "## Infrastructure Provisioning Report" > infrastructure-report.md
+          echo "Environment: ${{ github.event.inputs.environment }}" >> infrastructure-report.md
+          echo "Provisioned at: $(date)" >> infrastructure-report.md
+          echo "" >> infrastructure-report.md
+          echo "### Resources Created" >> infrastructure-report.md
+          terraform state list | while read -r resource; do
+            echo "- $resource" >> infrastructure-report.md
+          done
+        working-directory: infrastructure/${{ github.event.inputs.environment }}
+
+      - name: Upload Infrastructure Report
+        if: github.event.inputs.terraform_action == 'apply'
+        uses: actions/upload-artifact@v3
+        with:
+          name: infrastructure-report
+          path: infrastructure/${{ github.event.inputs.environment }}/infrastructure-report.md
+          retention-days: 30
+
+  notify:
+    needs: provision
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download infrastructure report
+        if: github.event.inputs.terraform_action == 'apply' && needs.provision.result == 'success'
+        uses: actions/download-artifact@v3
+        with:
+          name: infrastructure-report
+          path: ./
+
+      - name: Send notification
+        uses: ./.github/actions/send-notification
+        with:
+          status: ${{ needs.provision.result == 'success' && 'success' || 'failure' }}
+          environment: ${{ github.event.inputs.environment }}
+          message: |
+            Infrastructure ${{ github.event.inputs.terraform_action }} for ${{ github.event.inputs.environment }} environment was ${{ needs.provision.result == 'success' && 'successful' || 'unsuccessful' }}.
+            Triggered by: ${{ github.actor }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

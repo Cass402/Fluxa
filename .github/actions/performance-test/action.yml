@@ -1,0 +1,289 @@
+name: "Performance Test"
+description: "Run performance benchmarks against Solana programs"
+inputs:
+  cluster:
+    description: "Solana cluster to test on (localhost, devnet, testnet, mainnet-beta)"
+    required: true
+    default: "localhost"
+  program_keypair_path:
+    description: "Path to the program keypair file"
+    required: true
+    default: "target/deploy/amm_core-keypair.json"
+  test_duration:
+    description: "Duration of the performance test in seconds"
+    required: false
+    default: "60"
+  transactions_per_second:
+    description: "Target transactions per second to generate"
+    required: false
+    default: "50"
+  report_path:
+    description: "Path to output the performance report"
+    required: false
+    default: "performance-report"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up environment
+      shell: bash
+      run: |
+        # Create report directory
+        mkdir -p ${{ inputs.report_path }}
+
+        # Set up Solana URL
+        SOLANA_URL=""
+        case "${{ inputs.cluster }}" in
+          "localhost")
+            SOLANA_URL="http://localhost:8899"
+            ;;
+          "devnet")
+            SOLANA_URL="https://api.devnet.solana.com"
+            ;;
+          "testnet")
+            SOLANA_URL="https://api.testnet.solana.com"
+            ;;
+          "mainnet-beta")
+            SOLANA_URL="https://api.mainnet-beta.solana.com"
+            ;;
+          *)
+            echo "Invalid cluster: ${{ inputs.cluster }}"
+            exit 1
+            ;;
+        esac
+
+        solana config set --url $SOLANA_URL
+        echo "SOLANA_URL=$SOLANA_URL" >> $GITHUB_ENV
+        echo "Performance testing against $SOLANA_URL"
+
+        # Install required tools
+        npm install -g autocannon
+
+    - name: Start local validator if testing locally
+      shell: bash
+      if: inputs.cluster == 'localhost'
+      run: |
+        echo "Starting local validator..."
+        solana-test-validator --quiet --bpf-program $(solana address -k ${{ inputs.program_keypair_path }}) target/deploy/amm_core.so &
+        echo "VALIDATOR_PID=$!" >> $GITHUB_ENV
+
+        # Wait for validator to start
+        sleep 5
+        solana cluster-version
+
+        # Fund test wallet
+        solana airdrop 10
+
+    - name: Extract program ID
+      shell: bash
+      id: program_id
+      run: |
+        PROGRAM_ID=$(solana address -k ${{ inputs.program_keypair_path }})
+        echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_OUTPUT
+        echo "Testing program ID: $PROGRAM_ID"
+
+    - name: Generate benchmark transactions
+      shell: bash
+      run: |
+        echo "Generating benchmark transactions..."
+
+        # Create test script for sending transactions
+        cat > performance-test.js << EOF
+        const { Connection, PublicKey, Keypair, Transaction } = require('@solana/web3.js');
+        const { BN } = require('bn.js');
+        const fs = require('fs');
+
+        async function runBenchmark() {
+          const connection = new Connection(process.env.SOLANA_URL, 'confirmed');
+          const programId = new PublicKey('${{ steps.program_id.outputs.PROGRAM_ID }}');
+          
+          // Load test wallet
+          const secretKey = new Uint8Array(JSON.parse(fs.readFileSync(process.env.HOME + '/.config/solana/id.json')));
+          const wallet = Keypair.fromSecretKey(secretKey);
+          
+          // Track metrics
+          const startTime = Date.now();
+          const endTime = startTime + (${{ inputs.test_duration }} * 1000);
+          const metrics = {
+            totalTx: 0,
+            confirmedTx: 0,
+            failedTx: 0,
+            latencies: [],
+            startTime,
+            endTime: 0
+          };
+          
+          // Create sample transaction - should be replaced with actual program interaction
+          async function createSampleTransaction() {
+            const tx = new Transaction();
+            // Add instructions to interact with your program here
+            // For now, we'll use a transfer instruction as placeholder
+            return tx;
+          }
+          
+          // Send transaction and measure latency
+          async function sendTransaction() {
+            try {
+              const tx = await createSampleTransaction();
+              const txStart = Date.now();
+              
+              // Sign and send transaction
+              tx.feePayer = wallet.publicKey;
+              tx.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+              const signedTx = wallet.signTransaction(tx);
+              
+              const signature = await connection.sendRawTransaction(signedTx.serialize());
+              metrics.totalTx++;
+              
+              // Wait for confirmation and measure latency
+              const confirmation = await connection.confirmTransaction(signature);
+              const latency = Date.now() - txStart;
+              
+              metrics.confirmedTx++;
+              metrics.latencies.push(latency);
+              
+              console.log(\`TX confirmed: \${signature} (Latency: \${latency}ms)\`);
+            } catch (err) {
+              metrics.failedTx++;
+              console.error('TX failed:', err.message);
+            }
+          }
+          
+          // Start benchmark
+          console.log('Starting performance benchmark...');
+          
+          // Calculate delay between transactions to achieve target TPS
+          const txDelay = 1000 / ${{ inputs.transactions_per_second }};
+          
+          let interval = setInterval(async () => {
+            if (Date.now() >= endTime) {
+              clearInterval(interval);
+              return;
+            }
+            sendTransaction();
+          }, txDelay);
+          
+          // Wait until test duration completes
+          await new Promise(resolve => setTimeout(resolve, ${{ inputs.test_duration }} * 1000));
+          clearInterval(interval);
+          
+          // Calculate metrics
+          metrics.endTime = Date.now();
+          const durationSec = (metrics.endTime - metrics.startTime) / 1000;
+          const tps = metrics.confirmedTx / durationSec;
+          const avgLatency = metrics.latencies.length > 0 
+            ? metrics.latencies.reduce((a, b) => a + b, 0) / metrics.latencies.length 
+            : 0;
+          
+          // Save results
+          const results = {
+            programId: '${{ steps.program_id.outputs.PROGRAM_ID }}',
+            cluster: '${{ inputs.cluster }}',
+            targetTps: ${{ inputs.transactions_per_second }},
+            actualTps: tps,
+            totalTransactions: metrics.totalTx,
+            confirmedTransactions: metrics.confirmedTx,
+            failedTransactions: metrics.failedTx,
+            averageLatencyMs: avgLatency,
+            durationSeconds: durationSec,
+            timestamp: new Date().toISOString()
+          };
+          
+          fs.writeFileSync('${{ inputs.report_path }}/results.json', JSON.stringify(results, null, 2));
+          console.log('Benchmark completed', results);
+        }
+
+        runBenchmark().catch(console.error);
+        EOF
+
+        # Install dependencies
+        npm init -y
+        npm install @solana/web3.js bn.js
+
+        # Run the benchmark
+        echo "Running performance benchmark for ${{ inputs.test_duration }} seconds at ${{ inputs.transactions_per_second }} TPS..."
+        node performance-test.js
+
+    - name: Generate performance report
+      shell: bash
+      run: |
+        # Generate HTML report
+        cat > ${{ inputs.report_path }}/report.html << EOF
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Fluxa Performance Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #2a2a72; }
+            .summary { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .metric { display: flex; justify-content: space-between; margin: 10px 0; }
+            .metric-name { font-weight: bold; }
+            .good { color: green; }
+            .warning { color: orange; }
+            .error { color: red; }
+          </style>
+        </head>
+        <body>
+          <h1>Fluxa Performance Test Report</h1>
+          
+          <script>
+            // Load the results from the JSON file
+            fetch('results.json')
+              .then(response => response.json())
+              .then(data => {
+                const summary = document.getElementById('summary');
+                
+                // Helper function to format metrics
+                function addMetric(name, value, unit = '', threshold = null, highIsGood = true) {
+                  const metricDiv = document.createElement('div');
+                  metricDiv.className = 'metric';
+                  
+                  const nameSpan = document.createElement('span');
+                  nameSpan.className = 'metric-name';
+                  nameSpan.textContent = name;
+                  
+                  const valueSpan = document.createElement('span');
+                  if (threshold !== null) {
+                    const isGood = highIsGood ? value > threshold : value < threshold;
+                    valueSpan.className = isGood ? 'good' : 'warning';
+                  }
+                  valueSpan.textContent = \`\${value}\${unit ? ' ' + unit : ''}\`;
+                  
+                  metricDiv.appendChild(nameSpan);
+                  metricDiv.appendChild(valueSpan);
+                  summary.appendChild(metricDiv);
+                }
+                
+                // Add metrics to the report
+                addMetric('Program ID', data.programId);
+                addMetric('Cluster', data.cluster);
+                addMetric('Target TPS', data.targetTps, 'tx/s');
+                addMetric('Actual TPS', data.actualTps.toFixed(2), 'tx/s', 0.7 * data.targetTps);
+                addMetric('Success Rate', ((data.confirmedTransactions / data.totalTransactions) * 100).toFixed(2), '%', 90);
+                addMetric('Average Latency', data.averageLatencyMs.toFixed(2), 'ms', 1000, false);
+                addMetric('Test Duration', data.durationSeconds, 'seconds');
+                addMetric('Timestamp', new Date(data.timestamp).toLocaleString());
+              })
+              .catch(error => {
+                console.error('Error loading results:', error);
+                document.getElementById('summary').innerHTML = '<p class="error">Error loading results. See console for details.</p>';
+              });
+          </script>
+          
+          <div id="summary" class="summary">
+            <p>Loading results...</p>
+          </div>
+        </body>
+        </html>
+        EOF
+
+        echo "Performance report generated at ${{ inputs.report_path }}/report.html"
+        echo "Raw results data available at ${{ inputs.report_path }}/results.json"
+
+    - name: Stop local validator if testing locally
+      shell: bash
+      if: inputs.cluster == 'localhost' && env.VALIDATOR_PID != ''
+      run: |
+        echo "Stopping local validator..."
+        kill $VALIDATOR_PID || true

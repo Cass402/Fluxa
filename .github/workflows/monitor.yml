@@ -1,0 +1,176 @@
+name: Deployment Monitoring
+
+on:
+  schedule:
+    - cron: "*/30 * * * *" # Run every 30 minutes
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to monitor (devnet, testnet, mainnet)"
+        required: true
+        default: "devnet"
+        type: choice
+        options:
+          - devnet
+          - testnet
+          - mainnet
+
+env:
+  SOLANA_VERSION: "2.1.0"
+
+jobs:
+  monitor-devnet:
+    if: github.event_name == 'schedule' || github.event.inputs.environment == 'devnet'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Fetch Program ID
+        id: program-id
+        run: |
+          # Read program ID from keypair file
+          PROGRAM_ID=$(solana address -k target/deploy/amm_core-keypair.json)
+          echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_OUTPUT
+
+      - name: Monitor Devnet Deployment
+        uses: ./.github/actions/monitor-deployment
+        with:
+          cluster: devnet
+          program_id: ${{ steps.program-id.outputs.PROGRAM_ID }}
+          max_retries: 3
+          retry_interval: 5
+
+      - name: Send notification on failure
+        if: failure()
+        uses: ./.github/actions/send-notification
+        with:
+          status: failure
+          environment: devnet
+          message: "❌ Devnet deployment health check failed!"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  monitor-testnet:
+    if: github.event_name == 'schedule' || github.event.inputs.environment == 'testnet'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Fetch Program ID
+        id: program-id
+        run: |
+          # Read program ID from keypair file
+          PROGRAM_ID=$(solana address -k target/deploy/amm_core-keypair.json)
+          echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_OUTPUT
+
+      - name: Monitor Testnet Deployment
+        uses: ./.github/actions/monitor-deployment
+        with:
+          cluster: testnet
+          program_id: ${{ steps.program-id.outputs.PROGRAM_ID }}
+          max_retries: 3
+          retry_interval: 5
+
+      - name: Send notification on failure
+        if: failure()
+        uses: ./.github/actions/send-notification
+        with:
+          status: failure
+          environment: testnet
+          message: "❌ Testnet deployment health check failed!"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  monitor-mainnet:
+    if: github.event_name == 'schedule' || github.event.inputs.environment == 'mainnet'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Fetch Program ID
+        id: program-id
+        run: |
+          # Read program ID from keypair file
+          PROGRAM_ID=$(solana address -k target/deploy/amm_core-keypair.json)
+          echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_OUTPUT
+
+      - name: Monitor Mainnet Deployment
+        uses: ./.github/actions/monitor-deployment
+        with:
+          cluster: mainnet-beta
+          program_id: ${{ steps.program-id.outputs.PROGRAM_ID }}
+          max_retries: 5
+          retry_interval: 10
+
+      - name: Send notification on failure
+        if: failure()
+        uses: ./.github/actions/send-notification
+        with:
+          status: failure
+          environment: mainnet
+          message: "🚨 CRITICAL: Mainnet deployment health check failed!"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  generate-monitoring-report:
+    needs: [monitor-devnet, monitor-testnet, monitor-mainnet]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate monitoring report
+        run: |
+          # Create report directory
+          mkdir -p reports
+
+          # Generate timestamp
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Create monitoring summary
+          cat > reports/monitoring-summary.md << EOF
+          # Deployment Monitoring Summary
+
+          Generated on: $TIMESTAMP
+
+          ## Environment Status
+
+          | Environment | Status | Detail |
+          |------------|--------|--------|
+          | Devnet | ${{ needs.monitor-devnet.result == 'success' && '✅ Healthy' || '❌ Issue Detected' }} | ${{ needs.monitor-devnet.result }} |
+          | Testnet | ${{ needs.monitor-testnet.result == 'success' && '✅ Healthy' || '❌ Issue Detected' }} | ${{ needs.monitor-testnet.result }} |
+          | Mainnet | ${{ needs.monitor-mainnet.result == 'success' && '✅ Healthy' || '❌ Issue Detected' }} | ${{ needs.monitor-mainnet.result }} |
+
+          ## Actions
+
+          ${{ (needs.monitor-devnet.result != 'success' || needs.monitor-testnet.result != 'success' || needs.monitor-mainnet.result != 'success') && '- ⚠️ Investigate and resolve detected issues' || '- ✅ No action required' }}
+
+          [View Full Monitoring Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+          EOF
+
+      - name: Upload monitoring report
+        uses: actions/upload-artifact@v3
+        with:
+          name: monitoring-report
+          path: reports/
+
+      - name: Send weekly summary
+        if: github.event_name == 'schedule' && github.event.schedule == '0 0 * * 0'
+        uses: ./.github/actions/send-notification
+        with:
+          status: ${{ (needs.monitor-devnet.result == 'success' && needs.monitor-testnet.result == 'success' && needs.monitor-mainnet.result == 'success') && 'success' || 'warning' }}
+          environment: all
+          message: "Weekly Deployment Health Report: ${{ (needs.monitor-devnet.result == 'success' && needs.monitor-testnet.result == 'success' && needs.monitor-mainnet.result == 'success') && '✅ All Systems Healthy' || '⚠️ Issues Detected' }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

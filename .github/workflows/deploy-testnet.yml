@@ -1,0 +1,157 @@
+name: Deploy to Testnet
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type "DEPLOY TO TESTNET" to confirm'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.31.0"
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Validate confirmation input
+        run: |
+          if [[ "${{ github.event.inputs.confirmation }}" != "DEPLOY TO TESTNET" ]]; then
+            echo "Invalid confirmation. Aborting deployment."
+            exit 1
+          fi
+
+  build:
+    needs: [validate-input]
+    if: github.event_name != 'workflow_dispatch' || success()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Use custom actions to install dependencies
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: ${{ env.ANCHOR_VERSION }}
+
+      # Install Rust and required components
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      # Cache Dependencies
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Build all programs
+      - name: Build
+        run: anchor build
+
+      # Upload program artifacts
+      - name: Upload program artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup test environment using our custom action
+      - name: Setup test environment
+        uses: ./.github/actions/setup-integration-test
+
+      - name: Download program artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+      # Run unit and integration tests
+      - name: Run tests
+        run: anchor test
+
+  security-check:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust dependency audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+      - name: Check for common vulnerabilities
+        run: |
+          echo "Checking for common security issues in Solana programs..."
+          grep -r "invoke_signed" --include="*.rs" ./programs/ || echo "No invoke_signed found"
+          grep -r "ProgramError::Custom" --include="*.rs" ./programs/ || echo "No ProgramError::Custom found"
+
+  deploy-testnet:
+    needs: [build, test, security-check]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install dependencies using our custom actions
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: ${{ env.ANCHOR_VERSION }}
+
+      # Download program artifacts
+      - name: Download program artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+      # Deploy to testnet using our custom action
+      - name: Deploy program to testnet
+        uses: ./.github/actions/deploy-program
+        with:
+          cluster: testnet
+          keypair_json: ${{ secrets.SOLANA_TESTNET_PRIVATE_KEY }}
+          program_keypair_path: target/deploy/amm_core-keypair.json
+          program_so_path: target/deploy/amm_core.so
+
+      # Verify deployment
+      - name: Verify deployment
+        uses: ./.github/actions/verify-deployment
+        with:
+          cluster: testnet
+          program_keypair_path: target/deploy/amm_core-keypair.json
+
+      # Send notification
+      - name: Send deployment notification
+        if: success()
+        uses: ./.github/actions/send-notification
+        with:
+          status: success
+          environment: testnet
+          message: "Successfully deployed to Solana Testnet"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

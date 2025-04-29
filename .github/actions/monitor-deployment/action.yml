@@ -1,0 +1,111 @@
+name: "Monitor Deployment"
+description: "Monitors the health of a deployed program"
+inputs:
+  cluster:
+    description: "Solana cluster to monitor (devnet, testnet, mainnet-beta)"
+    required: true
+  program_id:
+    description: "Program ID to monitor"
+    required: true
+  max_retries:
+    description: "Maximum number of health check retries"
+    required: false
+    default: "5"
+  retry_interval:
+    description: "Seconds to wait between retries"
+    required: false
+    default: "10"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set Solana config
+      shell: bash
+      run: |
+        SOLANA_URL=""
+        case "${{ inputs.cluster }}" in
+          "devnet")
+            SOLANA_URL="https://api.devnet.solana.com"
+            ;;
+          "testnet")
+            SOLANA_URL="https://api.testnet.solana.com"
+            ;;
+          "mainnet-beta")
+            SOLANA_URL="https://api.mainnet-beta.solana.com"
+            ;;
+          *)
+            echo "Invalid cluster: ${{ inputs.cluster }}"
+            exit 1
+            ;;
+        esac
+        solana config set --url $SOLANA_URL
+
+    - name: Monitor program health
+      shell: bash
+      run: |
+        echo "Starting health checks for program ${{ inputs.program_id }} on ${{ inputs.cluster }}..."
+
+        # Create monitoring record directory
+        mkdir -p monitoring-records
+
+        # Run health check
+        for i in $(seq 1 ${{ inputs.max_retries }}); do
+          echo "Health check attempt $i/${{ inputs.max_retries }}"
+          
+          # Check if program exists and is executable
+          PROGRAM_INFO=$(solana account ${{ inputs.program_id }} --output json 2>/dev/null || echo '{"error": "Program not found"}')
+          
+          if [[ $PROGRAM_INFO == *"error"* ]]; then
+            echo "❌ Program not found or error accessing it"
+            STATUS="error"
+          else
+            # Extract executable status
+            IS_EXECUTABLE=$(echo $PROGRAM_INFO | grep -o '"executable":true')
+            
+            if [[ -z "$IS_EXECUTABLE" ]]; then
+              echo "❌ Program is not executable"
+              STATUS="not_executable"
+            else
+              # Check program rent-exemption
+              IS_EXEMPT=$(solana account ${{ inputs.program_id }} | grep -o "Account is rent-exempt" || echo "")
+              
+              if [[ -z "$IS_EXEMPT" ]]; then
+                echo "⚠️ Program may not be rent exempt"
+                STATUS="warning"
+              else
+                echo "✅ Program is healthy"
+                STATUS="healthy"
+                break
+              fi
+            fi
+          fi
+          
+          if [[ $i -lt ${{ inputs.max_retries }} ]]; then
+            echo "Retrying in ${{ inputs.retry_interval }} seconds..."
+            sleep ${{ inputs.retry_interval }}
+          fi
+        done
+
+        # Record monitoring results
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        cat > monitoring-records/health-${{ inputs.cluster }}-${{ inputs.program_id }}.json << EOF
+        {
+          "program_id": "${{ inputs.program_id }}",
+          "cluster": "${{ inputs.cluster }}",
+          "status": "$STATUS",
+          "timestamp": "$TIMESTAMP",
+          "workflow": "${{ github.workflow }}",
+          "run_id": "${{ github.run_id }}"
+        }
+        EOF
+
+        echo "Monitoring record created: monitoring-records/health-${{ inputs.cluster }}-${{ inputs.program_id }}.json"
+
+        # Set output
+        echo "STATUS=$STATUS" >> $GITHUB_OUTPUT
+
+        # Exit with non-zero code if health check failed
+        if [[ "$STATUS" != "healthy" ]]; then
+          echo "::error::Program health check failed with status: $STATUS"
+          exit 1
+        fi

@@ -1,0 +1,124 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [main, staging, develop]
+  workflow_dispatch:
+
+jobs:
+  rust-lint:
+    name: Rust Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      - name: Check format
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  js-lint:
+    name: JavaScript/TypeScript Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      - name: Check formatting
+        run: |
+          cd frontend
+          yarn prettier --check "src/**/*.{js,jsx,ts,tsx}"
+
+      - name: Run ESLint
+        run: |
+          cd frontend
+          yarn eslint "src/**/*.{js,jsx,ts,tsx}"
+
+  anchor-validate:
+    name: Validate Anchor Project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: "2.1.0"
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: "0.31.0"
+
+      - name: Validate Anchor.toml
+        run: anchor verify
+
+  report:
+    name: Generate Quality Report
+    needs: [rust-lint, js-lint, anchor-validate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Quality Report
+        run: |
+          # Create quality report markdown
+          cat > quality-report.md << EOF
+          # Code Quality Report
+
+          ## Status
+
+          | Check | Status |
+          |-------|--------|
+          | Rust Format & Lint | ${{ needs.rust-lint.result }} |
+          | JS/TS Format & Lint | ${{ needs.js-lint.result }} |
+          | Anchor Validation | ${{ needs.anchor-validate.result }} |
+          | Overall Status | ${{ needs.rust-lint.result == 'success' && needs.js-lint.result == 'success' && needs.anchor-validate.result == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+
+          ## Details
+
+          This report was generated automatically by the Code Quality workflow.
+
+          ### Recommendations
+
+          ${{ needs.rust-lint.result != 'success' && '- Fix Rust formatting and linting issues' || '' }}
+          ${{ needs.js-lint.result != 'success' && '- Fix JavaScript/TypeScript formatting and linting issues' || '' }}
+          ${{ needs.anchor-validate.result != 'success' && '- Fix Anchor project configuration issues' || '' }}
+          ${{ needs.rust-lint.result == 'success' && needs.js-lint.result == 'success' && needs.anchor-validate.result == 'success' && '- All checks passed! 🎉' || '' }}
+          EOF
+
+      - name: Upload quality report
+        uses: actions/upload-artifact@v3
+        with:
+          name: code-quality-report
+          path: quality-report.md
+          retention-days: 7
+
+      - name: Send notification on failure
+        if: needs.rust-lint.result != 'success' || needs.js-lint.result != 'success' || needs.anchor-validate.result != 'success'
+        uses: ./.github/actions/send-notification
+        with:
+          status: "warning"
+          environment: "development"
+          message: "⚠️ Code quality checks failed. Please review issues before merging."
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
