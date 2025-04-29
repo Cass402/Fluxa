@@ -38,3 +38,8 @@ build/
 *.tsbuildinfo
 
 .devcontainer/
+
+docs/"Technical Deep Dive"/coreProtocolTechnicalDesign.md
+docs/"Technical Deep Dive"/riskManagement_and_optimizationTechnicalDesign.md
+docs/"Technical Deep Dive"/advancedFeaturesTechnicalDesign.md
+docs/"Technical Deep Dive"/integrationTechnicalDesign.md

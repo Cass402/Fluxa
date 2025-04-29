@@ -1,0 +1,213 @@
+name: Performance Testing
+
+on:
+  schedule:
+    - cron: "0 0 * * 0" # Run weekly on Sundays
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to test (devnet, localhost)"
+        required: true
+        default: "localhost"
+        type: choice
+        options:
+          - localhost
+          - devnet
+      test_duration:
+        description: "Test duration in seconds"
+        required: false
+        default: "60"
+        type: number
+      tps:
+        description: "Target transactions per second"
+        required: false
+        default: "50"
+        type: number
+
+env:
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.31.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: ${{ env.ANCHOR_VERSION }}
+
+      - name: Build
+        run: anchor build
+
+      - name: Upload program artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+  performance-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Download program artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Create a test wallet for local testing
+      - name: Generate test wallet
+        run: |
+          solana-keygen new --no-bip39-passphrase -o ~/.config/solana/id.json
+          solana config set -k ~/.config/solana/id.json
+          solana address
+
+      # Run performance test using our custom action
+      - name: Run performance test
+        uses: ./.github/actions/performance-test
+        with:
+          cluster: ${{ github.event.inputs.environment || 'localhost' }}
+          program_keypair_path: target/deploy/amm_core-keypair.json
+          test_duration: ${{ github.event.inputs.test_duration || '60' }}
+          transactions_per_second: ${{ github.event.inputs.tps || '50' }}
+          report_path: performance-report
+
+      # Upload performance results
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: performance-report/
+
+  analyze-results:
+    needs: performance-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download performance results
+        uses: actions/download-artifact@v3
+        with:
+          name: performance-results
+          path: performance-report/
+
+      - name: Analyze results
+        id: analyze
+        run: |
+          # Check if the results file exists
+          if [ ! -f "performance-report/results.json" ]; then
+            echo "::error::Performance results file not found"
+            exit 1
+          fi
+
+          # Extract key metrics from results JSON
+          TPS=$(jq .actualTps performance-report/results.json)
+          SUCCESS_RATE=$(jq '.confirmedTransactions / .totalTransactions * 100' performance-report/results.json)
+          LATENCY=$(jq .averageLatencyMs performance-report/results.json)
+
+          # Determine if the test passed based on thresholds
+          if (( $(echo "$TPS < 10" | bc -l) )); then
+            echo "::warning::TPS is below acceptable threshold: $TPS"
+            PASSED="false"
+          elif (( $(echo "$SUCCESS_RATE < 80" | bc -l) )); then
+            echo "::warning::Success rate is below acceptable threshold: $SUCCESS_RATE%"
+            PASSED="false"
+          elif (( $(echo "$LATENCY > 2000" | bc -l) )); then
+            echo "::warning::Latency is above acceptable threshold: $LATENCY ms"
+            PASSED="false"
+          else
+            echo "Performance test passed all thresholds"
+            PASSED="true"
+          fi
+
+          echo "tps=$TPS" >> $GITHUB_OUTPUT
+          echo "success_rate=$SUCCESS_RATE" >> $GITHUB_OUTPUT
+          echo "latency=$LATENCY" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+
+      - name: Generate summary report
+        run: |
+          cat > performance-summary.md << EOF
+          # Performance Test Results
+
+          ## Key Metrics
+
+          - **Transactions Per Second (TPS)**: ${{ steps.analyze.outputs.tps }}
+          - **Success Rate**: ${{ steps.analyze.outputs.success_rate }}%
+          - **Average Latency**: ${{ steps.analyze.outputs.latency }} ms
+
+          ## Status
+
+          ${{ steps.analyze.outputs.passed == 'true' && '✅ PASSED' || '⚠️ PERFORMANCE ISSUES DETECTED' }}
+
+          [View Full Report](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+          EOF
+
+          cat performance-summary.md
+
+      - name: Upload summary report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-summary
+          path: performance-summary.md
+
+  notify:
+    needs: analyze-results
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download performance summary
+        uses: actions/download-artifact@v3
+        with:
+          name: performance-summary
+          path: ./
+
+      - name: Read performance results
+        id: performance
+        run: |
+          if [ -f "performance-summary.md" ]; then
+            SUMMARY=$(cat performance-summary.md)
+            echo "summary<<EOF" >> $GITHUB_OUTPUT
+            echo "$SUMMARY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "No performance summary found"
+            echo "summary=Performance test execution failed." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send notification
+        uses: ./.github/actions/send-notification
+        with:
+          status: ${{ contains(steps.performance.outputs.summary, 'PASSED') && 'success' || 'warning' }}
+          environment: ${{ github.event.inputs.environment || 'localhost' }}
+          message: "Performance Test Results:\n${{ steps.performance.outputs.summary }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

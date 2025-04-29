@@ -3,10 +3,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount};
 use errors::ErrorCode;
+use instructions::multi_hop_swap::SwapRoute;
 use token_pair::TokenPair;
 use token_pair::TokenPairError;
 use utils::price_range::{PriceRange, PriceRangePreset};
-
 declare_id!("HyxBoSbjENm23GRot8Q3dLd22Y7XFTaNTP51ZH4s7ZQr");
 
 /// Fluxa AMM Core: A Hybrid Adaptive Automated Market Maker with Concentrated Liquidity
@@ -442,6 +442,99 @@ pub mod amm_core {
     pub fn decrease_liquidity(ctx: Context<ModifyPosition>, liquidity_delta: u128) -> Result<()> {
         instructions::modify_position::decrease_handler(ctx, liquidity_delta)
     }
+
+    /// Executes a multi-hop swap across multiple pools.
+    ///
+    /// This advanced swap function allows users to swap tokens through multiple liquidity pools
+    /// in a single transaction, enabling complex trading paths and improved price execution.
+    ///
+    /// # Parameters
+    /// * `ctx` - The context object containing all accounts needed for this operation
+    /// * `amount_in` - The amount of input token to swap
+    /// * `min_amount_out` - The minimum amount of final output token to receive (slippage protection)
+    /// * `routes` - Vector of swap routes, each containing:
+    ///    * pool_index: Index of the pool to use for this hop
+    ///    * is_token_a: Whether to swap token A for token B in this pool
+    ///
+    /// # Accounts Required
+    /// * `user` - The signer executing the swap
+    /// * `pools` - Array of pool accounts to swap through
+    /// * `token_accounts` - Array of user's token accounts
+    /// * `token_vaults` - Array of pool token vaults
+    /// * `oracle_accounts` - Optional oracle accounts for each pool
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or containing an error code
+    ///
+    /// # Errors
+    /// * `SlippageExceeded` - If the minimum output amount isn't met
+    /// * `InvalidInput` - If route parameters are invalid
+    pub fn multi_hop_swap<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, MultiHopSwap<'info>>,
+        amount_in: u64,
+        min_amount_out: u64,
+        routes: Vec<SwapRoute>,
+    ) -> Result<()> {
+        instructions::multi_hop_swap::handler(ctx, amount_in, min_amount_out, routes)
+    }
+
+    /// Collects protocol fees from a pool.
+    ///
+    /// This instruction allows the authorized fee collector to withdraw accumulated
+    /// protocol fees from a liquidity pool into the protocol treasury accounts.
+    /// Protocol fees are a percentage of the total trading fees determined by the
+    /// protocol fee rate.
+    ///
+    /// # Parameters
+    /// * `ctx` - The context object containing all accounts needed for this operation
+    ///
+    /// # Accounts Required
+    /// * `authority` - The authorized protocol fee collector
+    /// * `pool` - The pool from which to collect fees
+    /// * `token_a_vault` - The pool's token A vault
+    /// * `token_b_vault` - The pool's token B vault
+    /// * `token_a_destination` - The treasury's token A account
+    /// * `token_b_destination` - The treasury's token B account
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or containing an error code
+    ///
+    /// # Errors
+    /// * `NoFeesToCollect` - If there are no protocol fees to collect
+    /// * `InvalidAuthority` - If the signer is not the authorized fee collector
+    /// * `TransferFailed` - If token transfer fails
+    pub fn collect_protocol_fees(ctx: Context<CollectProtocolFees>) -> Result<()> {
+        instructions::collect_protocol_fees::handler(ctx)
+    }
+
+    /// Closes a liquidity position with zero liquidity.
+    ///
+    /// This instruction allows the owner to close a position that has zero remaining
+    /// liquidity, collecting any final fees and reclaiming the rent deposited in the position account.
+    /// A position can only be closed after all liquidity has been withdrawn.
+    ///
+    /// # Parameters
+    /// * `ctx` - The context object containing all accounts needed for this operation
+    ///
+    /// # Accounts Required
+    /// * `owner` - The position owner who initiated the closure
+    /// * `position` - The position account to be closed (must have zero liquidity)
+    /// * `pool` - The pool where the position exists
+    /// * `recipient` - The account that will receive the reclaimed rent
+    /// * `token_a_account` - The owner's token A account for any final fee collection
+    /// * `token_b_account` - The owner's token B account for any final fee collection
+    /// * `token_a_vault` - The pool's token A vault
+    /// * `token_b_vault` - The pool's token B vault
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or containing an error code
+    ///
+    /// # Errors
+    /// * `PositionNotEmpty` - If the position still has liquidity
+    /// * `PositionFeesNotCollected` - If there are uncollected fees
+    pub fn close_position(ctx: Context<ClosePosition>) -> Result<()> {
+        instructions::close_position::handler(ctx)
+    }
 }
 
 // ----- Account Structures ----- //
@@ -646,6 +739,25 @@ pub struct Swap<'info> {
     pub protocol_fee_account: Option<AccountInfo<'info>>,
 }
 
+/// Accounts required for executing a multi-hop swap
+#[derive(Accounts)]
+pub struct MultiHopSwap<'info> {
+    /// The user executing the swap
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    /// The SPL Token program
+    pub token_program: Program<'info, Token>,
+
+    /// The system program
+    pub system_program: Program<'info, System>,
+    // The remaining accounts will be validated in the handler function:
+    // - Pool accounts
+    // - User token accounts
+    // - Pool token vaults
+    // - Oracle accounts (optional)
+}
+
 /// Accounts required to collect fees from a liquidity position.
 #[derive(Accounts)]
 pub struct CollectFees<'info> {
@@ -695,6 +807,44 @@ pub struct CollectFees<'info> {
     /// The SPL Token program
     /// Used for token transfers.
     pub token_program: Program<'info, token::Token>,
+}
+
+/// Accounts required to collect protocol fees from a pool.
+#[derive(Accounts)]
+pub struct CollectProtocolFees<'info> {
+    /// The protocol fee authority
+    /// Must be the authorized signer for protocol fee collection.
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// The pool account from which to collect protocol fees
+    #[account(mut)]
+    pub pool: Account<'info, Pool>,
+
+    /// The token A vault of the pool
+    #[account(
+        mut,
+        constraint = token_a_vault.key() == pool.token_a_vault @ ErrorCode::InvalidVault
+    )]
+    pub token_a_vault: Account<'info, TokenAccount>,
+
+    /// The token B vault of the pool
+    #[account(
+        mut,
+        constraint = token_b_vault.key() == pool.token_b_vault @ ErrorCode::InvalidVault
+    )]
+    pub token_b_vault: Account<'info, TokenAccount>,
+
+    /// The token A destination account for protocol fees
+    #[account(mut)]
+    pub token_a_destination: Account<'info, TokenAccount>,
+
+    /// The token B destination account for protocol fees
+    #[account(mut)]
+    pub token_b_destination: Account<'info, TokenAccount>,
+
+    /// The SPL Token program
+    pub token_program: Program<'info, Token>,
 }
 
 /// Accounts required to modify a liquidity position.
@@ -750,6 +900,66 @@ pub struct ModifyPosition<'info> {
     pub token_program: AccountInfo<'info>,
 }
 
+/// Accounts required to close a liquidity position.
+#[derive(Accounts)]
+pub struct ClosePosition<'info> {
+    /// The position owner who initiated the closure
+    /// Must match the owner recorded in the position account.
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    /// The position account to be closed
+    /// Must have zero remaining liquidity.
+    #[account(
+        mut,
+        close = recipient,
+        has_one = owner @ ErrorCode::UnauthorizedAccess,
+        has_one = pool @ ErrorCode::InvalidPool,
+        constraint = position.liquidity == 0 @ ErrorCode::PositionNotEmpty,
+        constraint = position.tokens_owed_a == 0 && position.tokens_owed_b == 0 @ ErrorCode::PositionFeesNotCollected,
+    )]
+    pub position: Account<'info, Position>,
+
+    /// The pool account where the position exists
+    /// Used to verify vault accounts.
+    pub pool: Account<'info, Pool>,
+
+    /// The account that will receive the reclaimed rent
+    /// Typically the position owner or a designated recipient.
+    #[account(mut)]
+    pub recipient: AccountInfo<'info>,
+
+    /// The owner's token A account for any final fee collection
+    /// Must belong to the position owner.
+    #[account(mut)]
+    pub token_a_account: AccountInfo<'info>,
+
+    /// The owner's token B account for any final fee collection
+    /// Must belong to the position owner.
+    #[account(mut)]
+    pub token_b_account: AccountInfo<'info>,
+
+    /// The pool's token A vault
+    /// Source for any final token A fee transfers.
+    #[account(
+        mut,
+        constraint = token_a_vault.key() == pool.token_a_vault @ ErrorCode::InvalidVault
+    )]
+    pub token_a_vault: AccountInfo<'info>,
+
+    /// The pool's token B vault
+    /// Source for any final token B fee transfers.
+    #[account(
+        mut,
+        constraint = token_b_vault.key() == pool.token_b_vault @ ErrorCode::InvalidVault
+    )]
+    pub token_b_vault: AccountInfo<'info>,
+
+    /// The SPL Token program
+    /// Used for token transfers.
+    pub token_program: Program<'info, token::Token>,
+}
+
 /// Data structure representing an AMM liquidity pool.
 ///
 /// This account stores the state of a concentrated liquidity pool, including price information,
@@ -796,12 +1006,35 @@ pub struct Pool {
     /// Portion of trading fees allocated to protocol treasury
     pub protocol_fee: u16,
 
+    /// Accumulated protocol fees for token A
+    /// These are fees that can be collected by the protocol authority
+    pub protocol_fee_a: u64,
+
+    /// Accumulated protocol fees for token B
+    /// These are fees that can be collected by the protocol authority
+    pub protocol_fee_b: u64,
+
     /// Total liquidity currently active in the pool
     /// Denominated in L units (geometric mean of token amounts)
     pub liquidity: u128,
 
     /// Total number of positions created in this pool
     pub position_count: u64,
+
+    /// Oracle account associated with this pool
+    pub oracle: Pubkey,
+
+    /// Last block timestamp when the oracle was updated
+    pub last_oracle_update: i64,
+
+    /// Oracle data observation index
+    pub observation_index: u16,
+
+    /// Oracle observation cardinality (number of initialized observations)
+    pub observation_cardinality: u16,
+
+    /// Next oracle observation cardinality to grow to
+    pub observation_cardinality_next: u16,
 }
 
 impl Pool {
@@ -817,8 +1050,15 @@ impl Pool {
         16 + // fee_growth_global_a
         16 + // fee_growth_global_b
         2 +  // protocol_fee
+        8 +  // protocol_fee_a
+        8 +  // protocol_fee_b
         16 + // liquidity
-        8; // pitionount
+        8 +  // position_count
+        32 + // oracle
+        8 +  // last_oracle_update
+        2 +  // observation_index
+        2 +  // observation_cardinality
+        2; // observation_cardinality_next
 }
 
 /// Data structure representing a concentrated liquidity position.
@@ -894,7 +1134,11 @@ pub mod constants;
 pub mod errors;
 pub mod instructions;
 pub mod math;
+pub mod oracle;
+pub mod oracle_utils;
 pub mod pool_state;
 pub mod position_manager;
+pub mod swap_router;
+pub mod tick_bitmap;
 pub mod token_pair;
 pub mod utils;

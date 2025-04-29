@@ -10,8 +10,18 @@
 use crate::constants::{MAX_TICK, MIN_TICK, PROTOCOL_FEE_DENOMINATOR};
 use crate::errors::ErrorCode;
 use crate::math::{self, Q64, U128MAX};
+use crate::tick_bitmap::TickBitmap;
 use crate::{Pool, Position};
 use anchor_lang::prelude::*;
+
+// Constants for fee tiers and corresponding tick spacings
+pub const FEE_TIER_LOW: u16 = 5; // 0.05%
+pub const FEE_TIER_MEDIUM: u16 = 30; // 0.3%
+pub const FEE_TIER_HIGH: u16 = 100; // 1%
+
+pub const TICK_SPACING_LOW: i32 = 10;
+pub const TICK_SPACING_MEDIUM: i32 = 60;
+pub const TICK_SPACING_HIGH: i32 = 200;
 
 /// Represents the state for a specific tick in the price range
 ///
@@ -107,6 +117,88 @@ impl Default for Tick {
     }
 }
 
+/// Parameters for fee growth calculations
+#[derive(Debug, Clone, Copy)]
+pub struct FeeGrowthParams {
+    /// Current tick index
+    pub tick_current: i32,
+    /// Lower tick boundary
+    pub tick_lower: i32,
+    /// Upper tick boundary
+    pub tick_upper: i32,
+    /// Global fee growth for token A
+    pub fee_growth_global_a: u128,
+    /// Global fee growth for token B
+    pub fee_growth_global_b: u128,
+    /// Fee growth outside lower tick for token A
+    pub fee_growth_outside_lower_a: u128,
+    /// Fee growth outside lower tick for token B
+    pub fee_growth_outside_lower_b: u128,
+    /// Fee growth outside upper tick for token A
+    pub fee_growth_outside_upper_a: u128,
+    /// Fee growth outside upper tick for token B
+    pub fee_growth_outside_upper_b: u128,
+}
+
+/// Calculate fee growth inside a specific tick range
+///
+/// This function is used to determine how much fee growth has occurred
+/// within a position's tick range, accounting for fee growth that
+/// happened outside the range.
+///
+/// # Parameters
+/// * `params` - The fee growth parameters
+///
+/// # Returns
+/// * `(u128, u128)` - The fee growth inside the range for tokens A and B
+pub fn compute_fee_growth_inside(params: &FeeGrowthParams) -> (u128, u128) {
+    // Calculate fee growth inside based on where current tick is relative to the range
+    let (fee_growth_below_a, fee_growth_below_b) = if params.tick_current >= params.tick_lower {
+        (
+            params.fee_growth_outside_lower_a,
+            params.fee_growth_outside_lower_b,
+        )
+    } else {
+        (
+            params
+                .fee_growth_global_a
+                .wrapping_sub(params.fee_growth_outside_lower_a),
+            params
+                .fee_growth_global_b
+                .wrapping_sub(params.fee_growth_outside_lower_b),
+        )
+    };
+
+    let (fee_growth_above_a, fee_growth_above_b) = if params.tick_current < params.tick_upper {
+        (
+            params.fee_growth_outside_upper_a,
+            params.fee_growth_outside_upper_b,
+        )
+    } else {
+        (
+            params
+                .fee_growth_global_a
+                .wrapping_sub(params.fee_growth_outside_upper_a),
+            params
+                .fee_growth_global_b
+                .wrapping_sub(params.fee_growth_outside_upper_b),
+        )
+    };
+
+    // Fee growth inside = global growth - growth below - growth above
+    let fee_growth_inside_a = params
+        .fee_growth_global_a
+        .wrapping_sub(fee_growth_below_a)
+        .wrapping_sub(fee_growth_above_a);
+
+    let fee_growth_inside_b = params
+        .fee_growth_global_b
+        .wrapping_sub(fee_growth_below_b)
+        .wrapping_sub(fee_growth_above_b);
+
+    (fee_growth_inside_a, fee_growth_inside_b)
+}
+
 /// Manages the global state of a liquidity pool
 ///
 /// This struct provides methods for tracking active positions, computing fees,
@@ -122,6 +214,9 @@ pub struct PoolState<'a> {
     /// Ticks mapped by their index (sparse representation)
     /// This approach allows efficient storage of only initialized ticks
     pub ticks: Vec<(i32, Tick)>,
+
+    /// Tick bitmap for efficient tick traversal during swaps
+    pub tick_bitmap: TickBitmap,
 }
 
 impl<'a> PoolState<'a> {
@@ -131,6 +226,7 @@ impl<'a> PoolState<'a> {
             pool,
             positions: Vec::new(),
             ticks: Vec::new(),
+            tick_bitmap: TickBitmap::new(),
         }
     }
 
@@ -1071,6 +1167,63 @@ impl<'a> PoolState<'a> {
         }
 
         Ok(reserve_b as f64 / reserve_a as f64)
+    }
+
+    /// Calculate fee growth inside a specific tick range
+    ///
+    /// This function is used to determine how much fee growth has occurred
+    /// within a position's tick range, accounting for fee growth that
+    /// happened outside the range.
+    ///
+    /// # Parameters
+    /// * `params` - The fee growth parameters
+    ///
+    /// # Returns
+    /// * `(u128, u128)` - The fee growth inside the range for tokens A and B
+    pub fn compute_fee_growth_inside(params: &FeeGrowthParams) -> (u128, u128) {
+        // Delegate to the standalone function that already uses the FeeGrowthParams struct
+        compute_fee_growth_inside(params)
+    }
+
+    /// Gets the appropriate tick spacing for a fee tier
+    ///
+    /// Different fee tiers have different tick spacings to balance
+    /// gas costs with price precision.
+    ///
+    /// # Parameters
+    /// * `fee_tier` - The fee tier in basis points
+    ///
+    /// # Returns
+    /// * `Result<i32>` - The tick spacing for this fee tier or an error
+    pub fn get_tick_spacing_for_fee_tier(fee_tier: u16) -> Result<i32> {
+        match fee_tier {
+            FEE_TIER_LOW => Ok(TICK_SPACING_LOW),
+            FEE_TIER_MEDIUM => Ok(TICK_SPACING_MEDIUM),
+            FEE_TIER_HIGH => Ok(TICK_SPACING_HIGH),
+            _ => Err(ErrorCode::InvalidFeeTier.into()),
+        }
+    }
+
+    /// Initialize or update a tick in the bitmap
+    pub fn update_tick_bitmap(&mut self, tick_index: i32, initialized: bool) -> Result<()> {
+        // Get the tick spacing from the pool's fee tier
+        let tick_spacing = Self::get_tick_spacing_for_fee_tier(self.pool.fee_tier)? as u16;
+
+        // Update the bitmap
+        self.tick_bitmap
+            .update_bitmap(tick_index, tick_spacing, initialized)
+    }
+
+    /// Find the next initialized tick using the bitmap
+    pub fn next_initialized_tick(&self, tick: i32) -> Result<i32> {
+        let tick_spacing = Self::get_tick_spacing_for_fee_tier(self.pool.fee_tier)? as u16;
+        self.tick_bitmap.next_initialized_tick(tick, tick_spacing)
+    }
+
+    /// Find the previous initialized tick using the bitmap
+    pub fn prev_initialized_tick(&self, tick: i32) -> Result<i32> {
+        let tick_spacing = Self::get_tick_spacing_for_fee_tier(self.pool.fee_tier)? as u16;
+        self.tick_bitmap.prev_initialized_tick(tick, tick_spacing)
     }
 }
 

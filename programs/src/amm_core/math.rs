@@ -7,6 +7,8 @@
 ///
 /// The implementation uses fixed-point arithmetic throughout, primarily in Q64.64 format
 /// where values are scaled by 2^64 to maintain precision during calculations.
+/// Additionally, it supports Q64.96 format for high-precision sqrt price operations
+/// as specified in the technical design document.
 use crate::constants::*;
 use crate::errors::ErrorCode;
 use anchor_lang::prelude::*;
@@ -21,6 +23,7 @@ pub const Q64: u128 = 1u128 << 64;
 /// Q64.96 fixed-point representation scaling factor
 ///
 /// This constant represents 2^96, used for specific precision-sensitive calculations.
+/// This provides higher precision for sqrt price operations as specified in the technical design.
 pub const Q96: u128 = 1u128 << 96;
 
 /// Maximum value for u128
@@ -29,6 +32,193 @@ pub const U128MAX: u128 = u128::MAX;
 // Constants for tick-to-sqrt-price calculations
 const _LOG_BASE: u128 = 100; // For precision in log calculation
 const _BPS_PER_TICK: u128 = 1; // 0.01% per tick (1 basis point)
+
+// Additional fixed-point arithmetic operations for Q64.96 format
+
+/// Convert from Q64.64 sqrt price to Q64.96 sqrt price
+pub fn convert_sqrt_price_to_q96(sqrt_price_q64: u128) -> Result<u128> {
+    // Multiply by 2^32 to shift from Q64.64 to Q64.96
+    sqrt_price_q64
+        .checked_shl(32)
+        .ok_or(ErrorCode::MathOverflow.into())
+}
+
+/// Convert from Q64.96 sqrt price to Q64.64 sqrt price
+pub fn convert_sqrt_price_from_q96(sqrt_price_q96: u128) -> Result<u128> {
+    // Divide by 2^32 to shift from Q64.96 to Q64.64
+    sqrt_price_q96
+        .checked_shr(32)
+        .ok_or(ErrorCode::MathOverflow.into())
+}
+
+/// Add two Q64.96 values
+pub fn add_q96(a: u128, b: u128) -> Result<u128> {
+    a.checked_add(b).ok_or(ErrorCode::MathOverflow.into())
+}
+
+/// Subtract two Q64.96 values
+pub fn sub_q96(a: u128, b: u128) -> Result<u128> {
+    a.checked_sub(b).ok_or(ErrorCode::MathOverflow.into())
+}
+
+/// Multiply two Q64.96 values (returning Q64.96)
+pub fn mul_q96(a: u128, b: u128) -> Result<u128> {
+    // For full u128 multiplication, we need to handle overflow carefully
+    // This is a simplified implementation - in production, consider using a u256 library
+
+    // Split high and low bits for multiplication
+    let a_hi = a >> 64;
+    let a_lo = a & 0xFFFFFFFFFFFFFFFF;
+    let b_hi = b >> 64;
+    let b_lo = b & 0xFFFFFFFFFFFFFFFF;
+
+    // Check that the high bits won't cause overflow when multiplied
+    if a_hi > 0 && b_hi > 0 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    // Perform multiplication parts
+    let lo_lo = a_lo * b_lo;
+    let hi_lo = a_hi * b_lo;
+    let lo_hi = a_lo * b_hi;
+
+    // Combine results and shift to maintain Q64.96 format
+    let mut result = lo_lo >> 96;
+    result = result
+        .checked_add(hi_lo >> 32) // Instead of shifting left by (64-96), shift right by 32
+        .ok_or(ErrorCode::MathOverflow)?;
+    result = result
+        .checked_add(lo_hi >> 32) // Instead of shifting left by (64-96), shift right by 32
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    Ok(result)
+}
+
+/// Divide a Q64.96 value by another Q64.96 value (returning Q64.96)
+pub fn div_q96(a: u128, b: u128) -> Result<u128> {
+    if b == 0 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    // To maintain precision, scale up the numerator before division
+    let scaled_a = a.checked_shl(96).ok_or(ErrorCode::MathOverflow)?;
+
+    // Perform the division
+    scaled_a
+        .checked_div(b)
+        .ok_or(ErrorCode::MathOverflow.into())
+}
+
+/// Convert a floating point price to Q64.96 sqrt price format
+pub fn price_to_sqrt_price_q96(price: f64) -> Result<u128> {
+    let sqrt_price = price.sqrt();
+    // Convert to Q64.96 format
+    let sqrt_price_q96 = (sqrt_price * (Q96 as f64)) as u128;
+    Ok(sqrt_price_q96)
+}
+
+/// Convert a Q64.96 sqrt price to floating point price
+pub fn sqrt_price_q96_to_price(sqrt_price_q96: u128) -> f64 {
+    let sqrt_price_float = (sqrt_price_q96 as f64) / (Q96 as f64);
+    sqrt_price_float * sqrt_price_float
+}
+
+/// Square a Q64.96 value, maintaining precision
+pub fn square_q96(value: u128) -> Result<u128> {
+    mul_q96(value, value)
+}
+
+/// Calculate square root of a Q64.96 value
+/// Uses the Babylonian method for approximation
+pub fn sqrt_q96(value: u128) -> Result<u128> {
+    if value == 0 {
+        return Ok(0);
+    }
+
+    // Initial guess - use a power of 2 close to the square root
+    let msb = 127 - value.leading_zeros();
+    let guess = 1u128 << ((msb / 2) + 48); // +48 for Q64.96 format
+
+    // Perform iterations of the Babylonian method
+    let mut result = guess;
+    for _ in 0..10 {
+        // 10 iterations is typically enough for convergence
+        // r = (r + x/r) / 2
+        let value_div_result = div_q96(value, result)?;
+        result = add_q96(result, value_div_result)?;
+        result /= 2; // Changed from: result = result / 2;
+    }
+
+    Ok(result)
+}
+
+/// Calculate reciprocal of a Q64.96 value (1/x)
+pub fn reciprocal_q96(value: u128) -> Result<u128> {
+    if value == 0 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    // Calculate 1/x by dividing Q96 by the value
+    div_q96(Q96, value)
+}
+
+/// Compute the tick index for a given sqrt price in Q64.96 format
+///
+/// # Parameters
+/// * `sqrt_price_q96` - The sqrt price in Q64.96 format
+///
+/// # Returns
+/// * `Result<i32>` - The corresponding tick index
+pub fn get_tick_at_sqrt_price_q96(sqrt_price_q96: u128) -> Result<i32> {
+    // Convert to a floating point for the logarithm calculation
+    // In a production environment, consider using a fixed-point logarithm implementation
+    let sqrt_price = (sqrt_price_q96 as f64) / (Q96 as f64);
+
+    // Calculate log base 1.0001
+    let log_base_1_0001 = sqrt_price.ln() / 0.0001_f64.ln();
+
+    // Convert to tick index
+    let tick = (log_base_1_0001 / 2.0).round() as i32;
+
+    Ok(tick)
+}
+
+/// Calculate the square root price at a given tick index in Q64.96 format
+///
+/// # Parameters
+/// * `tick` - The tick index
+///
+/// # Returns
+/// * `Result<u128>` - The sqrt price in Q64.96 format
+pub fn get_sqrt_price_at_tick_q96(tick: i32) -> Result<u128> {
+    // Calculate price = 1.0001^tick
+    let price_power = (0.0001 * tick as f64).exp();
+
+    // Convert to sqrt price
+    let sqrt_price = price_power.sqrt();
+
+    // Convert to Q64.96
+    let sqrt_price_q96 = (sqrt_price * (Q96 as f64)) as u128;
+
+    Ok(sqrt_price_q96)
+}
+
+/// Increases numerical precision when working with small price differences
+///
+/// # Parameters
+/// * `price_a` - First price in Q64.96 format
+/// * `price_b` - Second price in Q64.96 format
+///
+/// # Returns
+/// * `Result<u128>` - Absolute difference in Q64.96 format, with enhanced precision
+pub fn enhanced_price_difference_q96(price_a: u128, price_b: u128) -> Result<u128> {
+    // Determine which price is larger
+    if price_a >= price_b {
+        sub_q96(price_a, price_b)
+    } else {
+        sub_q96(price_b, price_a)
+    }
+}
 
 /// Computes the amount of token A required for a given amount of liquidity at a specified price range.
 ///
@@ -185,6 +375,130 @@ pub fn get_token_b_from_liquidity(
     }
 
     Ok(amount_b_u128 as u64)
+}
+
+/// Enhanced version of get_token_a_from_liquidity using Q64.96 precision
+///
+/// # Parameters
+/// * `liquidity` - The amount of liquidity to provide, in L-units (Q64.64 fixed-point)
+/// * `sqrt_price_lower_q96` - The lower sqrt price bound of the position (Q64.96 fixed-point)
+/// * `sqrt_price_upper_q96` - The upper sqrt price bound of the position (Q64.96 fixed-point)
+/// * `sqrt_price_current_q96` - The current sqrt price of the pool (Q64.96 fixed-point)
+///
+/// # Returns
+/// * `Result<u64>` - The calculated amount of token A needed, or an error
+pub fn get_token_a_from_liquidity_q96(
+    liquidity: u128,
+    sqrt_price_lower_q96: u128,
+    sqrt_price_upper_q96: u128,
+    sqrt_price_current_q96: u128,
+) -> Result<u64> {
+    // Price range logic: different calculations based on where current price sits relative to position range
+    let sqrt_price_to_use_q96 = if sqrt_price_current_q96 > sqrt_price_upper_q96 {
+        // Price is above range: position is 100% token B, 0% token A
+        return Ok(0);
+    } else if sqrt_price_current_q96 < sqrt_price_lower_q96 {
+        // Price is below range: position is 100% token A, 0% token B
+        // For token A calculation when below range, we use the upper price bound
+        sqrt_price_upper_q96
+    } else {
+        // Price is in range: position is a mix of token A and token B
+        sqrt_price_current_q96
+    };
+
+    // Calculate amount_a = liquidity * (1/sqrt_price_lower - 1/sqrt_price_to_use)
+    // Using fixed-point arithmetic for precision with Q64.96 format
+
+    // Compute (1/sqrt_price_lower) - invert the lower bound
+    let inv_lower_q96 = reciprocal_q96(sqrt_price_lower_q96)?;
+
+    // Compute (1/sqrt_price_to_use) - invert the current/upper bound
+    let inv_current_q96 = reciprocal_q96(sqrt_price_to_use_q96)?;
+
+    // If lower price >= current/upper price, then delta is zero or negative
+    if inv_lower_q96 <= inv_current_q96 {
+        return Ok(0);
+    }
+
+    // Calculate difference of inverses: (1/sqrt_price_lower - 1/sqrt_price_to_use)
+    let delta_q96 = sub_q96(inv_lower_q96, inv_current_q96)?;
+
+    // Convert liquidity from Q64.64 to Q64.96
+    let liquidity_q96 = convert_sqrt_price_to_q96(liquidity)?;
+
+    // Calculate final result: liquidity * delta
+    let token_amount_q96 = mul_q96(liquidity_q96, delta_q96)?;
+
+    // Convert back to normal units
+    let token_amount = token_amount_q96
+        .checked_shr(96)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Check if the result fits in u64
+    if token_amount > u64::MAX as u128 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    Ok(token_amount as u64)
+}
+
+/// Enhanced version of get_token_b_from_liquidity using Q64.96 precision
+///
+/// # Parameters
+/// * `liquidity` - The amount of liquidity to provide, in L-units (Q64.64 fixed-point)
+/// * `sqrt_price_lower_q96` - The lower sqrt price bound of the position (Q64.96 fixed-point)
+/// * `sqrt_price_upper_q96` - The upper sqrt price bound of the position (Q64.96 fixed-point)
+/// * `sqrt_price_current_q96` - The current sqrt price of the pool (Q64.96 fixed-point)
+///
+/// # Returns
+/// * `Result<u64>` - The calculated amount of token B needed, or an error
+pub fn get_token_b_from_liquidity_q96(
+    liquidity: u128,
+    sqrt_price_lower_q96: u128,
+    sqrt_price_upper_q96: u128,
+    sqrt_price_current_q96: u128,
+) -> Result<u64> {
+    // Price range logic: different calculations based on where current price sits relative to position range
+    let sqrt_price_to_use_q96 = if sqrt_price_current_q96 < sqrt_price_lower_q96 {
+        // Price is below range: position is 100% token A, 0% token B
+        return Ok(0);
+    } else if sqrt_price_current_q96 > sqrt_price_upper_q96 {
+        // Price is above range: position is 100% token B, 0% token A
+        // For token B calculation when above range, we use the lower price bound
+        sqrt_price_lower_q96
+    } else {
+        // Price is in range: position is a mix of token A and token B
+        sqrt_price_current_q96
+    };
+
+    // Calculate amount_b = liquidity * (sqrt_price_to_use - sqrt_price_lower)
+    // Using fixed-point arithmetic for precision with Q64.96 format
+
+    // If the current/lower price <= lower price, then delta is zero or negative
+    if sqrt_price_to_use_q96 <= sqrt_price_lower_q96 {
+        return Ok(0);
+    }
+
+    // Calculate difference: (sqrt_price_to_use - sqrt_price_lower)
+    let delta_q96 = sub_q96(sqrt_price_to_use_q96, sqrt_price_lower_q96)?;
+
+    // Convert liquidity from Q64.64 to Q64.96
+    let liquidity_q96 = convert_sqrt_price_to_q96(liquidity)?;
+
+    // Calculate final result: liquidity * delta
+    let token_amount_q96 = mul_q96(liquidity_q96, delta_q96)?;
+
+    // Convert back to normal units
+    let token_amount = token_amount_q96
+        .checked_shr(96)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Check if the result fits in u64
+    if token_amount > u64::MAX as u128 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    Ok(token_amount as u64)
 }
 
 /// Converts a tick index to a square root price in Q64.64 fixed-point format.

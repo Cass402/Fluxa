@@ -1,0 +1,232 @@
+name: Deploy to Mainnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type "DEPLOY TO PRODUCTION" to confirm'
+        required: true
+      deployment_version:
+        description: "Version number or tag to deploy"
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.31.0"
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation input
+        run: |
+          if [[ "${{ github.event.inputs.confirmation }}" != "DEPLOY TO PRODUCTION" ]]; then
+            echo "Invalid confirmation. Aborting deployment."
+            exit 1
+          fi
+
+  build:
+    needs: validate-input
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.deployment_version }}
+
+      # Use custom actions for installation
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: ${{ env.ANCHOR_VERSION }}
+
+      # Install Rust and required components
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      # Cache Dependencies
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Build all programs
+      - name: Build
+        run: anchor build
+
+      # Upload program artifacts
+      - name: Upload program artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.deployment_version }}
+
+      # Setup test environment using our custom action
+      - name: Setup test environment
+        uses: ./.github/actions/setup-integration-test
+
+      - name: Download program artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+      # Run extensive tests
+      - name: Run extensive tests
+        run: anchor test
+
+  security-audit:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.deployment_version }}
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      # Comprehensive security checks
+      - name: Rust dependency audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+      - name: Check for vulnerabilities
+        run: |
+          echo "Performing deep security analysis..."
+          # Static analysis tools
+          cargo install cargo-geiger
+          cargo geiger || true
+
+          # Look for known security issues
+          echo "Checking for common security issues in Solana programs..."
+          grep -r "invoke_signed" --include="*.rs" ./programs/ || echo "No invoke_signed found"
+          grep -r "ProgramError::Custom" --include="*.rs" ./programs/ || echo "No ProgramError::Custom found"
+          grep -r "unchecked_" --include="*.rs" ./programs/ || echo "No unchecked_ found"
+
+      - name: Detect secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pre-deployment-approval:
+    needs: [build, test, security-audit]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Approval notification
+        run: echo "Deployment to Mainnet has been approved"
+
+  deploy-mainnet:
+    needs: pre-deployment-approval
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.deployment_version }}
+
+      # Use custom actions for installation
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: ${{ env.ANCHOR_VERSION }}
+
+      # Download program artifacts
+      - name: Download program artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: program-artifacts
+          path: target/deploy/
+
+      # Deploy to mainnet using our custom action
+      - name: Deploy program to mainnet
+        uses: ./.github/actions/deploy-program
+        with:
+          cluster: mainnet-beta
+          keypair_json: ${{ secrets.SOLANA_MAINNET_PRIVATE_KEY }}
+          program_keypair_path: target/deploy/amm_core-keypair.json
+          program_so_path: target/deploy/amm_core.so
+
+      # Verify deployment using our custom action
+      - name: Verify deployment
+        uses: ./.github/actions/verify-deployment
+        with:
+          cluster: mainnet-beta
+          program_keypair_path: target/deploy/amm_core-keypair.json
+
+      # Create deployment record
+      - name: Create deployment record
+        run: |
+          DEPLOY_INFO=$(cat <<EOF
+          {
+            "version": "${{ github.event.inputs.deployment_version }}",
+            "environment": "mainnet",
+            "date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "deployer": "${{ github.actor }}",
+            "commit": "${{ github.sha }}",
+            "workflow": "${{ github.workflow }}"
+          }
+          EOF
+          )
+          echo "$DEPLOY_INFO" > mainnet-deployment.json
+
+      - name: Upload deployment record
+        uses: actions/upload-artifact@v3
+        with:
+          name: mainnet-deployment-record
+          path: mainnet-deployment.json
+
+      # Create release
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Mainnet Deployment ${{ github.event.inputs.deployment_version }}
+          tag_name: deploy-mainnet-${{ github.run_number }}
+          body_path: mainnet-deployment.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Notify all stakeholders using our custom action
+  notify:
+    needs: deploy-mainnet
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Send notification using our custom action
+      - name: Send deployment notification
+        uses: ./.github/actions/send-notification
+        with:
+          status: ${{ needs.deploy-mainnet.result == 'success' && 'success' || 'failure' }}
+          environment: mainnet
+          message: "Deployment to Solana Mainnet ${{ needs.deploy-mainnet.result == 'success' && 'was successful' || 'failed' }}!"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

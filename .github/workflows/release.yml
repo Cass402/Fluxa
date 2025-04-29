@@ -27,14 +27,14 @@ jobs:
       # Install Solana
       - name: Install Solana
         run: |
-          sh -c "$(curl -sSfL https://release.solana.com/v${{ env.SOLANA_VERSION }}/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
           solana --version
 
       # Install Anchor
       - name: Install Anchor
         run: |
-          npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
           anchor --version
 
       # Cache Dependencies
@@ -48,6 +48,12 @@ jobs:
       # Run tests
       - name: Run tests
         run: anchor test
+
+      # Security scanning
+      - name: Security audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
 
       # Create artifacts
       - name: Prepare release artifacts
@@ -77,33 +83,139 @@ jobs:
             ```
 
             ## Documentation
-            For detailed documentation, see the [project docs](https://github.com/username/fluxa/tree/main/docs)
+            For detailed documentation, see the [project docs](https://github.com/${{ github.repository }}/tree/main/docs)
+
+            ## Changelog
+            ${{ github.event.head_commit.message }}
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Deploy to mainnet job - commented out until production readiness
-  # deploy-mainnet:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     # Setup similar environment as build job
-  #     - name: Install required tools
-  #       # Similar setup steps as the build job
-  #
-  #     # Setup Solana CLI config for mainnet deployment
-  #     - name: Setup Solana Config
-  #       run: |
-  #         mkdir -p ~/.config/solana
-  #         echo "${{ secrets.SOLANA_MAINNET_PRIVATE_KEY }}" > keypair.json
-  #         solana config set --keypair keypair.json
-  #         solana config set --url mainnet-beta
-  #
-  #     # Deploy to mainnet
-  #     - name: Deploy to mainnet
-  #       run: |
-  #         anchor build
-  #         anchor deploy --provider.cluster mainnet-beta
+  # Build and deploy frontend
+  deploy-frontend:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          yarn build
+        env:
+          REACT_APP_ENVIRONMENT: "production"
+
+      - name: Deploy to production hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
+          channelId: live
+          projectId: fluxa-prod
+
+  # Deploy to testnet for final validation
+  deploy-testnet:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup similar environment as build job
+      - name: Install required tools
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
+
+      # Setup Solana CLI config for testnet deployment
+      - name: Setup Solana Config
+        run: |
+          mkdir -p ~/.config/solana
+          echo "${{ secrets.SOLANA_TESTNET_PRIVATE_KEY }}" > keypair.json
+          solana config set --keypair keypair.json
+          solana config set --url https://api.testnet.solana.com
+
+      # Deploy to testnet
+      - name: Deploy to testnet
+        run: |
+          anchor build
+          anchor deploy --provider.cluster testnet
+
+      # Verify deployment
+      - name: Verify testnet deployment
+        run: |
+          echo "Verifying deployment..."
+          solana program show --output json $(solana address -k target/deploy/amm_core-keypair.json)
+
+  # Deploy to mainnet job - requires manual approval
+  deploy-mainnet:
+    needs: [build, deploy-testnet]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup similar environment as build job
+      - name: Install required tools
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
+
+      # Setup Solana CLI config for mainnet deployment
+      - name: Setup Solana Config
+        run: |
+          mkdir -p ~/.config/solana
+          echo "${{ secrets.SOLANA_MAINNET_PRIVATE_KEY }}" > keypair.json
+          solana config set --keypair keypair.json
+          solana config set --url https://api.mainnet-beta.solana.com
+
+      # Deploy to mainnet
+      - name: Deploy to mainnet
+        run: |
+          anchor build
+          anchor deploy --provider.cluster mainnet-beta
+
+      # Verify deployment
+      - name: Verify mainnet deployment
+        run: |
+          echo "Verifying deployment..."
+          solana program show --output json $(solana address -k target/deploy/amm_core-keypair.json)
+
+      # Create deployment record
+      - name: Create deployment record
+        run: |
+          DEPLOYMENT_RECORD=$(cat <<EOF
+          {
+            "version": "${{ github.ref_name }}",
+            "date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "deployer": "${{ github.actor }}",
+            "environment": "mainnet",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
+          )
+          echo "$DEPLOYMENT_RECORD" > deployment-record.json
+
+      # Send notification
+      - name: Send deployment notification
+        if: success()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_TITLE: "🚀 Mainnet Deployment"
+          SLACK_MESSAGE: "Successfully deployed ${{ github.ref_name }} to Solana Mainnet"
+          SLACK_COLOR: good

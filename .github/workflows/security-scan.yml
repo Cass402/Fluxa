@@ -1,0 +1,134 @@
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: "0 0 * * MON" # Run weekly on Mondays
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      - name: Rust static analysis
+        run: cargo clippy --all-features -- -D warnings
+
+      - name: TypeScript static analysis
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+          yarn lint
+        continue-on-error: true
+
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust dependency audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+      - name: JavaScript dependency audit
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+          yarn audit || true
+        continue-on-error: true
+
+      - name: Snyk security scan
+        uses: snyk/actions/node@master
+        with:
+          args: --all-projects
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  security-compliance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "Fluxa"
+          path: "."
+          format: "HTML"
+          out: "reports"
+          args: >
+            --enableExperimental
+
+      - name: Check Solana program security best practices
+        run: |
+          echo "Checking for security best practices in Solana programs..."
+          grep -r "invoke_signed" --include="*.rs" ./programs/
+          grep -r "try_accounts" --include="*.rs" ./programs/
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: reports/
+
+  report-generation:
+    needs:
+      [static-analysis, vulnerability-scan, secret-scan, security-compliance]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download security artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: security-reports
+          path: security-reports/
+
+      - name: Generate security summary
+        run: |
+          echo "# Security Scanning Results" > security-summary.md
+          echo "## Generated on $(date)" >> security-summary.md
+          echo "- Static Analysis: ${{ needs.static-analysis.result }}" >> security-summary.md
+          echo "- Vulnerability Scan: ${{ needs.vulnerability-scan.result }}" >> security-summary.md
+          echo "- Secret Scan: ${{ needs.secret-scan.result }}" >> security-summary.md
+          echo "- Security Compliance: ${{ needs.security-compliance.result }}" >> security-summary.md
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-summary
+          path: security-summary.md
+
+      - name: Send notification
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_TITLE: "Security Scan Results"
+          SLACK_MESSAGE: "Security scanning completed with status: ${{ job.status }}"
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}

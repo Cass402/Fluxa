@@ -1,0 +1,29 @@
+name: "Install Anchor"
+description: "Installs Anchor framework for Solana development"
+inputs:
+  anchor_version:
+    description: "Anchor version to install"
+    required: true
+    default: "0.31.0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache Anchor install
+      id: cache-anchor
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/bin/anchor
+        key: anchor-${{ inputs.anchor_version }}
+
+    - name: Install Anchor
+      if: steps.cache-anchor.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cargo install --git https://github.com/coral-xyz/anchor --tag v${{ inputs.anchor_version }} anchor-cli --locked
+
+    - name: Verify installation
+      shell: bash
+      run: |
+        anchor --version
+        echo "Anchor installed successfully"

@@ -1,0 +1,47 @@
+name: "Setup Integration Test Environment"
+description: "Sets up the environment for running integration tests"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+        cache: "yarn"
+
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+
+    - name: Install Solana Test Validator
+      shell: bash
+      run: |
+        if ! command -v solana-test-validator &> /dev/null; then
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.1.0/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+        fi
+
+    - name: Setup Test Environment
+      shell: bash
+      run: |
+        # Create test keypair
+        mkdir -p ~/.config/solana
+        solana-keygen new --no-bip39-passphrase -o ~/.config/solana/id.json
+
+        # Start local validator in background
+        solana-test-validator --quiet &
+        echo "VALIDATOR_PID=$!" >> $GITHUB_ENV
+
+        # Wait for validator to start
+        echo "Waiting for validator to start..."
+        sleep 5
+        solana config set --url http://localhost:8899
+
+        # Fund the test account
+        solana airdrop 10
+
+        echo "Integration test environment ready"

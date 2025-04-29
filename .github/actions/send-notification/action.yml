@@ -1,0 +1,52 @@
+name: "Send Notification"
+description: "Sends notification on deployment events"
+inputs:
+  status:
+    description: "Status of the deployment (success, failure, warning)"
+    required: true
+  environment:
+    description: "Deployment environment"
+    required: true
+  message:
+    description: "Message to send in the notification"
+    required: true
+  webhook_url:
+    description: "Webhook URL for notifications"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set notification color
+      id: set-color
+      shell: bash
+      run: |
+        if [[ "${{ inputs.status }}" == "success" ]]; then
+          echo "COLOR=good" >> $GITHUB_OUTPUT
+        elif [[ "${{ inputs.status }}" == "failure" ]]; then
+          echo "COLOR=danger" >> $GITHUB_OUTPUT
+        else
+          echo "COLOR=warning" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Set emoji
+      id: set-emoji
+      shell: bash
+      run: |
+        if [[ "${{ inputs.status }}" == "success" ]]; then
+          echo "EMOJI=:white_check_mark:" >> $GITHUB_OUTPUT
+        elif [[ "${{ inputs.status }}" == "failure" ]]; then
+          echo "EMOJI=:x:" >> $GITHUB_OUTPUT
+        else
+          echo "EMOJI=:warning:" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Send Slack notification
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ inputs.webhook_url }}
+        SLACK_CHANNEL: ${{ inputs.environment == 'mainnet' && 'prod-deployments' || 'deployments' }}
+        SLACK_TITLE: "${{ steps.set-emoji.outputs.EMOJI }} Fluxa Deployment: ${{ inputs.environment }}"
+        SLACK_MESSAGE: "${{ inputs.message }}"
+        SLACK_COLOR: ${{ steps.set-color.outputs.COLOR }}
+        SLACK_FOOTER: "Fluxa CI/CD Pipeline"

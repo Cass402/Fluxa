@@ -1,5 +1,3 @@
-use crate::constants::{MAX_TICK, MIN_SQRT_PRICE};
-
 /// Swap Instruction Module
 ///
 /// This module implements the core swap functionality for the Fluxa AMM.
@@ -9,6 +7,7 @@ use crate::constants::{MAX_TICK, MIN_SQRT_PRICE};
 ///
 /// The swap execution updates the pool's price and transfers tokens between
 /// the user's accounts and the pool's vaults, collecting fees in the process.
+use crate::constants::{MAX_TICK, MIN_SQRT_PRICE};
 use crate::errors::ErrorCode;
 use crate::math::{self, sqrt_price_to_tick};
 use crate::pool_state::PoolState;
@@ -198,6 +197,8 @@ fn execute_swap(
     let sqrt_price = pool_state.pool.sqrt_price;
     let liquidity = pool_state.pool.liquidity;
     let fee_tier = pool_state.pool.fee_tier;
+    // Get tick spacing from fee tier using the helper function
+    let _tick_spacing = PoolState::get_tick_spacing_for_fee_tier(fee_tier)? as u16;
 
     // Cannot swap if there's zero liquidity
     require!(liquidity > 0, ErrorCode::InsufficientLiquidity);
@@ -224,36 +225,12 @@ fn execute_swap(
         // Calculate next tick boundary
         let next_tick = if is_token_a {
             // When swapping A for B (selling A), price decreases
-            // Find the next lower initialized tick
-            let mut lower_tick = current_tick;
-
-            // Search for the next initialized tick below current
-            for (tick_idx, tick) in &pool_state.ticks {
-                if *tick_idx < current_tick
-                    && tick.initialized
-                    && (*tick_idx > lower_tick || lower_tick == current_tick)
-                {
-                    lower_tick = *tick_idx;
-                }
-            }
-
-            lower_tick
+            // Use pool_state to find the next lower initialized tick
+            pool_state.prev_initialized_tick(current_tick)?
         } else {
             // When swapping B for A (selling B), price increases
-            // Find the next higher initialized tick
-            let mut upper_tick = current_tick;
-
-            // Search for the next initialized tick above current
-            for (tick_idx, tick) in &pool_state.ticks {
-                if *tick_idx > current_tick
-                    && tick.initialized
-                    && (*tick_idx < upper_tick || upper_tick == current_tick)
-                {
-                    upper_tick = *tick_idx;
-                }
-            }
-
-            upper_tick
+            // Use pool_state to find the next higher initialized tick
+            pool_state.next_initialized_tick(current_tick)?
         };
 
         // Calculate target sqrt price at the next tick boundary
