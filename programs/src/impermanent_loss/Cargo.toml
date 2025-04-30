@@ -21,3 +21,5 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.0", features = ["metadata"] }
 amm_core = { path = "../amm_core" }
+rand = "0.8.5"
+rand_distr = "0.4.3"

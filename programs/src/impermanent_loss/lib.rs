@@ -6,6 +6,14 @@ use anchor_spl::token::{Token, TokenAccount};
 
 declare_id!("EHnY4rkdv8cLZrQQL14yVrxBSBpQv9zweK1GfxGC3pZ"); // Placeholder ID, replace with actual one
 
+// Import and re-export the IL mitigation components
+pub mod volatility_detection;
+pub mod adaptive_threshold;
+pub mod position_calculator;
+pub use volatility_detection::VolatilityCalculator;
+pub use adaptive_threshold::ThresholdManager;
+pub use position_calculator::PositionOptimizer;
+
 #[program]
 pub mod impermanent_loss {
     use super::*;
