@@ -1142,3 +1142,12 @@ pub mod swap_router;
 pub mod tick_bitmap;
 pub mod token_pair;
 pub mod utils;
+
+#[cfg(kani)]
+pub mod formal_verification;
+
+#[cfg(test)]
+pub mod property_based_test;
+
+#[cfg(test)]
+pub mod unit_test;

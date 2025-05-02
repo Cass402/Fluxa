@@ -51,6 +51,61 @@ pub fn convert_sqrt_price_from_q96(sqrt_price_q96: u128) -> Result<u128> {
         .ok_or(ErrorCode::MathOverflow.into())
 }
 
+/// Converts a square root price in Q64.64 fixed-point format back to a regular price.
+///
+/// This function performs the inverse operation of `price_to_sqrt_price`, taking a
+/// square root price in Q64.64 format and converting it back to a regular price value.
+///
+/// # Mathematical Formula
+/// `price = (sqrt_price)^2 / 2^64`
+///
+/// # Parameters
+/// * `sqrt_price` - The square root price in Q64.64 fixed-point format
+///
+/// # Returns
+/// * `Result<u64>` - The corresponding price value, or an error
+///
+/// # Errors
+/// * `ErrorCode::MathOverflow` - If any calculation results in an overflow
+pub fn sqrt_price_to_price(sqrt_price: u128) -> Result<u64> {
+    // Square the sqrt_price (returns a value in Q128.128 format)
+    let price_q128 = sqrt_price
+        .checked_mul(sqrt_price)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Divide by Q64 to get back to Q64.64 format
+    let price_q64 = price_q128.checked_div(Q64).ok_or(ErrorCode::MathOverflow)?;
+
+    // Convert from Q64.64 to integer, which means dividing by Q64 again
+    let price = price_q64.checked_div(Q64).ok_or(ErrorCode::MathOverflow)?;
+
+    // Ensure the result fits in u64
+    if price > u64::MAX as u128 {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+
+    Ok(price as u64)
+}
+
+/// Converts a square root price in Q64.64 fixed-point format to a floating point price.
+///
+/// This function is similar to `sqrt_price_to_price` but returns a floating point
+/// value instead of an integer, which can be useful for display purposes or when
+/// more precision is needed than what a u64 can provide.
+///
+/// # Mathematical Formula
+/// `price = (sqrt_price / 2^64)^2`
+///
+/// # Parameters
+/// * `sqrt_price` - The square root price in Q64.64 fixed-point format
+///
+/// # Returns
+/// * `f64` - The corresponding price as a floating point value
+pub fn sqrt_price_to_price_f64(sqrt_price: u128) -> f64 {
+    let sqrt_price_float = (sqrt_price as f64) / (Q64 as f64);
+    sqrt_price_float * sqrt_price_float
+}
+
 /// Add two Q64.96 values
 pub fn add_q96(a: u128, b: u128) -> Result<u128> {
     a.checked_add(b).ok_or(ErrorCode::MathOverflow.into())
@@ -648,17 +703,9 @@ pub fn sqrt_price_to_tick(sqrt_price: u128) -> Result<i32> {
     let sqrt_price_low = tick_to_sqrt_price(high)?;
     let sqrt_price_high = tick_to_sqrt_price(low)?;
 
-    let diff_low = if sqrt_price >= sqrt_price_low {
-        sqrt_price - sqrt_price_low
-    } else {
-        sqrt_price_low - sqrt_price
-    };
+    let diff_low = sqrt_price.abs_diff(sqrt_price_low);
 
-    let diff_high = if sqrt_price >= sqrt_price_high {
-        sqrt_price - sqrt_price_high
-    } else {
-        sqrt_price_high - sqrt_price
-    };
+    let diff_high = sqrt_price.abs_diff(sqrt_price_high);
 
     if diff_low <= diff_high {
         Ok(high)
@@ -1315,18 +1362,14 @@ pub fn verify_virtual_reserves_invariant(
     let tolerance = liquidity_squared / 1000;
 
     // Check if the difference between the products is within tolerance
-    let difference = if reserve_product > liquidity_squared {
-        reserve_product - liquidity_squared
-    } else {
-        liquidity_squared - reserve_product
-    };
+    let difference = reserve_product.abs_diff(liquidity_squared);
 
     difference <= tolerance
 }
 
 /// Helper function for dividing a value by sqrt price
 #[allow(dead_code)]
-fn div_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
+pub fn div_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
     if sqrt_price_x64 == 0 {
         return Err(ErrorCode::MathOverflow.into());
     }
@@ -1342,7 +1385,7 @@ fn div_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
 
 /// Helper function for multiplying a value by sqrt price
 #[allow(dead_code)]
-fn mul_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
+pub fn mul_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
     // value * sqrt_price_x64 / 2^64
     let result = value
         .checked_mul(sqrt_price_x64)
@@ -1362,7 +1405,7 @@ fn mul_by_sqrt_price_x64(value: u128, sqrt_price_x64: u128) -> Result<u64> {
 /// # Returns
 /// * `u128` - The square root of the input value
 #[allow(dead_code)]
-fn sqrt_u128(value: u128) -> u128 {
+pub fn sqrt_u128(value: u128) -> u128 {
     if value == 0 {
         return 0;
     }
@@ -1378,4 +1421,284 @@ fn sqrt_u128(value: u128) -> u128 {
     }
 
     x
+}
+
+/// Calculates the next square root price after adding a specific amount of token0 (exact input)
+///
+/// This function computes how the square root price changes when a specified amount of token0
+/// is added to the pool, assuming the entire input amount is consumed (exact input).
+///
+/// # Parameters
+/// * `sqrt_price` - Current square root price in Q64.64 fixed-point format
+/// * `liquidity` - Current liquidity in the active range
+/// * `amount` - Exact input amount of token0 to add
+/// * `by_amount_in` - True to calculate by amount in, false to calculate by amount out
+///
+/// # Returns
+/// * `u128` - The new square root price after the token0 addition
+pub fn get_next_sqrt_price_from_amount0_exact_in(
+    sqrt_price: u128,
+    liquidity: u128,
+    amount: u64,
+    _by_amount_in: bool,
+) -> u128 {
+    // If zero values, return original price
+    if amount == 0 || liquidity == 0 {
+        return sqrt_price;
+    }
+
+    // Calculate the new sqrt price using calculate_swap_step
+    match calculate_swap_step(sqrt_price, liquidity, amount, true) {
+        Ok((new_sqrt_price, _)) => new_sqrt_price,
+        Err(_) => sqrt_price, // On error, return the original price
+    }
+}
+
+/// Calculates the next square root price after adding a specific amount of token1 (exact input)
+///
+/// This function computes how the square root price changes when a specified amount of token1
+/// is added to the pool, assuming the entire input amount is consumed (exact input).
+///
+/// # Parameters
+/// * `sqrt_price` - Current square root price in Q64.64 fixed-point format
+/// * `liquidity` - Current liquidity in the active range
+/// * `amount` - Exact input amount of token1 to add
+/// * `by_amount_in` - True to calculate by amount in, false to calculate by amount out
+///
+/// # Returns
+/// * `u128` - The new square root price after the token1 addition
+pub fn get_next_sqrt_price_from_amount1_exact_in(
+    sqrt_price: u128,
+    liquidity: u128,
+    amount: u64,
+    _by_amount_in: bool,
+) -> u128 {
+    // If zero values, return original price
+    if amount == 0 || liquidity == 0 {
+        return sqrt_price;
+    }
+
+    // Calculate the new sqrt price using calculate_swap_step
+    match calculate_swap_step(sqrt_price, liquidity, amount, false) {
+        Ok((new_sqrt_price, _)) => new_sqrt_price,
+        Err(_) => sqrt_price, // On error, return the original price
+    }
+}
+
+/// Calculates the amount of token0 required for a specified liquidity amount across a price range.
+///
+/// This function is a wrapper around `get_amount_a_delta_for_price_range` with a more
+/// intuitive interface for calculating token amounts.
+///
+/// # Parameters
+/// * `sqrt_price_a` - The first sqrt price bound
+/// * `sqrt_price_b` - The second sqrt price bound
+/// * `liquidity` - The amount of liquidity
+/// * `round_up` - Whether to round up (for deposits) or down (for withdrawals)
+///
+/// # Returns
+/// * `u64` - The calculated token0 amount
+pub fn get_amount0_delta(
+    sqrt_price_a: u128,
+    sqrt_price_b: u128,
+    liquidity: u128,
+    round_up: bool,
+) -> u64 {
+    // If liquidity is zero, return zero immediately
+    if liquidity == 0 {
+        return 0;
+    }
+
+    // Order the prices correctly (lower, upper)
+    let (sqrt_price_lower, sqrt_price_upper) = if sqrt_price_a <= sqrt_price_b {
+        (sqrt_price_a, sqrt_price_b)
+    } else {
+        (sqrt_price_b, sqrt_price_a)
+    };
+
+    // Call the existing function to calculate the amount
+    match get_amount_a_delta_for_price_range(
+        liquidity,
+        sqrt_price_lower,
+        sqrt_price_upper,
+        round_up,
+    ) {
+        Ok(amount) => amount as u64,
+        Err(_) => 0, // Return 0 in case of error
+    }
+}
+
+/// Calculates the amount of token1 required for a specified liquidity amount across a price range.
+///
+/// This function is a wrapper around `get_amount_b_delta_for_price_range` with a more
+/// intuitive interface for calculating token amounts.
+///
+/// # Parameters
+/// * `sqrt_price_a` - The first sqrt price bound
+/// * `sqrt_price_b` - The second sqrt price bound
+/// * `liquidity` - The amount of liquidity
+/// * `round_up` - Whether to round up (for deposits) or down (for withdrawals)
+///
+/// # Returns
+/// * `u64` - The calculated token1 amount
+pub fn get_amount1_delta(
+    sqrt_price_a: u128,
+    sqrt_price_b: u128,
+    liquidity: u128,
+    round_up: bool,
+) -> u64 {
+    // If liquidity is zero, return zero immediately
+    if liquidity == 0 {
+        return 0;
+    }
+
+    // Order the prices correctly (lower, upper)
+    let (sqrt_price_lower, sqrt_price_upper) = if sqrt_price_a <= sqrt_price_b {
+        (sqrt_price_a, sqrt_price_b)
+    } else {
+        (sqrt_price_b, sqrt_price_a)
+    };
+
+    // Call the existing function to calculate the amount
+    match get_amount_b_delta_for_price_range(
+        liquidity,
+        sqrt_price_lower,
+        sqrt_price_upper,
+        round_up,
+    ) {
+        Ok(amount) => amount as u64,
+        Err(_) => 0, // Return 0 in case of error
+    }
+}
+
+/// Calculates the liquidity amount from token0 and token1 amounts across a specified price range.
+///
+/// This function computes the effective liquidity that corresponds to a specific combination
+/// of token0 and token1 amounts at a given price range. It's used during position creation
+/// and for testing the mathematical relationships between liquidity and token amounts.
+///
+/// # Parameters
+/// * `sqrt_price_lower` - The lower square root price bound
+/// * `sqrt_price_upper` - The upper square root price bound
+/// * `amount0` - The amount of token0
+/// * `amount1` - The amount of token1
+///
+/// # Returns
+/// * `u128` - The calculated liquidity amount
+pub fn get_liquidity_from_amounts(
+    sqrt_price_lower: u128,
+    sqrt_price_upper: u128,
+    amount0: u128,
+    amount1: u128,
+) -> u128 {
+    // If both token amounts are zero, return zero liquidity
+    if amount0 == 0 && amount1 == 0 {
+        return 0;
+    }
+
+    // Calculate liquidity based on token0 amount
+    let liquidity0 = if amount0 == 0 {
+        0
+    } else {
+        // L = amount0 / (1/sqrt_price_lower - 1/sqrt_price_upper)
+        // Compute (1/sqrt_price_lower) * Q64 - invert the lower bound
+        let inv_lower = match Q64
+            .checked_mul(Q64)
+            .and_then(|q| q.checked_div(sqrt_price_lower))
+        {
+            Some(val) => val,
+            None => return 0, // Return 0 on math overflow
+        };
+
+        // Compute (1/sqrt_price_upper) * Q64 - invert the upper bound
+        let inv_upper = match Q64
+            .checked_mul(Q64)
+            .and_then(|q| q.checked_div(sqrt_price_upper))
+        {
+            Some(val) => val,
+            None => return 0, // Return 0 on math overflow
+        };
+
+        // Calculate the difference of the inverses
+        let delta_inv = match inv_lower.checked_sub(inv_upper) {
+            Some(val) => val,
+            None => return 0, // Return 0 on math overflow
+        };
+
+        // Calculate amount0 * Q64 / (inv_lower - inv_upper)
+        amount0
+            .checked_mul(Q64)
+            .and_then(|a| a.checked_div(delta_inv))
+            .unwrap_or(0)
+    };
+
+    // Calculate liquidity based on token1 amount
+    let liquidity1 = if amount1 == 0 {
+        0
+    } else {
+        // L = amount1 / (sqrt_price_upper - sqrt_price_lower)
+        let delta_sqrt_price = match sqrt_price_upper.checked_sub(sqrt_price_lower) {
+            Some(val) => val,
+            None => return 0, // Return 0 on math overflow
+        };
+
+        // Calculate amount1 * Q64 / (sqrt_price_upper - sqrt_price_lower)
+        amount1
+            .checked_mul(Q64)
+            .and_then(|a| a.checked_div(delta_sqrt_price))
+            .unwrap_or(0)
+    };
+
+    // Return the minimum of the two liquidity values
+    // If one token is 0, then use the other token's liquidity value
+    if liquidity0 == 0 {
+        liquidity1
+    } else if liquidity1 == 0 {
+        liquidity0
+    } else {
+        liquidity0.min(liquidity1)
+    }
+}
+
+/// Calculates the fee amount from a given amount and fee rate
+///
+/// This function calculates the fee amount by multiplying the input amount
+/// by the fee rate (in basis points, where 10000 = 100%) and dividing by 10000.
+///
+/// # Parameters
+/// * `amount` - The amount to calculate the fee on
+/// * `fee_rate` - The fee rate in basis points (e.g., 30 for 0.3%)
+///
+/// # Returns
+/// * `u64` - The calculated fee amount
+pub fn calculate_fee(amount: u64, fee_rate: u16) -> u64 {
+    // Early return for edge cases
+    if amount == 0 || fee_rate == 0 {
+        return 0;
+    }
+
+    // Calculate fee: amount * fee_rate / 10000
+    // Using a u128 for the intermediate calculation to avoid overflow
+    let fee_amount = (amount as u128) * (fee_rate as u128) / 10000u128;
+
+    // Ensure the result fits in u64
+    fee_amount as u64
+}
+
+/// Enhanced version of calculate_fee that takes u128 amount
+///
+/// # Parameters
+/// * `amount` - The amount to calculate the fee on
+/// * `fee_rate` - The fee rate in basis points (e.g., 30 for 0.3%)
+///
+/// # Returns
+/// * `u128` - The calculated fee amount
+pub fn calculate_fee_u128(amount: u128, fee_rate: u16) -> u128 {
+    // Early return for edge cases
+    if amount == 0 || fee_rate == 0 {
+        return 0;
+    }
+
+    // Calculate fee: amount * fee_rate / 10000
+    amount * (fee_rate as u128) / 10000u128
 }
