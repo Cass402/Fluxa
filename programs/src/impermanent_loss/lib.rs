@@ -7,12 +7,12 @@ use anchor_spl::token::{Token, TokenAccount};
 declare_id!("EHnY4rkdv8cLZrQQL14yVrxBSBpQv9zweK1GfxGC3pZ"); // Placeholder ID, replace with actual one
 
 // Import and re-export the IL mitigation components
-pub mod volatility_detection;
 pub mod adaptive_threshold;
 pub mod position_calculator;
-pub use volatility_detection::VolatilityCalculator;
+pub mod volatility_detection;
 pub use adaptive_threshold::ThresholdManager;
 pub use position_calculator::PositionOptimizer;
+pub use volatility_detection::VolatilityCalculator;
 
 #[program]
 pub mod impermanent_loss {
@@ -144,16 +144,41 @@ pub struct CheckRebalanceCondition<'info> {
 /// Accounts required to execute a rebalance
 #[derive(Accounts)]
 pub struct ExecuteRebalance<'info> {
+    /// User authority that can execute the rebalance
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    #[account(mut)]
+    /// Rebalance state tracking account
+    #[account(
+        mut,
+        seeds = [b"rebalance_authority".as_ref()],
+        bump
+    )]
     pub rebalance_state: Account<'info, RebalanceState>,
 
-    // These accounts would be used to interact with the AMM core program
-    // to modify the position's boundaries. The actual structure would depend
-    // on how the AMM Core program is designed.
+    /// AMM Core program to interact with for position adjustments
+    pub amm_program: Program<'info, amm_core::program::AmmCore>,
+
+    /// Position account from AMM Core
+    #[account(mut)]
+    pub position: AccountInfo<'info>,
+
+    /// Pool account from AMM Core
+    #[account(mut)]
+    pub pool: AccountInfo<'info>,
+
+    /// Token A account used for liquidity operations
+    #[account(mut)]
+    pub token_a_account: AccountInfo<'info>,
+
+    /// Token B account used for liquidity operations
+    #[account(mut)]
+    pub token_b_account: AccountInfo<'info>,
+
+    /// SPL Token program
     pub token_program: Program<'info, Token>,
+
+    /// System program
     pub system_program: Program<'info, System>,
 }
 

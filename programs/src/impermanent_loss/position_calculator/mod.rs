@@ -1,10 +1,12 @@
 pub mod boundary_calculator;
 pub mod il_estimator;
+pub mod il_metrics;
 pub mod stochastic_model;
 pub mod position_optimizer;
 
 pub use boundary_calculator::BoundaryCalculator;
 pub use il_estimator::ImpermanentLossEstimator;
+pub use il_metrics::{ILMetricsCalculator, ILMetrics, ILEvent, ILEventType, ComparativeILMetrics};
 pub use stochastic_model::StochasticModel;
 pub use position_optimizer::PositionOptimizer;
 

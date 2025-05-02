@@ -20,6 +20,7 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.0", features = ["metadata"] }
-amm_core = { path = "../amm_core" }
+amm_core = { path = "../amm_core", features = ["cpi"] }
 rand = "0.8.5"
 rand_distr = "0.4.3"
+solana-program = "^2.2.0" # Use compatible version with anchor-spl
