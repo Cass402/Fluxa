@@ -11,6 +11,7 @@ mod math_tests {
     /// Contains constants for Q64.64 and Q64.96 fixed-point formats, test price values
     /// at different levels, corresponding square root prices in different formats,
     /// a test liquidity value, and test tick values at min/mid/max positions.
+    #[allow(dead_code)]
     struct MathTestFixture {
         // Q64.64 format constants
         q64: u128,
@@ -109,6 +110,7 @@ mod math_tests {
     }
 
     // Helper to convert Q64.64 to f64
+    #[allow(dead_code)]
     fn q64_to_float(value: u128) -> f64 {
         (value as f64) / (Q64 as f64)
     }
@@ -120,6 +122,7 @@ mod math_tests {
     ///
     /// # Returns
     /// The floating point representation of the Q64.96 value
+    #[allow(dead_code)]
     fn q96_to_float(value: u128) -> f64 {
         (value as f64) / (Q96 as f64)
     }
@@ -269,8 +272,7 @@ mod math_tests {
             / (fixture.sqrt_price_mid_q96 as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test basic multiplication
@@ -283,8 +285,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test overflow handling
@@ -312,8 +313,7 @@ mod math_tests {
             / (fixture.sqrt_price_mid_q96 as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test self division (should be close to 1.0)
@@ -322,8 +322,7 @@ mod math_tests {
         let relative_error = (result as f64 - one_q96 as f64).abs() / (one_q96 as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test division by zero
@@ -365,8 +364,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.0001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
     }
 
@@ -416,8 +414,7 @@ mod math_tests {
         let relative_error = (result as f64 - one_q96 as f64).abs() / (one_q96 as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test squaring 2.0
@@ -427,8 +424,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test squaring 0.0
@@ -459,8 +455,7 @@ mod math_tests {
         let relative_error = (result as f64 - one_q96 as f64).abs() / (one_q96 as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test sqrt of 4.0
@@ -470,8 +465,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test sqrt of 0.0
@@ -485,8 +479,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
     }
 
@@ -509,8 +502,7 @@ mod math_tests {
         let relative_error = (result as f64 - one_q96 as f64).abs() / (one_q96 as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test reciprocal of 2.0
@@ -520,8 +512,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test reciprocal of a very small number
@@ -531,8 +522,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test reciprocal of 0.0 (should error)
@@ -602,8 +592,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected as f64).abs() / (expected as f64);
         assert!(
             relative_error < 0.0001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test tick = 100
@@ -613,8 +602,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected_sqrt_price).abs() / expected_sqrt_price;
         assert!(
             relative_error < 0.0001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test tick = -100
@@ -624,8 +612,7 @@ mod math_tests {
         let relative_error = (result as f64 - expected_sqrt_price).abs() / expected_sqrt_price;
         assert!(
             relative_error < 0.0001,
-            "Relative error too large: {}",
-            relative_error
+            "Relative error too large: {relative_error}"
         );
 
         // Test boundary cases
@@ -783,7 +770,7 @@ mod math_tests {
 
         assert_eq!(result, expected);
 
-        // Case 2: Current price below range (0% token B)
+        // Case 2: Current price below the price range (0% token B)
         let sqrt_price_current = sqrt_price_lower / 2; // Below lower bound
 
         let result = get_token_b_from_liquidity(
@@ -796,7 +783,7 @@ mod math_tests {
 
         assert_eq!(result, 0);
 
-        // Case 3: Current price above range (100% token B)
+        // Case 3: Current price above the price range (100% token B)
         let sqrt_price_current = sqrt_price_upper * 2; // Above upper bound
 
         let result = get_token_b_from_liquidity(
@@ -861,11 +848,7 @@ mod math_tests {
         // Allow small difference due to increased precision
         let rel_diff =
             ((result as i128 - standard_result as i128).abs() as f64) / (standard_result as f64);
-        assert!(
-            rel_diff < 0.01,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.01, "Relative difference too large: {rel_diff}");
 
         // Case 2: Current price below range (100% token A)
         let sqrt_price_current_q96 = sqrt_price_lower_q96 / 2; // Below lower bound
@@ -889,11 +872,7 @@ mod math_tests {
 
         let rel_diff =
             ((result as i128 - standard_result as i128).abs() as f64) / (standard_result as f64);
-        assert!(
-            rel_diff < 0.01,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.01, "Relative difference too large: {rel_diff}");
 
         // Case 3: Current price above range (0% token A)
         let sqrt_price_current_q96 = sqrt_price_upper_q96 * 2; // Above upper bound
@@ -958,11 +937,7 @@ mod math_tests {
         // Allow small difference due to increased precision
         let rel_diff =
             ((result as i128 - standard_result as i128).abs() as f64) / (standard_result as f64);
-        assert!(
-            rel_diff < 0.01,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.01, "Relative difference too large: {rel_diff}");
 
         // Case 2: Current price below range (0% token B)
         let sqrt_price_current_q96 = sqrt_price_lower_q96 / 2; // Below lower bound
@@ -999,11 +974,7 @@ mod math_tests {
 
         let rel_diff =
             ((result as i128 - standard_result as i128).abs() as f64) / (standard_result as f64);
-        assert!(
-            rel_diff < 0.01,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.01, "Relative difference too large: {rel_diff}");
 
         // Case 4: Zero liquidity
         let result = get_token_b_from_liquidity_q96(
@@ -1034,33 +1005,24 @@ mod math_tests {
         let rel_diff = ((result as i128 - expected as i128).abs() as f64) / (expected as f64);
         assert!(
             rel_diff < 0.00001,
-            "Relative difference too large: {}",
-            rel_diff
+            "Relative difference too large: {rel_diff}"
         );
 
         // Test positive tick
         let tick = 100;
         // Calculate expected sqrt price: sqrt(1.0001^100) * 2^64
-        let expected = ((1.0001f64.powf(100.0)).sqrt() * Q64 as f64) as u128;
+        let expected = ((1.0001f64.powf(tick as f64)).sqrt() * Q64 as f64) as u128;
         let result = tick_to_sqrt_price(tick).unwrap();
         let rel_diff = ((result as i128 - expected as i128).abs() as f64) / (expected as f64);
-        assert!(
-            rel_diff < 0.0001,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.0001, "Relative error too large: {rel_diff}");
 
         // Test negative tick
         let tick = -100;
         // Calculate expected sqrt price: sqrt(1.0001^(-100)) * 2^64
-        let expected = ((1.0001f64.powf(-100.0)).sqrt() * Q64 as f64) as u128;
+        let expected = ((1.0001f64.powf(tick as f64)).sqrt() * Q64 as f64) as u128;
         let result = tick_to_sqrt_price(tick).unwrap();
         let rel_diff = ((result as i128 - expected as i128).abs() as f64) / (expected as f64);
-        assert!(
-            rel_diff < 0.0001,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.0001, "Relative error too large: {rel_diff}");
 
         // Test out of range tick (should error)
         let result = tick_to_sqrt_price(MIN_TICK - 1);
@@ -1133,7 +1095,7 @@ mod math_tests {
         let adjusted_sqrt_price = sqrt_price + (sqrt_price / 10000); // small adjustment
         let result = sqrt_price_to_tick(adjusted_sqrt_price).unwrap();
         // Should be close to 100
-        assert!(result >= 99 && result <= 101);
+        assert!((99..=101).contains(&result));
     }
 
     #[test]
@@ -1221,8 +1183,7 @@ mod math_tests {
             / (expected_new_sqrt_price as f64);
         assert!(
             rel_diff < 0.0001,
-            "Relative difference too large: {}",
-            rel_diff
+            "Relative difference too large: {rel_diff}"
         );
 
         // Test swapping token B for token A (y to x)
@@ -1247,8 +1208,7 @@ mod math_tests {
             / (expected_new_sqrt_price as f64);
         assert!(
             rel_diff < 0.0001,
-            "Relative difference too large: {}",
-            rel_diff
+            "Relative difference too large: {rel_diff}"
         );
 
         // Test error case: zero liquidity
@@ -1368,8 +1328,7 @@ mod math_tests {
         let rel_diff = ((result as i128 - expected as i128).abs() as f64) / (expected as f64);
         assert!(
             rel_diff < 0.0001,
-            "Relative difference too large: {}",
-            rel_diff
+            "Relative difference too large: {rel_diff}"
         );
 
         // Test price = 4.0
@@ -1379,8 +1338,7 @@ mod math_tests {
         let rel_diff = ((result as i128 - expected as i128).abs() as f64) / (expected as f64);
         assert!(
             rel_diff < 0.0001,
-            "Relative difference too large: {}",
-            rel_diff
+            "Relative difference too large: {rel_diff}"
         );
 
         // Test price = 0.25
@@ -1429,7 +1387,7 @@ mod math_tests {
                 .unwrap();
 
         // Expected should be rounded up
-        let expected = (liquidity * (inv_lower - inv_upper) + (fixture.q64 - 1)) / fixture.q64;
+        let expected = (liquidity * (inv_lower - inv_upper)).div_ceil(fixture.q64);
 
         assert_eq!(result, expected);
 
@@ -1486,8 +1444,7 @@ mod math_tests {
                 .unwrap();
 
         // Expected should be rounded up
-        let expected =
-            (liquidity * (sqrt_price_upper - sqrt_price_lower) + (fixture.q64 - 1)) / fixture.q64;
+        let expected = (liquidity * (sqrt_price_upper - sqrt_price_lower)).div_ceil(fixture.q64);
 
         assert_eq!(result, expected);
 
@@ -1563,11 +1520,7 @@ mod math_tests {
 
         // Allow small difference due to fixed-point arithmetic
         let rel_diff = ((result as i64 - expected as i64).abs() as f64) / (expected as f64);
-        assert!(
-            rel_diff < 0.01,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.01, "Relative difference too large: {rel_diff}");
 
         // Test zero liquidity
         let result = calculate_virtual_reserve_a(0, sqrt_price).unwrap();
@@ -1594,11 +1547,7 @@ mod math_tests {
 
         // Allow small difference due to fixed-point arithmetic
         let rel_diff = ((result as i64 - expected as i64).abs() as f64) / (expected as f64);
-        assert!(
-            rel_diff < 0.01,
-            "Relative difference too large: {}",
-            rel_diff
-        );
+        assert!(rel_diff < 0.01, "Relative difference too large: {rel_diff}");
 
         // Test zero liquidity
         let result = calculate_virtual_reserve_b(0, sqrt_price).unwrap();
@@ -1650,12 +1599,12 @@ mod math_tests {
         assert_eq!(virtual_a, expected_a);
         assert_eq!(virtual_b, expected_b);
 
-        // Case 2: Current price is below range (all token A)
-        let current_sqrt_price = lower_sqrt_price / 2;
+        // Case 2: Current price below range (100% token A)
+        let sqrt_price_current = lower_sqrt_price / 2; // Below lower bound
 
-        let (virtual_a, virtual_b) = calculate_virtual_reserves_in_range(
+        let (virtual_a, _virtual_b) = calculate_virtual_reserves_in_range(
             liquidity,
-            current_sqrt_price,
+            sqrt_price_current,
             lower_sqrt_price,
             upper_sqrt_price,
         )
@@ -1671,14 +1620,14 @@ mod math_tests {
         .unwrap() as u64;
 
         assert_eq!(virtual_a, expected_a);
-        assert_eq!(virtual_b, 0);
+        assert_eq!(_virtual_b, 0);
 
-        // Case 3: Current price is above range (all token B)
-        let current_sqrt_price = upper_sqrt_price * 2;
+        // Case 3: Current price above range (all token B)
+        let sqrt_price_current = upper_sqrt_price * 2; // Above upper bound
 
-        let (virtual_a, virtual_b) = calculate_virtual_reserves_in_range(
+        let (virtual_a, _virtual_b) = calculate_virtual_reserves_in_range(
             liquidity,
-            current_sqrt_price,
+            sqrt_price_current,
             lower_sqrt_price,
             upper_sqrt_price,
         )
@@ -1773,10 +1722,10 @@ mod math_tests {
         let sqrt_price = fixture.sqrt_price_mid_q64;
 
         // virtual_a = liquidity * Q96 / sqrt_price
-        let virtual_a = (liquidity as u128 * Q96 / sqrt_price) as u64;
+        let virtual_a = (liquidity * Q96 / sqrt_price) as u64;
 
         // virtual_b = liquidity * sqrt_price / Q96
-        let virtual_b = (liquidity as u128 * sqrt_price / Q96) as u64;
+        let virtual_b = (liquidity * sqrt_price / Q96) as u64;
 
         // Verify invariant with exact values
         let result = verify_virtual_reserves_invariant(virtual_a, virtual_b, liquidity);
@@ -1946,6 +1895,7 @@ mod math_tests {
         let fixture = MathTestFixture::new();
 
         // Define test values
+
         let liquidity = fixture.liquidity;
         let sqrt_price = fixture.sqrt_price_mid_q64;
 
@@ -1966,20 +1916,19 @@ mod math_tests {
             calculate_liquidity_from_reserves(0, virtual_b, sqrt_price, false).unwrap();
 
         // Both should give approximately the same liquidity (within rounding error)
+        // Very small differences may exist due to rounding in fixed-point arithmetic
         let rel_diff_a =
             ((liquidity_from_a as i128 - liquidity as i128).abs() as f64) / (liquidity as f64);
-        let rel_diff_b =
-            ((liquidity_from_b as i128 - liquidity as i128).abs() as f64) / (liquidity as f64);
-
         assert!(
             rel_diff_a < 0.001,
-            "Relative difference from A too large: {}",
-            rel_diff_a
+            "Relative difference for token A too large: {rel_diff_a}"
         );
+
+        let rel_diff_b =
+            ((liquidity_from_b as i128 - liquidity as i128).abs() as f64) / (liquidity as f64);
         assert!(
             rel_diff_b < 0.001,
-            "Relative difference from B too large: {}",
-            rel_diff_b
+            "Relative difference for token B too large: {rel_diff_b}"
         );
     }
 
@@ -2024,8 +1973,7 @@ mod math_tests {
             / (amount_delta_b as f64);
         assert!(
             rel_diff < 0.001,
-            "Relative difference too large: {}",
-            rel_diff
+            "Relative difference too large: {rel_diff}"
         );
     }
 
@@ -2138,11 +2086,10 @@ mod math_tests {
 
         // Should be close (allow small difference due to precision)
         let rel_diff =
-            ((token_a_q64 as i64 - token_a_q96 as i64).abs() as f64) / (token_a_q64 as f64);
+            ((token_a_q64 as i128 - token_a_q96 as i128).abs() as f64) / (token_a_q64 as f64);
         assert!(
             rel_diff < 0.01,
-            "Q64.64 and Q64.96 calculations differ too much for token A: {}",
-            rel_diff
+            "Q64.64 and Q64.96 calculations differ too much for token A: {rel_diff}"
         );
 
         // Same for token B
@@ -2163,11 +2110,10 @@ mod math_tests {
         .unwrap();
 
         let rel_diff =
-            ((token_b_q64 as i64 - token_b_q96 as i64).abs() as f64) / (token_b_q64 as f64);
+            ((token_b_q64 as i128 - token_b_q96 as i128).abs() as f64) / (token_b_q64 as f64);
         assert!(
             rel_diff < 0.01,
-            "Q64.64 and Q64.96 calculations differ too much for token B: {}",
-            rel_diff
+            "Q64.64 and Q64.96 calculations differ too much for token B: {rel_diff}"
         );
     }
 
@@ -2237,8 +2183,7 @@ mod math_tests {
                 / (original_liquidity as f64);
             assert!(
                 rel_diff < 0.01,
-                "Liquidity from token A differs too much: {}",
-                rel_diff
+                "Liquidity from token A differs too much: {rel_diff}"
             );
         }
 
@@ -2256,8 +2201,7 @@ mod math_tests {
                 / (original_liquidity as f64);
             assert!(
                 rel_diff < 0.01,
-                "Liquidity from token B differs too much: {}",
-                rel_diff
+                "Liquidity from token B differs too much: {rel_diff}"
             );
         }
     }
@@ -2270,32 +2214,30 @@ mod math_tests {
         let liquidity = 1_000_000_000_000;
 
         // Should not panic or error with minimum price
-        let (virtual_a, virtual_b) = calculate_virtual_reserves(liquidity, min_sqrt_price).unwrap();
+        let (virtual_a, _virtual_b) =
+            calculate_virtual_reserves(liquidity, min_sqrt_price).unwrap();
 
-        // At minimum price, virtual reserve A should be very large and B very small
+        // At minimum price, virtual reserve A should be very large
         assert!(virtual_a > 0);
-        assert!(virtual_b >= 0);
 
         // Test with very small non-zero liquidity
         let tiny_liquidity = 1;
         let sqrt_price = Q64; // Price of 1.0
 
-        let (virtual_a, virtual_b) =
+        let (virtual_a, _virtual_b) =
             calculate_virtual_reserves(tiny_liquidity, sqrt_price).unwrap();
 
         // Very small liquidity should still give valid results
-        assert!(virtual_a >= 0);
-        assert!(virtual_b >= 0);
+        assert_ne!(virtual_a, 0);
 
         // Test price near 0 (but above MIN_SQRT_PRICE)
         let near_zero_price = MIN_SQRT_PRICE + 1;
 
-        let (virtual_a, virtual_b) =
+        let (virtual_a, _virtual_b) =
             calculate_virtual_reserves(liquidity, near_zero_price).unwrap();
 
         // Near zero price should result in very large amount of token A
         assert!(virtual_a > 0);
-        assert!(virtual_b >= 0);
 
         // Test with very large liquidity (close to u128::MAX)
         let huge_liquidity = u128::MAX / 2;
