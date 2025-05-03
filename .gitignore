@@ -44,6 +44,5 @@ docs/"Technical Deep Dive"/riskManagement_and_optimizationTechnicalDesign.md
 docs/"Technical Deep Dive"/advancedFeaturesTechnicalDesign.md
 docs/"Technical Deep Dive"/integrationTechnicalDesign.
 
-patched_crates/
 .qodo/
 docs/**/chroma.sqlite3

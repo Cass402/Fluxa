@@ -24,8 +24,11 @@ ethereum-types = "0.14.1"
 kani = { git = "https://github.com/model-checking/kani", tag = "kani-0.61.0", optional = true }
 
 [dev-dependencies]
+anchor-client = "0.31.0"
 proptest = "1.2.0"
 tokio = { version = "1.28.0", features = ["macros", "rt", "rt-multi-thread"] }
 solana-program-test = "2.1.0"
 solana-sdk = "2.1.0"
+solana-program = "2.1.0"
+spl-token = "4.0.0"
 kani-verifier = "0.61.0"
