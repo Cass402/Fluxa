@@ -204,27 +204,24 @@ impl TickBitmap {
         }
     }
 
-    /// Finds the previous initialized tick
-    ///
-    /// # Parameters
-    /// * `tick` - The current tick
-    /// * `tick_spacing` - The spacing between ticks
-    ///
-    /// # Returns
-    /// * `Result<i32>` - The previous initialized tick, or MIN_TICK if not found
     pub fn prev_initialized_tick(&self, tick: i32, tick_spacing: u16) -> Result<i32> {
+        // 1. Protect against overflow
+        if tick == i32::MAX {
+            return Ok(i32::MAX);
+        }
+
+        // 2. Now do the usual downward search
         let (next_tick, initialized) = next_initialized_tick_in_direction(
             &self.bitmap_map,
             tick,
             tick_spacing,
-            true, // search downward (lte=true means less than or equal to current)
+            true, // searching downward
         )?;
 
         if initialized {
             Ok(next_tick)
         } else {
-            // Not found, return the boundary tick
-            // In production, this would typically be crate::constants::MIN_TICK
+            // No bit found at all: return the natural boundary
             Ok(next_tick)
         }
     }

@@ -11,7 +11,6 @@ use crate::errors::ErrorCode;
 use crate::tick_bitmap::*;
 use anchor_lang::prelude::*;
 use ethereum_types::U256;
-use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests {
@@ -24,7 +23,7 @@ mod tests {
         // Test creation and basic properties
         let zero = U256Wrapper::zero();
         let one = U256Wrapper::from_u32(1);
-        let max = U256Wrapper::max_value();
+        let _max = U256Wrapper::max_value(); // Added underscore to avoid unused variable warning
 
         assert!(zero.is_zero());
         assert!(zero.eq_zero());
@@ -119,9 +118,10 @@ mod tests {
         let default_word = TickBitmapWord::default();
         assert!(default_word.bitmap.is_zero());
 
-        // Create a word with single bit set
-        let mut word = TickBitmapWord::default();
-        word.bitmap = U256Wrapper::from_u32(1) << 5; // Set bit at position 5
+        // Create a word with single bit set - Fixed initialization
+        let word = TickBitmapWord {
+            bitmap: U256Wrapper::from_u32(1) << 5, // Set bit at position 5
+        };
 
         // Test is_initialized function
         assert!(is_initialized(&word, 5));
@@ -138,11 +138,12 @@ mod tests {
 
     #[test]
     fn test_next_initialized_tick_within_word() {
-        // Create a bitmap with bits set at positions 5, 10, and 200
-        let mut word = TickBitmapWord::default();
-        word.bitmap = (U256Wrapper::from_u32(1) << 5)
-            | (U256Wrapper::from_u32(1) << 10)
-            | (U256Wrapper::from_u32(1) << 200);
+        // Create a bitmap with bits set at positions 5, 10, and 200 - Fixed initialization
+        let word = TickBitmapWord {
+            bitmap: (U256Wrapper::from_u32(1) << 5)
+                | (U256Wrapper::from_u32(1) << 10)
+                | (U256Wrapper::from_u32(1) << 200),
+        };
 
         // Test searching upward (lte = false)
         let (found, pos) = next_initialized_tick_within_word(&word, 4, false).unwrap();
@@ -186,27 +187,30 @@ mod tests {
         let (found, _) = next_initialized_tick_within_word(&empty_word, 100, true).unwrap();
         assert!(!found);
 
-        // Test with only bit 0 set
-        let mut word = TickBitmapWord::default();
-        word.bitmap = U256Wrapper::from_u32(1); // Bit 0 set
-        let (found, pos) = next_initialized_tick_within_word(&word, 0, true).unwrap();
+        // Test with only bit 0 set - Fixed initialization
+        let word_bit_0 = TickBitmapWord {
+            bitmap: U256Wrapper::from_u32(1), // Bit 0 set
+        };
+        let (found, pos) = next_initialized_tick_within_word(&word_bit_0, 0, true).unwrap();
         assert!(found);
         assert_eq!(pos, 0);
 
-        // Test with only bit 255 set
-        let mut word = TickBitmapWord::default();
-        word.bitmap = U256Wrapper::from_u32(1) << 255; // Bit 255 set
-        let (found, pos) = next_initialized_tick_within_word(&word, 254, false).unwrap();
+        // Test with only bit 255 set - Fixed initialization
+        let word_bit_255 = TickBitmapWord {
+            bitmap: U256Wrapper::from_u32(1) << 255, // Bit 255 set
+        };
+        let (found, pos) = next_initialized_tick_within_word(&word_bit_255, 254, false).unwrap();
         assert!(found);
         assert_eq!(pos, 255);
 
-        // Test with all bits set
-        let mut word = TickBitmapWord::default();
-        word.bitmap = U256Wrapper::max_value(); // All bits set
-        let (found, pos) = next_initialized_tick_within_word(&word, 127, false).unwrap();
+        // Test with all bits set - Fixed initialization
+        let word_all_bits = TickBitmapWord {
+            bitmap: U256Wrapper::max_value(), // All bits set
+        };
+        let (found, pos) = next_initialized_tick_within_word(&word_all_bits, 127, false).unwrap();
         assert!(found);
         assert_eq!(pos, 128);
-        let (found, pos) = next_initialized_tick_within_word(&word, 127, true).unwrap();
+        let (found, pos) = next_initialized_tick_within_word(&word_all_bits, 127, true).unwrap();
         assert!(found);
         assert_eq!(pos, 127);
     }
