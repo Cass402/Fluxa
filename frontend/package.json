@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@project-serum/anchor": "^0.26.0",
-    "@solana/wallet-adapter-react": "^0.15.35",
+    "@solana/wallet-adapter-react": "^0.15.38",
     "@solana/wallet-adapter-react-ui": "^0.9.34",
     "@solana/wallet-adapter-wallets": "^0.19.23",
     "@solana/web3.js": "^1.78.0",
