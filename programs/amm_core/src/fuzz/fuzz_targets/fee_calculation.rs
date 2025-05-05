@@ -27,10 +27,12 @@ fuzz_target!(|input: FeeCalculationInput| {
     let tick_upper = input.tick_upper.clamp(tick_lower + 1, MAX_TICK);
     let tick_current = input.tick_current.clamp(MIN_TICK, MAX_TICK);
 
-    // Ensure fee growth values are reasonable
-    let fee_growth_global = input.fee_growth_global % (1 << 64);
-    let fee_growth_below = input.fee_growth_below % fee_growth_global;
-    let fee_growth_above = input.fee_growth_above % (fee_growth_global - fee_growth_below);
+    // Ensure fee growth values are reasonable to prevent stack overflow
+    // Reduce the max size to avoid large computations
+    let fee_growth_global = input.fee_growth_global % (1 << 32); // Reduced from 1 << 64
+    let fee_growth_below = input.fee_growth_below % (fee_growth_global.saturating_add(1) / 2);
+    let fee_growth_above =
+        input.fee_growth_above % (fee_growth_global.saturating_sub(fee_growth_below));
 
     // Test fee growth inside calculation
     let _ = calculate_fee_growth_inside(

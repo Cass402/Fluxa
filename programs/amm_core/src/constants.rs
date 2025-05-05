@@ -35,7 +35,7 @@ pub const MIN_SQRT_PRICE: u128 = 4295128739;
 /// Corresponds to the maximum tick and represents the highest possible
 /// sqrt(price) in Q64.64 fixed-point representation.
 /// Using a value close to the maximum representable u128
-pub const MAX_SQRT_PRICE: u128 = 340282366920938463463374607431768211455; // 2^128 - 1
+pub const MAX_SQRT_PRICE: u128 = u128::MAX;
 
 /// Standard fee tiers available (in basis points)
 ///

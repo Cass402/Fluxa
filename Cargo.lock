@@ -121,11 +121,14 @@ dependencies = [
  "kani",
  "kani-verifier",
  "proptest",
+ "solana-client",
  "solana-program",
  "solana-program-test",
  "solana-sdk",
+ "solana-transaction-status",
  "spl-token 4.0.2",
  "tokio",
+ "uint 0.10.0",
 ]
 
 [[package]]
@@ -1622,7 +1625,7 @@ dependencies = [
  "impl-rlp",
  "impl-serde",
  "primitive-types",
- "uint",
+ "uint 0.9.5",
 ]
 
 [[package]]
@@ -3321,7 +3324,7 @@ dependencies = [
  "impl-codec",
  "impl-rlp",
  "impl-serde",
- "uint",
+ "uint 0.9.5",
 ]
 
 [[package]]
@@ -7194,6 +7197,18 @@ name = "uint"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76f64bba2c53b04fcab63c01a7d7427eadc821e3bc48c34dc9ba29c501164b52"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "hex",
+ "static_assertions",
+]
+
+[[package]]
+name = "uint"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "909988d098b2f738727b161a106cfc7cab00c539c2687a8836f8e565976fb53e"
 dependencies = [
  "byteorder",
  "crunchy",

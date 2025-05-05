@@ -210,11 +210,11 @@ impl VolatilityState {
 /// Price data for volatility calculation
 #[account]
 pub struct PriceHistory {
-    /// Circular buffer of price data points
-    pub prices: [u64; 288], // Store 5-minute intervals for 24 hours
+    /// Circular buffer of price data points - Reduced from 288 to 96 elements to avoid stack overflow
+    pub prices: [u64; 96], // Store 15-minute intervals for 24 hours (reduced from 5-minute intervals)
 
-    /// Corresponding timestamps for each price point
-    pub timestamps: [i64; 288],
+    /// Corresponding timestamps for each price point - Reduced from 288 to 96 elements
+    pub timestamps: [i64; 96],
 
     /// Current index in the circular buffer
     pub current_index: u16,
@@ -224,8 +224,8 @@ pub struct PriceHistory {
 }
 
 impl PriceHistory {
-    pub const LEN: usize = 8 * 288 +  // prices
-        8 * 288 +  // timestamps
+    pub const LEN: usize = 8 * 96 +  // prices (reduced from 288)
+        8 * 96 +  // timestamps (reduced from 288)
         2 +  // current_index
         2; // data_count
 }

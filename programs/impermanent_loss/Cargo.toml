@@ -20,4 +20,4 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.0", features = ["metadata"] }
-amm_core = { path = "../amm_core" }
+amm_core = { path = "../amm_core", features = ["no-entrypoint"] }

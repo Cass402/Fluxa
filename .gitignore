@@ -46,3 +46,6 @@ docs/"Technical Deep Dive"/integrationTechnicalDesign.
 
 .qodo/
 docs/**/chroma.sqlite3
+out.json
+test-ledger/
+wallets/

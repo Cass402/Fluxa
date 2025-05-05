@@ -368,43 +368,43 @@ fn calculate_amount_for_price_change(
         // Token0 to Token1
         if exact_input {
             // Calculate token0 (X) input amount
-            math::get_amount_a_delta_for_price_range(
+            Ok(math::get_amount_a_delta_for_price_range(
                 liquidity,
                 sqrt_price_b, // Lower price after swap
                 sqrt_price_a, // Higher price before swap
                 true,         // Round up for input
             )
-            .map(|amt| amt as u64)
+            .map(|amt| amt as u64)?)
         } else {
             // Calculate token1 (Y) output amount
-            math::get_amount_b_delta_for_price_range(
+            Ok(math::get_amount_b_delta_for_price_range(
                 liquidity,
                 sqrt_price_b, // Lower price after swap
                 sqrt_price_a, // Higher price before swap
                 false,        // Round down for output
             )
-            .map(|amt| amt as u64)
+            .map(|amt| amt as u64)?)
         }
     } else {
         // Token1 to Token0
         if exact_input {
             // Calculate token1 (Y) input amount
-            math::get_amount_b_delta_for_price_range(
+            Ok(math::get_amount_b_delta_for_price_range(
                 liquidity,
                 sqrt_price_a, // Lower price before swap
                 sqrt_price_b, // Higher price after swap
                 true,         // Round up for input
             )
-            .map(|amt| amt as u64)
+            .map(|amt| amt as u64)?)
         } else {
             // Calculate token0 (X) output amount
-            math::get_amount_a_delta_for_price_range(
+            Ok(math::get_amount_a_delta_for_price_range(
                 liquidity,
                 sqrt_price_a, // Lower price before swap
                 sqrt_price_b, // Higher price after swap
                 false,        // Round down for output
             )
-            .map(|amt| amt as u64)
+            .map(|amt| amt as u64)?)
         }
     }
 }
@@ -427,7 +427,7 @@ fn compute_sqrt_price_after_amount(
         // (liquidity * sqrt_price) / (liquidity + amount * sqrt_price)
         let product = math::mul_q96(liquidity, sqrt_price)?;
         let denominator = liquidity + math::mul_q96(amount as u128, sqrt_price)?;
-        math::div_q96(product, denominator)
+        Ok(math::div_q96(product, denominator)?)
     } else {
         // Y to X (token1 to token0): price increases
         // sqrt_price + (amount / liquidity)

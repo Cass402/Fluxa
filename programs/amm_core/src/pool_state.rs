@@ -817,7 +817,10 @@ impl<'a> PoolState<'a> {
         }
 
         // Use the math library to calculate virtual reserves from current liquidity and sqrt price
-        math::calculate_virtual_reserves(self.pool.liquidity, self.pool.sqrt_price)
+        Ok(math::calculate_virtual_reserves(
+            self.pool.liquidity,
+            self.pool.sqrt_price,
+        )?)
     }
 
     /// Calculate virtual reserve of token A
@@ -825,7 +828,10 @@ impl<'a> PoolState<'a> {
     /// # Returns
     /// * `Result<u64>` - The virtual reserve of token A, or an error
     pub fn get_virtual_reserve_a(&self) -> Result<u64> {
-        math::calculate_virtual_reserve_a(self.pool.liquidity, self.pool.sqrt_price)
+        Ok(math::calculate_virtual_reserve_a(
+            self.pool.liquidity,
+            self.pool.sqrt_price,
+        )?)
     }
 
     /// Calculate virtual reserve of token B
@@ -833,7 +839,10 @@ impl<'a> PoolState<'a> {
     /// # Returns
     /// * `Result<u64>` - The virtual reserve of token B, or an error
     pub fn get_virtual_reserve_b(&self) -> Result<u64> {
-        math::calculate_virtual_reserve_b(self.pool.liquidity, self.pool.sqrt_price)
+        Ok(math::calculate_virtual_reserve_b(
+            self.pool.liquidity,
+            self.pool.sqrt_price,
+        )?)
     }
 
     /// Verifies that pool state satisfies the constant product formula
@@ -1097,12 +1106,12 @@ impl<'a> PoolState<'a> {
         // Get the liquidity in the range
         let liquidity_in_range = self.get_liquidity_in_range(lower_tick, upper_tick)?;
 
-        math::calculate_virtual_reserves_in_range(
+        Ok(math::calculate_virtual_reserves_in_range(
             liquidity_in_range,
             self.pool.sqrt_price,
             lower_sqrt_price,
             upper_sqrt_price,
-        )
+        )?)
     }
 
     /// Get the liquidity in a specific tick range
@@ -1137,7 +1146,10 @@ impl<'a> PoolState<'a> {
 
     /// Calculate the virtual reserves for the entire pool based on current liquidity and price
     pub fn calculate_virtual_reserves(&self) -> Result<(u64, u64)> {
-        math::calculate_virtual_reserves(self.pool.liquidity, self.pool.sqrt_price)
+        Ok(math::calculate_virtual_reserves(
+            self.pool.liquidity,
+            self.pool.sqrt_price,
+        )?)
     }
 
     /// Calculate the virtual reserves for a specific price range
@@ -1150,12 +1162,12 @@ impl<'a> PoolState<'a> {
         let lower_sqrt_price = math::tick_to_sqrt_price(lower_tick)?;
         let upper_sqrt_price = math::tick_to_sqrt_price(upper_tick)?;
 
-        math::calculate_virtual_reserves_in_range(
+        Ok(math::calculate_virtual_reserves_in_range(
             liquidity_in_range,
             self.pool.sqrt_price,
             lower_sqrt_price,
             upper_sqrt_price,
-        )
+        )?)
     }
 
     /// Get virtual reserves ratio (price)
