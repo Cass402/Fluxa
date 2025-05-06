@@ -8,7 +8,6 @@ use crate::constants::{MAX_SQRT_PRICE, MAX_TICK, MIN_SQRT_PRICE, MIN_TICK};
 use crate::errors::ErrorCode;
 use crate::oracle_utils::*;
 use anchor_lang::prelude::*;
-use std::ops::{Add, Sub};
 
 #[cfg(test)]
 mod tests {
@@ -53,7 +52,7 @@ mod tests {
         let mut observations = Vec::with_capacity(count);
         for i in 0..count {
             let timestamp = start_time.checked_add(i as i64 * time_step).unwrap();
-            let sqrt_price = (1 << 96).checked_add(i as u128 * 1_000_000).unwrap();
+            let sqrt_price = (1u128 << 96).checked_add(i as u128 * 1_000_000).unwrap();
             let tick_accumulator = (i as i128 * 1000).checked_add(i as i128 * 100).unwrap();
             let seconds_per_liquidity = (i as u128 * 500).checked_add(i as u128 * 50).unwrap();
 
@@ -635,7 +634,7 @@ mod tests {
         assert_eq!(mid_result.timestamp, 1800); // Should get observation just before
 
         // Test just after each observation
-        for i in 0..9 {
+        for i in 0..9i64 {
             let timestamp = 1000 + i * 200;
             let result = storage
                 .get_observation_at_or_before_timestamp(timestamp + 1)
@@ -644,7 +643,7 @@ mod tests {
         }
 
         // Test just before each observation
-        for i in 1..10 {
+        for i in 1..10i64 {
             let timestamp = 1000 + i * 200;
             let result = storage
                 .get_observation_at_or_before_timestamp(timestamp - 1)
@@ -880,7 +879,7 @@ mod tests {
         storage.write(&obs2).unwrap();
 
         // Test multiple points in between
-        for i in 1..10 {
+        for i in 1..10i64 {
             let timestamp = 1000 + i * 100;
             let result = storage
                 .get_observation_at_or_before_timestamp(timestamp)
@@ -928,7 +927,7 @@ mod tests {
         );
         storage.write(&max_obs).unwrap();
 
-        // Calculate TWAP over the full range
+        // Calculate TWAP across the full range
         let twap_result = storage.get_twap(base_time, base_time + 1000);
         assert!(twap_result.is_ok());
 
@@ -986,7 +985,7 @@ mod tests {
 
         // Fill the initial cardinality
         for i in 0..4 {
-            let obs = create_observation_at(1000 + i * 100);
+            let obs = create_observation_at(1000 + (i as i64) * 100);
             storage.write(&obs).unwrap();
         }
 
@@ -995,14 +994,14 @@ mod tests {
 
         // Add more observations
         for i in 4..8 {
-            let obs = create_observation_at(1000 + i * 100);
+            let obs = create_observation_at(1000 + (i as i64) * 100);
             storage.write(&obs).unwrap();
         }
 
         // Verify we can access all observations
         for i in 0..8 {
             let obs = storage.get_observation(i).unwrap();
-            assert_eq!(obs.timestamp, 1000 + i * 100);
+            assert_eq!(obs.timestamp, 1000 + (i as i64) * 100);
         }
 
         // Further increase cardinality
@@ -1010,14 +1009,14 @@ mod tests {
 
         // Add more observations
         for i in 8..12 {
-            let obs = create_observation_at(1000 + i * 100);
+            let obs = create_observation_at(1000 + (i as i64) * 100);
             storage.write(&obs).unwrap();
         }
 
         // Verify we can access all observations
         for i in 0..12 {
             let obs = storage.get_observation(i).unwrap();
-            assert_eq!(obs.timestamp, 1000 + i * 100);
+            assert_eq!(obs.timestamp, 1000 + (i as i64) * 100);
         }
     }
 

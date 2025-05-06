@@ -48,7 +48,15 @@ mod tests {
 
     impl AsRef<Clock> for MockClock {
         fn as_ref(&self) -> &Clock {
-            unsafe { std::mem::transmute(self) }
+            // Create a Clock with the timestamp for testing
+            let clock = Clock {
+                slot: 0,
+                epoch_start_timestamp: 0,
+                epoch: 0,
+                leader_schedule_epoch: 0,
+                unix_timestamp: self.unix_timestamp,
+            };
+            unsafe { std::mem::transmute(&clock) }
         }
     }
 
@@ -281,7 +289,7 @@ mod tests {
         let mut token_pair = mock_token_pair();
         let price = 1_500_000; // $1.50 with 6 decimal places
         let timestamp = 1640995200; // 2022-01-01 00:00:00 UTC
-        let clock = mock_clock(timestamp);
+        let _clock = mock_clock(timestamp);
 
         // Update oracle price directly using the test helper
         update_oracle_price_test(&mut token_pair, price, timestamp);
@@ -486,7 +494,7 @@ mod tests {
 
         // Governance verification
         token_pair.set_verification(true);
-        assert!(token_pair.is_verified);
+        assert!(token_pair.is_verified());
 
         // Pool removal
         token_pair.remove_pool(pool_address).unwrap();

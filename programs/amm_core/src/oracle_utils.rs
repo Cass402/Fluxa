@@ -452,7 +452,7 @@ impl ObservationStorage {
     }
 
     /// Find the observation nearest to (but not after) the given timestamp
-    fn get_observation_at_or_before_timestamp(&self, timestamp: i64) -> Result<Observation> {
+    pub fn get_observation_at_or_before_timestamp(&self, timestamp: i64) -> Result<Observation> {
         if self.observation_count == 0 {
             return Err(ErrorCode::NoObservations.into());
         }

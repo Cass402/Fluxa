@@ -6,9 +6,9 @@
 
 use crate::constants::{MAX_SQRT_PRICE, MAX_TICK, MIN_SQRT_PRICE, MIN_TICK};
 use crate::errors::ErrorCode;
+use crate::math::tick_to_sqrt_price;
 use crate::oracle::*;
 use anchor_lang::prelude::*;
-use std::collections::VecDeque;
 
 #[cfg(test)]
 mod tests {
@@ -1002,14 +1002,15 @@ mod tests {
         }
 
         // Calculate baseline TWAP
-        let baseline_twap = oracle.calculate_twap(3940, 2940).unwrap(); // 49 minute period
+        let _baseline_twap = oracle.calculate_twap(3940, 2940).unwrap(); // 49 minute period
 
         // Now simulate a price manipulation attack
         // Attacker pushes price to 10x for a short period
 
         // First, store the current oracle state
         let original_observation_index = oracle.observation_index;
-        let original_observation = oracle.observations[original_observation_index as usize].clone();
+        let _original_observation =
+            oracle.observations[original_observation_index as usize].clone();
 
         // Add manipulation spike
         oracle

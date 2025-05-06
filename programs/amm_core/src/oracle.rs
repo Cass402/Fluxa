@@ -390,7 +390,7 @@ impl Oracle {
     }
     
     /// Get observations that surround the target timestamp
-    fn get_surrounding_observations(&self, target: u32) -> Result<(&Observation, &Observation)> {
+    pub fn get_surrounding_observations(&self, target: u32) -> Result<(&Observation, &Observation)> {
         if self.observation_cardinality <= 1 {
             return Err(ErrorCode::OracleInsufficientData.into());
         }
