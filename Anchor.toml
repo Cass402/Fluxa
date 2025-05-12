@@ -3,10 +3,7 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-amm_core = "HyxBoSbjENm23GRot8Q3dLd22Y7XFTaNTP51ZH4s7ZQr"
-impermanent_loss = "EHnY4rkdv8cLZrQQL14yVrxBSBpQv9zweK1GfxGC3pZ"
-order_book = "GAhsynxCvaKoLdSxRh6v9z57UpLFrWeJtBzzhFoiCZiB"
-yield_optimization = "GqQoZvoapUaR95BBGTwVNKrGaxMwuWcqa7LJtEaG48tX"
+amm_core = "DQQcQTDkL2wjQQf23kX38JMpJYvLsWATUHAtWzWLKs62"
 
 [registry]
 url = "https://api.apr.dev"

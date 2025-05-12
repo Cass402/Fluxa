@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3f70d69004fdee6b7cfdbc58b0beeaa0a5ab2909d715930fdb142be430818f22 # shrinks to cur_p_f = 7.456824436681382, tar_p_factor = 1.1731586942775936, liq_f = 100.0, gross_in_rem_f = 1.0, fee_bps = 0, z4o = true
+cc a86165d6e09253ce145b8b3c09d6a4e3d981fe7c69bf3a4545f7cade3872700d # shrinks to initial_pool_liq = 0, delta_abs = 1, is_add = false, current_tick_val = 0, lower_offset = -1, upper_offset = 1
+cc 8204f2b92f5b87d99ea1c7a2959a29c222837e02d2a3f1763f0a1c0fbe5f70f2 # shrinks to initial_p_f = 1.1902383315343046, initial_liq_f = 1000.0, amount_f = 1.0, z4o = true, limit_factor = 1.0846614597535544
+cc 5dbc409a226ddf6468be95e56d7aebafa076d1ce89cccdb7d2e68bafb707af50 # shrinks to cur_p_f = 6.994321902126764, tar_p_factor = 0.5, liq_f = 100.0, gross_in_rem_f = 1.0, fee_bps = 0, z4o = false

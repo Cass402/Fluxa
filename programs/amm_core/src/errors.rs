@@ -319,4 +319,30 @@ pub enum ErrorCode {
     /// supported by the protocol. Only specific fee tiers are allowed.
     #[msg("The specified fee tier is not supported")]
     InvalidFeeTier,
+
+    #[msg("Compressed tick results in a word index out of i16 bounds.")]
+    TickWordIndexOutOfBounds,
+
+    #[msg("Bump seed not found for an account.")]
+    BumpSeedNotInHashMap,
+
+    #[msg("Mints for the pool must be different.")]
+    SameMints,
+
+    #[msg("Mints must be provided in a canonical order (mint_a.key < mint_b.key).")]
+    UnsortedMints,
+
+    #[msg("Mints must be provided in canonical order (mint_a < mint_b).")]
+    MintsNotInCanonicalOrder,
+
+    #[msg("The input token mint is invalid for this pool.")]
+    InvalidInputMint,
+    #[msg("The output token mint is invalid for this pool.")]
+    InvalidOutputMint,
+    #[msg("The provided token vault is not the one associated with the pool.")]
+    InvalidTokenVault,
+    #[msg("The provided token vault has an incorrect mint.")]
+    InvalidVaultMint,
+    #[msg("An expected tick was not found or provided.")]
+    TickNotFound,
 }

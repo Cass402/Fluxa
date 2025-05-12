@@ -1,486 +1,330 @@
-/// Tick Bitmap Module
-///
-/// This module implements a space-efficient bitmap for tracking initialized ticks.
-/// It allows for fast traversal of initialized ticks during swap operations without
-/// needing to explicitly check every possible tick value.
-///
-/// Each bit in the bitmap represents whether a particular tick is initialized,
-/// enabling efficient binary search for the next initialized tick during swaps.
 use crate::errors::ErrorCode;
 use anchor_lang::prelude::*;
-use std::collections::HashMap;
-use std::ops::{BitAnd, BitOr, BitXor, Not, Shl};
+use std::collections::BTreeMap;
+// The size of each word in the bitmap, corresponding to the number of bits in u64
+const WORD_SIZE: usize = 64;
 
-// Import the U256 type from ethereum_types
-use ethereum_types::U256;
-
-/// Number of bits in a word
-pub const WORD_SIZE: usize = 256;
-
-/// A wrapper around U256 that implements AnchorSerialize and AnchorDeserialize
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct U256Wrapper(U256);
-
-impl U256Wrapper {
-    /// Create a new U256Wrapper
-    pub fn new(value: U256) -> Self {
-        Self(value)
-    }
-
-    /// Convert from u32
-    pub fn from_u32(value: u32) -> Self {
-        Self(U256::from(value))
-    }
-
-    /// Get the inner U256 value
-    pub fn value(&self) -> U256 {
-        self.0
-    }
-
-    /// Check if the wrapper is zero
-    pub fn is_zero(&self) -> bool {
-        self.0 == U256::zero()
-    }
-
-    /// Get leading zeros
-    pub fn leading_zeros(&self) -> u32 {
-        self.0.leading_zeros()
-    }
-
-    /// Get trailing zeros
-    pub fn trailing_zeros(&self) -> u32 {
-        self.0.trailing_zeros()
-    }
-
-    /// Check equality with zero
-    pub fn eq_zero(&self) -> bool {
-        self.0 == U256::zero()
-    }
-
-    /// Get max value
-    pub fn max_value() -> Self {
-        Self(U256::max_value())
-    }
-
-    /// Get zero value
-    pub fn zero() -> Self {
-        Self(U256::zero())
-    }
-}
-
-// Implement BitAnd for U256Wrapper
-impl BitAnd for U256Wrapper {
-    type Output = Self;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Self(self.0 & rhs.0)
-    }
-}
-
-// Implement BitOr for U256Wrapper
-impl BitOr for U256Wrapper {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
-    }
-}
-
-// Implement BitXor for U256Wrapper
-impl BitXor for U256Wrapper {
-    type Output = Self;
-
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        Self(self.0 ^ rhs.0)
-    }
-}
-
-// Implement Not for U256Wrapper
-impl Not for U256Wrapper {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        Self(!self.0)
-    }
-}
-
-// Implement Shl for U256Wrapper and u8
-impl Shl<u8> for U256Wrapper {
-    type Output = Self;
-
-    fn shl(self, rhs: u8) -> Self::Output {
-        Self(self.0 << rhs)
-    }
-}
-
-// Implement Sub for U256Wrapper
-impl std::ops::Sub for U256Wrapper {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0)
-    }
-}
-
-// Implement AnchorSerialize for U256Wrapper
-impl AnchorSerialize for U256Wrapper {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        // Convert U256 to bytes and serialize
-        let mut bytes = [0u8; 32];
-        self.0.to_big_endian(&mut bytes);
-        writer.write_all(&bytes)
-    }
-}
-
-// Implement AnchorDeserialize for U256Wrapper
-impl AnchorDeserialize for U256Wrapper {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        if buf.len() < 32 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "buffer too small for U256",
-            ));
-        }
-
-        let mut bytes = [0u8; 32];
-        bytes.copy_from_slice(&buf[..32]);
-        *buf = &buf[32..];
-
-        Ok(Self(U256::from_big_endian(&bytes)))
-    }
-
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut bytes = [0u8; 32];
-        reader.read_exact(&mut bytes)?;
-        Ok(Self(U256::from_big_endian(&bytes)))
-    }
-}
-
-/// Represents a single bitmap word that tracks 256 adjacent ticks
-#[derive(Debug, Default, Copy, Clone, AnchorSerialize, AnchorDeserialize)]
-pub struct TickBitmapWord {
-    /// The bitmap data - each bit represents an initialized tick
-    pub bitmap: U256Wrapper,
-}
-
-/// Wrapper struct for managing the tick bitmap
-/// This struct provides methods for finding initialized ticks efficiently
-#[derive(Debug, Default)]
-pub struct TickBitmap {
-    /// Map from word positions to bitmap words
-    pub bitmap_map: HashMap<i16, TickBitmapWord>,
-}
-
-impl TickBitmap {
-    /// Creates a new empty tick bitmap
-    pub fn new() -> Self {
-        Self {
-            bitmap_map: HashMap::new(),
-        }
-    }
-
-    /// Finds the next initialized tick in the given direction
-    ///
-    /// # Parameters
-    /// * `tick` - The current tick
-    /// * `tick_spacing` - The spacing between ticks
-    ///
-    /// # Returns
-    /// * `Result<i32>` - The next initialized tick, or MAX_TICK if not found
-    pub fn next_initialized_tick(&self, tick: i32, tick_spacing: u16) -> Result<i32> {
-        let (next_tick, initialized) = next_initialized_tick_in_direction(
-            &self.bitmap_map,
-            tick,
-            tick_spacing,
-            false, // search upward
-        )?;
-
-        if initialized {
-            Ok(next_tick)
-        } else {
-            // Not found, return the boundary tick
-            // In production, this would typically be crate::constants::MAX_TICK
-            Ok(next_tick)
-        }
-    }
-
-    pub fn prev_initialized_tick(&self, tick: i32, tick_spacing: u16) -> Result<i32> {
-        // 1. Protect against overflow
-        if tick == i32::MAX {
-            return Ok(i32::MAX);
-        }
-
-        // 2. Now do the usual downward search
-        let (next_tick, initialized) = next_initialized_tick_in_direction(
-            &self.bitmap_map,
-            tick,
-            tick_spacing,
-            true, // searching downward
-        )?;
-
-        if initialized {
-            Ok(next_tick)
-        } else {
-            // No bit found at all: return the natural boundary
-            Ok(next_tick)
-        }
-    }
-
-    /// Updates the bitmap when a tick becomes initialized or uninitialized
-    ///
-    /// # Parameters
-    /// * `tick` - The tick to update
-    /// * `tick_spacing` - The spacing between ticks
-    /// * `initialized` - Whether to mark the tick as initialized or uninitialized
-    ///
-    /// # Returns
-    /// * `Result<()>` - Success or error
-    pub fn update_bitmap(&mut self, tick: i32, tick_spacing: u16, initialized: bool) -> Result<()> {
-        update_tick_bitmap(&mut self.bitmap_map, tick, tick_spacing, initialized)
-    }
-
-    /// Checks if a specific tick is initialized in the bitmap
-    ///
-    /// # Parameters
-    /// * `tick` - The tick to check
-    /// * `tick_spacing` - The spacing between ticks
-    ///
-    /// # Returns
-    /// * `bool` - Whether the tick is initialized
-    pub fn is_tick_initialized(&self, tick: i32, tick_spacing: u16) -> bool {
-        // Ensure the tick is a multiple of tick spacing
-        if tick % tick_spacing as i32 != 0 {
-            return false;
-        }
-
-        // Calculate word and bit position
-        let compressed_tick = tick / tick_spacing as i32;
-        let (word_pos, bit_pos) = position(compressed_tick);
-
-        // Check if the word exists and the bit is set
-        if let Some(word) = self.bitmap_map.get(&word_pos) {
-            is_initialized(word, bit_pos)
-        } else {
-            false
-        }
-    }
-}
-
-/// Calculates the position in the tick bitmap for a given tick
+/// Compresses a tick index by dividing it by the tick spacing.
 ///
-/// # Parameters
-/// * `tick` - The tick index to find the position for
-///
-/// # Returns
-/// * `(i16, u8)` - The word index and bit position within that word
-pub fn position(tick: i32) -> (i16, u8) {
-    let word_pos = tick / WORD_SIZE as i32;
-    let bit_pos = (tick % WORD_SIZE as i32) as u8;
-
-    (word_pos as i16, bit_pos)
-}
-
-/// Checks if a tick is initialized in the bitmap
-///
-/// # Parameters
-/// * `bitmap` - The bitmap word to check
-/// * `bit_pos` - The bit position within the word
-///
-/// # Returns
-/// * `bool` - Whether the tick is initialized
-pub fn is_initialized(bitmap: &TickBitmapWord, bit_pos: u8) -> bool {
-    (bitmap.bitmap & (U256Wrapper::from_u32(1) << bit_pos)) != U256Wrapper::zero()
-}
-
-/// Flips the bit for a tick in the bitmap to mark it as initialized or uninitialized
-///
-/// # Parameters
-/// * `bitmap` - The bitmap word to modify
-/// * `bit_pos` - The bit position within the word
-///
-/// # Returns
-/// * `TickBitmapWord` - The updated bitmap
-pub fn flip_tick(bitmap: &TickBitmapWord, bit_pos: u8) -> TickBitmapWord {
-    TickBitmapWord {
-        bitmap: bitmap.bitmap ^ (U256Wrapper::from_u32(1) << bit_pos),
-    }
-}
-
-/// Finds the next initialized tick in the bitmap
-///
-/// # Parameters
-/// * `bitmap` - The bitmap word to search
-/// * `bit_pos` - The starting bit position
-/// * `lte` - If true, search for ticks less than or equal to bit_pos;
-///   if false, search for ticks greater than bit_pos
-///
-/// # Returns
-/// * `Result<(bool, u8)>` - Tuple of (found, position) where position is the bit position
-///   of the next initialized tick, or an error if not found
-pub fn next_initialized_tick_within_word(
-    bitmap: &TickBitmapWord,
-    bit_pos: u8,
-    lte: bool,
-) -> Result<(bool, u8)> {
-    let bitmap_data = bitmap.bitmap;
-
-    // If searching for ticks less than or equal to the current position
-    if lte {
-        // Create a mask for all bits at positions <= bit_pos
-        let mask = if bit_pos == 255 {
-            U256Wrapper::max_value() // All bits set
-        } else {
-            (U256Wrapper::from_u32(1) << (bit_pos + 1)) - U256Wrapper::from_u32(1)
-        };
-
-        let masked_bitmap = bitmap_data & mask;
-
-        // If no initialized ticks <= bit_pos
-        if masked_bitmap.is_zero() {
-            return Ok((false, 0));
-        }
-
-        // Find the most significant (highest) bit that is set
-        let msb_pos = 255 - masked_bitmap.leading_zeros() as u8;
-        Ok((true, msb_pos))
-    }
-    // If searching for ticks greater than the current position
-    else {
-        // Create a mask for all bits at positions > bit_pos
-        let mask = !((U256Wrapper::from_u32(1) << (bit_pos + 1)) - U256Wrapper::from_u32(1));
-
-        let masked_bitmap = bitmap_data & mask;
-
-        // If no initialized ticks > bit_pos
-        if masked_bitmap.is_zero() {
-            return Ok((false, 0));
-        }
-
-        // Find the least significant (lowest) bit that is set
-        let lsb_pos = masked_bitmap.trailing_zeros() as u8;
-        Ok((true, lsb_pos))
-    }
-}
-
-/// Finds the next initialized tick across multiple bitmap words
-///
-/// # Parameters
-/// * `tick_current` - The current tick index
+/// # Arguments
+/// * `tick` - The tick index to compress
 /// * `tick_spacing` - The spacing between ticks
-/// * `lte` - If true, search for a tick less than or equal to the current tick;
-///   if false, search for a tick greater than the current tick
 ///
 /// # Returns
-/// * `Result<(i32, bool)>` - Tuple of (next_tick, initialized)
-///   - If initialized is false, next_tick will be a boundary tick
-pub fn next_initialized_tick_in_direction(
-    tick_bitmap_map: &std::collections::HashMap<i16, TickBitmapWord>,
-    tick_current: i32,
-    tick_spacing: u16,
-    lte: bool,
-) -> Result<(i32, bool)> {
-    // Ensure the current tick is a multiple of tick spacing
-    let compressed = (tick_current / tick_spacing as i32) * tick_spacing as i32;
-    let (mut word_pos, bit_pos) = position(compressed / tick_spacing as i32);
+/// * `Result<i32>` - The compressed tick index or an error if the tick spacing is invalid
+///   or the tick is not aligned with the spacing
+///
+/// # Example
+/// ```
+/// let compressed_tick = compress_tick(100, 10);
+/// assert_eq!(compressed_tick, Ok(10));
+/// ```
+pub(crate) fn compress_tick(tick: i32, tick_spacing: u16) -> Result<i32> {
+    let tick_spacing_i32 = tick_spacing as i32;
+    if tick_spacing_i32 <= 0 {
+        // This should be validated at pool creation, but good to have a safeguard.
+        return Err(ErrorCode::InvalidTickSpacing.into());
+    }
+    if tick % tick_spacing_i32 != 0 {
+        // This indicates an unaligned tick, which should ideally be caught earlier.
+        return Err(ErrorCode::InvalidTickRange.into());
+    }
+    Ok(tick / tick_spacing_i32)
+}
 
-    // Get the bitmap word for the current position
-    let mut bitmap_word = match tick_bitmap_map.get(&word_pos) {
-        Some(word) => *word,
-        None => TickBitmapWord::default(), // Empty bitmap if word doesn't exist
-    };
+/// Decompresses a compressed tick index by multiplying it by the tick spacing.
+///
+/// # Arguments
+/// * `compressed_tick` - The compressed tick index
+/// * `tick_spacing` - The spacing between ticks
+///
+/// # Returns
+/// * `i32` - The decompressed tick index
+///
+/// # Example
+///
+/// let tick = decompress_tick(10, 10);
+/// assert_eq!(tick, 100);
+///
+pub(crate) fn decompress_tick(compressed_tick: i32, tick_spacing: u16) -> i32 {
+    compressed_tick.wrapping_mul(tick_spacing as i32)
+}
 
-    // Search for the next initialized tick within the current word
-    let (mut initialized, mut next_bit_pos) =
-        next_initialized_tick_within_word(&bitmap_word, bit_pos, lte)?;
+/// Calculates the word index and bit position for a compressed tick index in the bitmap.
+///
+/// # Arguments
+/// * `compressed_tick` - The compressed tick index
+///
+/// # Returns
+/// * `(i16, u8)` - A tuple containing the word index and bit position within that word
+///
+/// # Example
+///
+/// let (word_index, bit_pos) = get_word_index_and_bit_pos(10);
+/// assert_eq!(word_index, 0);
+/// assert_eq!(bit_pos, 10);
+/// # Errors
+/// Returns `Err` if the `compressed_tick` results in a word index outside of `i16` bounds.
+pub(crate) fn get_word_index_and_bit_pos(compressed_tick: i32) -> Result<(i16, u8)> {
+    let word_index_i64 = (compressed_tick as i64).div_euclid(WORD_SIZE as i64);
+    let word_index: i16 = word_index_i64
+        .try_into()
+        .map_err(|_| error!(ErrorCode::TickWordIndexOutOfBounds))?;
 
-    // If not found in the current word, search in subsequent words
-    if !initialized {
-        // Direction to move when searching for the next word with initialized ticks
-        let word_delta: i16 = if lte { -1 } else { 1 };
+    let bit_pos = (compressed_tick - word_index as i32 * WORD_SIZE as i32) as u8;
+    Ok((word_index, bit_pos))
+}
 
-        // Keep searching until we find an initialized tick or reach the boundary
-        loop {
-            word_pos = word_pos
-                .checked_add(word_delta)
-                .ok_or(ErrorCode::InvalidTickRange)?;
+/// Finds the next initialized bit in a bitmap word, searching either up or down from a starting position.
+///
+/// # Arguments
+/// * `bitmap_word` - The bitmap word to search
+/// * `start_bit_pos` - The bit position to start searching from
+/// * `search_lte` - If true, search downwards (less than or equal to start_bit_pos),
+///   otherwise search upwards (greater than start_bit_pos)
+///
+/// # Returns
+/// * `Option<u8>` - The position of the next initialized bit if found, None otherwise
+///
+/// # Example
+///
+/// let bitmap_word = 0b1010;
+/// let next_bit = next_initialized_bit_in_word(bitmap_word, 3, true);
+/// assert_eq!(next_bit, Some(3));
+///
+pub(crate) fn next_initialized_bit_in_word(
+    bitmap_word: u64,
+    start_bit_pos: u8,
+    search_lte: bool,
+) -> Option<u8> {
+    if bitmap_word == 0 {
+        return None;
+    }
 
-            // Check boundaries based on direction
-            if (lte && word_pos == i16::MIN) || (!lte && word_pos == i16::MAX) {
-                // Return boundary ticks based on direction
-                return if lte {
-                    Ok((-0x80000000, false))
-                } else {
-                    Ok((0x7FFFFFFF, false))
-                };
+    if search_lte {
+        // Search downwards (towards LSB), from start_bit_pos to 0.
+        // Ensure start_bit_pos is within bounds [0, WORD_SIZE - 1].
+        let search_start = start_bit_pos.min((WORD_SIZE - 1) as u8);
+        for i in (0..=search_start).rev() {
+            if (bitmap_word & (1u64 << i)) != 0 {
+                return Some(i);
             }
-
-            // Get the bitmap for the next word
-            bitmap_word = match tick_bitmap_map.get(&word_pos) {
-                Some(word) => *word,
-                None => TickBitmapWord::default(), // Empty bitmap if word doesn't exist
-            };
-
-            // Skip if the word is empty (no initialized ticks)
-            if bitmap_word.bitmap == U256Wrapper::zero() {
-                continue;
-            }
-
-            // Find the next initialized tick in this word
-            let bit_pos_to_use = if lte { 255 } else { 0 };
-            let (found, bit_pos_found) =
-                next_initialized_tick_within_word(&bitmap_word, bit_pos_to_use, lte)?;
-
-            if found {
-                initialized = true;
-                next_bit_pos = bit_pos_found;
-                break;
+        }
+    } else {
+        // Search upwards (towards MSB), from start_bit_pos to WORD_SIZE - 1.
+        // Ensure start_bit_pos is within bounds [0, WORD_SIZE - 1].
+        if start_bit_pos >= WORD_SIZE as u8 {
+            return None; // start_bit_pos is out of valid range for upward search
+        }
+        for i in start_bit_pos..(WORD_SIZE as u8) {
+            if (bitmap_word & (1u64 << i)) != 0 {
+                return Some(i);
             }
         }
     }
-
-    // Calculate the actual tick index
-    let next_tick =
-        ((word_pos as i32) * WORD_SIZE as i32 + next_bit_pos as i32) * tick_spacing as i32;
-
-    Ok((next_tick, initialized))
+    None
 }
 
-/// Updates the bitmap when a tick becomes initialized or uninitialized
+/// Flips the initialization status of a tick in the bitmap.
 ///
-/// # Parameters
-/// * `tick_bitmap_map` - Map of word positions to bitmap words
-/// * `tick` - The tick being updated
+/// # Arguments
+/// * `tick_bitmap` - The bitmap storing tick initialization status
+/// * `tick` - The tick to update
 /// * `tick_spacing` - The spacing between ticks
-/// * `initialized` - Whether the tick is being initialized (true) or uninitialized (false)
+/// * `set_as_initialized` - If true, set the tick as initialized; if false, set as uninitialized
 ///
 /// # Returns
-/// * `Result<()>` - Success or error
-pub fn update_tick_bitmap(
-    tick_bitmap_map: &mut std::collections::HashMap<i16, TickBitmapWord>,
+/// * `Result<()>` - Success if the operation completed, error otherwise
+///
+/// # Example
+///
+///
+/// let mut bitmap = BTreeMap::new();
+/// flip_tick_initialized_status(&mut bitmap, 100, 10, true)?; // Initialize tick 100
+/// flip_tick_initialized_status(&mut bitmap, 100, 10, false)?; // Uninitialize tick 100
+///
+pub fn flip_tick_initialized_status(
+    tick_bitmap: &mut BTreeMap<i16, u64>,
     tick: i32,
     tick_spacing: u16,
-    initialized: bool,
+    set_as_initialized: bool,
 ) -> Result<()> {
-    // Ensure the tick is a multiple of tick spacing
-    if tick % tick_spacing as i32 != 0 {
+    let compressed_tick = compress_tick(tick, tick_spacing)?;
+    let (word_idx, bit_pos) = get_word_index_and_bit_pos(compressed_tick)?;
+
+    let bit_mask = 1u64 << bit_pos;
+
+    if set_as_initialized {
+        let bitmap_word = tick_bitmap.entry(word_idx).or_insert(0);
+        *bitmap_word |= bit_mask;
+    } else if let Some(bitmap_word) = tick_bitmap.get_mut(&word_idx) {
+        *bitmap_word &= !bit_mask;
+        if *bitmap_word == 0 {
+            tick_bitmap.remove(&word_idx);
+        }
+    }
+    Ok(())
+}
+
+/// Checks if a tick is initialized in the bitmap.
+///
+/// # Arguments
+/// * `tick_bitmap` - The bitmap storing tick initialization status
+/// * `tick` - The tick to check
+/// * `tick_spacing` - The spacing between ticks
+///
+/// # Returns
+/// * `Result<bool>` - True if the tick is initialized, false otherwise
+///
+/// # Example
+///
+///
+/// let bitmap = BTreeMap::new();
+/// let is_initialized = is_tick_initialized(&bitmap, 100, 10)?;
+///
+pub fn is_tick_initialized(
+    tick_bitmap: &BTreeMap<i16, u64>,
+    tick: i32,
+    tick_spacing: u16,
+) -> Result<bool> {
+    let compressed_tick = compress_tick(tick, tick_spacing)?;
+    let (word_idx, bit_pos) = get_word_index_and_bit_pos(compressed_tick)?;
+
+    match tick_bitmap.get(&word_idx) {
+        Some(bitmap_word) => Ok((bitmap_word & (1u64 << bit_pos)) != 0),
+        None => Ok(false),
+    }
+}
+
+/// Finds the next initialized tick in the bitmap.
+///
+/// # Arguments
+/// * `tick_bitmap` - The bitmap storing tick initialization status
+/// * `current_tick_approx` - The tick to start searching from
+/// * `tick_spacing` - The spacing between ticks
+/// * `search_lte` - If true, search for ticks less than or equal to current_tick_approx.
+///   If false, search for ticks greater than or equal to current_tick_approx.
+///
+/// # Returns
+/// * `Result<Option<i32>>` - The next initialized tick if found, None otherwise
+///
+/// # Errors
+/// * Returns an error if tick_spacing is invalid (zero or negative)
+///
+/// # Example
+/// ```
+/// let bitmap = BTreeMap::new();
+/// let next_tick = next_initialized_tick(&bitmap, 100, 10, true)?;
+/// assert_eq!(next_tick, None);
+/// ```
+/// # Note
+/// This function searches for the next initialized tick in the bitmap.
+pub fn next_initialized_tick(
+    tick_bitmap: &BTreeMap<i16, u64>,
+    current_tick_approx: i32,
+    tick_spacing: u16,
+    search_lte: bool,
+) -> Result<Option<i32>> {
+    let tick_spacing_i32 = tick_spacing as i32;
+    if tick_spacing_i32 <= 0 {
         return Err(ErrorCode::InvalidTickSpacing.into());
     }
 
-    // Calculate word and bit position
-    let compressed_tick = tick / tick_spacing as i32;
-    let (word_pos, bit_pos) = position(compressed_tick);
-
-    // Get or create the bitmap word
-    let bitmap_word = tick_bitmap_map.entry(word_pos).or_default();
-
-    // Check current status
-    let is_already_initialized = is_initialized(bitmap_word, bit_pos);
-
-    // Only update if necessary
-    if initialized != is_already_initialized {
-        // Flip the bit
-        *bitmap_word = flip_tick(bitmap_word, bit_pos);
+    if tick_bitmap.is_empty() {
+        return Ok(None);
     }
 
-    Ok(())
+    // Determine the compressed tick to start searching from, relative to current_tick_approx.
+    // For LTE, start from floor(current_tick_approx / tick_spacing).
+    // For GTE, start from ceil(current_tick_approx / tick_spacing).
+    let compressed_search_start_tick_ref = if search_lte {
+        current_tick_approx.div_euclid(tick_spacing_i32)
+    } else {
+        // Calculate ceil(current_tick_approx / tick_spacing_i32)
+        // This handles positive, negative, and zero current_tick_approx correctly.
+        let q = current_tick_approx / tick_spacing_i32; // Truncating division
+        let r = current_tick_approx % tick_spacing_i32;
+        if r == 0 {
+            q
+        } else if current_tick_approx > 0 {
+            // e.g., current_tick_approx=7, spacing=10. q=0, r=7. Returns 0+1=1 (correct, for tick 10).
+            q + 1
+        } else {
+            // e.g., current_tick_approx=-7, spacing=10. q=0, r=-7. Returns 0 (correct, for tick 0).
+            // e.g., current_tick_approx=-17, spacing=10. q=-1, r=-7. Returns -1 (correct, for tick -10).
+            q
+        }
+    };
+
+    // Ensure the compressed search reference tick maps to a word index within i16 bounds
+    // The valid range for compressed ticks is [i16::MIN * WORD_SIZE, (i16::MAX + 1) * WORD_SIZE - 1]
+    let max_compressed_tick_for_i16_word =
+        (i16::MAX as i32) * WORD_SIZE as i32 + (WORD_SIZE - 1) as i32;
+    let min_compressed_tick_for_i16_word = (i16::MIN as i32) * WORD_SIZE as i32;
+    let compressed_search_start_tick_ref = compressed_search_start_tick_ref.clamp(
+        min_compressed_tick_for_i16_word,
+        max_compressed_tick_for_i16_word,
+    );
+
+    let (search_ref_word_idx, search_ref_bit_pos) =
+        get_word_index_and_bit_pos(compressed_search_start_tick_ref)?;
+
+    if search_lte {
+        // 1. Search current word, downwards from current_bit_pos
+        if let Some(word_val) = tick_bitmap.get(&search_ref_word_idx) {
+            if let Some(found_bit_pos) =
+                next_initialized_bit_in_word(*word_val, search_ref_bit_pos, true)
+            {
+                let found_compressed_tick =
+                    search_ref_word_idx as i32 * WORD_SIZE as i32 + found_bit_pos as i32;
+                return Ok(Some(decompress_tick(found_compressed_tick, tick_spacing)));
+            }
+        }
+
+        // 2. Search preceding words (lower word indices)
+        // BTreeMap iterators go from smallest key to largest.
+        // `range(..current_word_idx).rev()` gets keys < current_word_idx, in descending order.
+        for (&word_idx, &word_val) in tick_bitmap.range(..search_ref_word_idx).rev() {
+            // word_val cannot be 0 because we remove zero words in flip_tick.
+            // Search the entire word from MSB (WORD_SIZE - 1) downwards.
+            if let Some(found_bit_pos) =
+                next_initialized_bit_in_word(word_val, (WORD_SIZE - 1) as u8, true)
+            {
+                let found_compressed_tick =
+                    word_idx as i32 * WORD_SIZE as i32 + found_bit_pos as i32;
+                return Ok(Some(decompress_tick(found_compressed_tick, tick_spacing)));
+            }
+        }
+    } else {
+        // search_gte (search upwards)
+        // 1. Search current word, upwards from current_bit_pos
+        if let Some(word_val) = tick_bitmap.get(&search_ref_word_idx) {
+            if let Some(found_bit_pos) =
+                next_initialized_bit_in_word(*word_val, search_ref_bit_pos, false)
+            {
+                let found_compressed_tick =
+                    search_ref_word_idx as i32 * WORD_SIZE as i32 + found_bit_pos as i32;
+                return Ok(Some(decompress_tick(found_compressed_tick, tick_spacing)));
+            }
+        }
+
+        // 2. Search succeeding words (higher word indices)
+        // `range((current_word_idx + 1)..)` gets keys > current_word_idx, in ascending order.
+        let start_next_word_idx = match search_ref_word_idx.checked_add(1) {
+            Some(idx) => idx,
+            None => return Ok(None), // current_word_idx is i16::MAX, no succeeding words
+        };
+
+        for (&word_idx, &word_val) in tick_bitmap.range(start_next_word_idx..) {
+            // word_val cannot be 0.
+            // Search the entire word from LSB (0) upwards.
+            if let Some(found_bit_pos) = next_initialized_bit_in_word(word_val, 0, false) {
+                let found_compressed_tick =
+                    word_idx as i32 * WORD_SIZE as i32 + found_bit_pos as i32;
+                return Ok(Some(decompress_tick(found_compressed_tick, tick_spacing)));
+            }
+        }
+    }
+
+    Ok(None) // No initialized tick found in the search direction
 }

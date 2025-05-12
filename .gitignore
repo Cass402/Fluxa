@@ -49,3 +49,7 @@ docs/**/chroma.sqlite3
 out.json
 test-ledger/
 wallets/
+chromaConnect.py
+docs/**/chroma
+
+programs/amm_core1/
