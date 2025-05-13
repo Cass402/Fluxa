@@ -9,7 +9,7 @@ use tick::TickData;
 
 // Your program's on-chain ID.
 // Replace with your actual program ID after deployment.
-declare_id!("DQQcQTDkL2wjQQf23kX38JMpJYvLsWATUHAtWzWLKs62");
+declare_id!("21qXErR6qXr41oTd9QLwMeenW6LYZpDAaxdQxKcCpA4v");
 
 // Modules for constants, errors, core math, and state definitions
 pub mod constants;
@@ -20,7 +20,7 @@ pub mod state; // Defines Pool state (state::pool::Pool)
 pub mod tick; // Defines TickData
 pub mod tick_bitmap;
 
-// Module for instruction handlers and their account contexts
+// Only include entrypoint if not building with no-entrypoint feature
 pub mod instructions;
 
 #[cfg(test)]
@@ -28,6 +28,7 @@ pub mod unit_test;
 
 #[program]
 pub mod amm_core {
+
     use super::*;
 
     /// Initializes a new liquidity pool for a pair of tokens.

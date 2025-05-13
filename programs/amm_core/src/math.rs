@@ -30,10 +30,23 @@ use primitive_types::U256;
 
 #[inline(always)]
 pub(crate) fn mul_fixed(a: u128, b: u128) -> u128 {
-    // Use U256 for the intermediate product to prevent overflow, then scale back to u128
-    let product_u256 = U256::from(a) * U256::from(b);
-    // scale back by 2^64
-    (product_u256 >> 64).as_u128()
+    let a_lo = a as u64 as u128; // Lower 64 bits of a
+    let a_hi = (a >> 64) as u64 as u128; // Upper 64 bits of a
+    let b_lo = b as u64 as u128; // Lower 64 bits of b
+    let b_hi = (b >> 64) as u64 as u128; // Upper 64 bits of b
+
+    let lo_lo = a_lo * b_lo; // Lower 64 bits of a * lower 64 bits of b
+    let hi_lo = a_hi * b_lo; // Upper 64 bits of a * lower 64 bits of b
+    let lo_hi = a_lo * b_hi; // Lower 64 bits of a * upper 64 bits of b
+    let hi_hi = a_hi * b_hi; // Upper 64 bits of a * upper 64 bits of b
+
+    // Carry from lower 64 bits to upper 64 bits
+    let carry = lo_lo >> 64;
+    let mid = hi_lo + lo_hi + carry;
+    let high = hi_hi + (mid >> 64);
+
+    // Product in Q64.64 format
+    (high << 64) | (mid as u64 as u128)
 }
 
 /// Divides two Q64.64 fixed-point numbers

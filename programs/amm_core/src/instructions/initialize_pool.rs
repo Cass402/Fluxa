@@ -16,11 +16,12 @@ pub fn handler(
         return err!(ErrorCode::MintsNotInCanonicalOrder);
     }
 
-    msg!(
+    /* msg!(
         "Initializing new pool for mints: {} and {}",
         ctx.accounts.mint_a.key(),
         ctx.accounts.mint_b.key()
     );
+    */
 
     // Anchor provides the bump directly if the PDA account is named in `ctx.bumps`.
     // The `pool` account is named `pool` in the `InitializePool` struct.
@@ -40,7 +41,7 @@ pub fn handler(
 
     ctx.accounts.pool.initialize(params)?;
 
-    msg!("Pool initialized successfully: {}", ctx.accounts.pool.key());
+    /* msg!("Pool initialized successfully: {}", ctx.accounts.pool.key());
     msg!(
         "  Vault A: {}, Vault B: {}",
         ctx.accounts.pool_vault_a.key(),
@@ -49,6 +50,6 @@ pub fn handler(
     msg!("  Initial SqrtPriceQ64: {}", initial_sqrt_price_q64);
     msg!("  Fee Rate (bps): {}", fee_rate);
     msg!("  Tick Spacing: {}", tick_spacing);
-
+    */
     Ok(())
 }
