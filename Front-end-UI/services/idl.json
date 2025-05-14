@@ -1,0 +1,398 @@
+{
+  "version": "0.1.0",
+  "name": "fluxa_amm_core",
+  "instructions": [
+    {
+      "name": "initializePoolHandler",
+      "accounts": [
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mintA",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mintB",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "factory",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "poolVaultA",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "poolVaultB",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "initialSqrtPriceQ64",
+          "type": "u128"
+        },
+        {
+          "name": "feeRate",
+          "type": "u16"
+        },
+        {
+          "name": "tickSpacing",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "createPositionHandler",
+      "accounts": [
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "userToken0Account",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userToken1Account",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "poolVault0",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "poolVault1",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "tickLower",
+          "type": "i32"
+        },
+        {
+          "name": "tickUpper",
+          "type": "i32"
+        },
+        {
+          "name": "amount0Desired",
+          "type": "u64"
+        },
+        {
+          "name": "amount1Desired",
+          "type": "u64"
+        },
+        {
+          "name": "amount0Min",
+          "type": "u64"
+        },
+        {
+          "name": "amount1Min",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "swapHandler",
+      "accounts": [
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userTokenInAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userTokenOutAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenVaultIn",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenVaultOut",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "exactInput",
+          "type": "bool"
+        },
+        {
+          "name": "amountSpecified",
+          "type": "u64"
+        },
+        {
+          "name": "sqrtPriceLimitQ64",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "collectFeesHandler",
+      "accounts": [
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "userToken0Account",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userToken1Account",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "poolVault0",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "poolVault1",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "factory",
+            "type": "publicKey"
+          },
+          {
+            "name": "token0Mint",
+            "type": "publicKey"
+          },
+          {
+            "name": "token1Mint",
+            "type": "publicKey"
+          },
+          {
+            "name": "token0Vault",
+            "type": "publicKey"
+          },
+          {
+            "name": "token1Vault",
+            "type": "publicKey"
+          },
+          {
+            "name": "feeRate",
+            "type": "u16"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "u16"
+          },
+          {
+            "name": "liquidity",
+            "type": "u128"
+          },
+          {
+            "name": "sqrtPriceQ64",
+            "type": "u128"
+          },
+          {
+            "name": "currentTick",
+            "type": "i32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "pool",
+            "type": "publicKey"
+          },
+          {
+            "name": "tickLower",
+            "type": "i32"
+          },
+          {
+            "name": "tickUpper",
+            "type": "i32"
+          },
+          {
+            "name": "liquidity",
+            "type": "u128"
+          },
+          {
+            "name": "token0Amount",
+            "type": "u64"
+          },
+          {
+            "name": "token1Amount",
+            "type": "u64"
+          },
+          {
+            "name": "feeGrowthInside0LastQ64",
+            "type": "u128"
+          },
+          {
+            "name": "feeGrowthInside1LastQ64",
+            "type": "u128"
+          },
+          {
+            "name": "tokensOwed0",
+            "type": "u64"
+          },
+          {
+            "name": "tokensOwed1",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MintsNotInCanonicalOrder",
+      "msg": "Token mints must be in canonical order"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidTickSpacing",
+      "msg": "Invalid tick spacing"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidInitialPrice",
+      "msg": "Initial price must be valid"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidTickRange",
+      "msg": "Invalid tick range"
+    },
+    {
+      "code": 6004,
+      "name": "InsufficientInputAmount",
+      "msg": "Insufficient input amount"
+    },
+    {
+      "code": 6005,
+      "name": "PriceSlippageCheck",
+      "msg": "Price slippage check failed"
+    },
+    {
+      "code": 6006,
+      "name": "NotPositionOwner",
+      "msg": "Not the owner of the position"
+    },
+    {
+      "code": 6007,
+      "name": "ZeroLiquidity",
+      "msg": "Liquidity must be greater than zero"
+    }
+  ]
+}

@@ -1,0 +1,550 @@
+"use client";
+
+import { useState, useMemo, useCallback, memo } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Info, Loader2 } from "lucide-react";
+import TokenSelector from "@/components/swap/TokenSelector";
+import { useWallet } from "@/contexts/WalletContext";
+import { BN } from "bn.js";
+import { useCreatePosition, usePools, usePool } from "@/hooks/use-solana-data";
+import { toast } from "@/hooks/use-toast";
+import { PublicKey } from "@solana/web3.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+// Memoized TokenInput component
+const TokenInput = memo(({ 
+  tokenLabel,
+  selectedToken,
+  otherToken,
+  amount,
+  onAmountChange,
+  onTokenSelect,
+  disabled = false
+}) => (
+  <div className="space-y-2">
+    <Label>{tokenLabel}</Label>
+    <div className="flex items-center space-x-2">
+      <TokenSelector
+        selectedToken={selectedToken}
+        onSelectToken={onTokenSelect}
+        otherToken={otherToken}
+      />
+      <Input
+        type="number"
+        placeholder="0.0"
+        value={amount}
+        onChange={(e) => onAmountChange(e.target.value)}
+        disabled={disabled}
+      />
+    </div>
+  </div>
+));
+
+TokenInput.displayName = "TokenInput";
+
+// Memoized FeeTierSelector component
+const FeeTierSelector = memo(({ feeTier, onFeeTierChange }) => (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <Label>Fee Tier</Label>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Info className="h-3 w-3 mr-1" />
+              Learn about fee tiers
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Higher fee tiers are better for volatile pairs</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+    <Select value={feeTier} onValueChange={onFeeTierChange}>
+      <SelectTrigger>
+        <SelectValue placeholder="Select fee tier" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="0.01">0.01% - Best for stable pairs</SelectItem>
+        <SelectItem value="0.05">0.05% - Best for stable pairs</SelectItem>
+        <SelectItem value="0.3">0.3% - Best for most pairs</SelectItem>
+        <SelectItem value="1">1% - Best for exotic pairs</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+));
+
+FeeTierSelector.displayName = "FeeTierSelector";
+
+// Memoized PriceRangeSelector component
+const PriceRangeSelector = memo(({ priceRange, onPriceRangeChange }) => (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <Label>Price Range ({priceRange[0]}% - {priceRange[1]}%)</Label>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Info className="h-3 w-3 mr-1" />
+              About price ranges
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Narrow ranges can earn more fees but may require more active management</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+    <Slider
+      value={priceRange}
+      min={50}
+      max={200}
+      step={1}
+      onValueChange={(values) => onPriceRangeChange(values as [number, number])}
+    />
+    <div className="text-xs text-muted-foreground">
+      The price range determines how concentrated your liquidity will be. A narrower range may earn more fees but requires more active management to stay in range.
+    </div>
+  </div>
+));
+
+PriceRangeSelector.displayName = "PriceRangeSelector";
+
+// Memoized PositionSummary component
+const PositionSummary = memo(({
+  poolType,
+  feeTier,
+  priceRange,
+  estimatedAPR,
+  totalValueUSD
+}) => (
+  <Card>
+    <CardHeader>
+      <CardTitle>Position Summary</CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Pool Type</span>
+          <span>{poolType === "concentrated" ? "Concentrated Liquidity" : "Classic Pool"}</span>
+        </div>
+        
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Fee Tier</span>
+          <span>{feeTier}%</span>
+        </div>
+        
+        {poolType === "concentrated" && (
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Price Range</span>
+            <span>{priceRange[0]}% - {priceRange[1]}%</span>
+          </div>
+        )}
+        
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Estimated APR</span>
+          <span className="text-green-500">{estimatedAPR}%</span>
+        </div>
+        
+        <div className="border-t my-2"></div>
+        
+        <div className="flex justify-between font-medium">
+          <span>Total Value</span>
+          <span>${totalValueUSD.toLocaleString()}</span>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+));
+
+PositionSummary.displayName = "PositionSummary";
+
+// Memoized PositionDetails component
+const PositionDetails = memo(({
+  token1,
+  token2,
+  amount1,
+  amount2,
+  currentPrice
+}) => (
+  <Card>
+    <CardHeader>
+      <CardTitle>Position Details</CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex justify-between text-sm">
+          <span>{token1?.symbol} Amount</span>
+          <span>{amount1 || "0"}</span>
+        </div>
+        
+        <div className="flex justify-between text-sm">
+          <span>{token2?.symbol} Amount</span>
+          <span>{amount2 || "0"}</span>
+        </div>
+        
+        <div className="flex justify-between text-sm">
+          <span>Current Price</span>
+          <span>1 {token1?.symbol} = {currentPrice} {token2?.symbol}</span>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+));
+
+PositionDetails.displayName = "PositionDetails";
+
+export default function AddLiquidity() {
+  const { connected, publicKey } = useWallet();
+  
+  // State for token selection and amounts
+  const [token1Address, setToken1Address] = useState<string | null>(null);
+  const [token2Address, setToken2Address] = useState<string | null>(null);
+  const [token1, setToken1] = useState<any>(null);
+  const [token2, setToken2] = useState<any>(null);
+  const [amount1, setAmount1] = useState<string>("");
+  const [amount2, setAmount2] = useState<string>("");
+  
+  // UI state
+  const [priceRange, setPriceRange] = useState<[number, number]>([80, 120]);
+  const [feeTier, setFeeTier] = useState<string>("0.3");
+  const [poolType, setPoolType] = useState<string>("concentrated");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  
+  // Fetch all available pools for token selection
+  const { data: pools = [], isLoading: loadingPools } = usePools();
+  
+  // Fetch specific pool data if both tokens are selected
+  const { data: pool, isLoading: loadingPool } = usePool(token1Address, token2Address);
+  
+  // Create position mutation
+  const { mutateAsync: createPosition, isLoading: creatingPosition } = useCreatePosition();
+  
+  // Derived calculated values
+  const token1Value = parseFloat(amount1) || 0;
+  const token2Value = parseFloat(amount2) || 0;
+  
+  const totalValueUSD = useMemo(() => {
+    if (!token1 || !token2) return 0;
+    return token1Value * (token1.priceUsd || 0) + token2Value * (token2.priceUsd || 0);
+  }, [token1, token2, token1Value, token2Value]);
+  
+  // Current price calculation based on real pool data
+  const currentPrice = useMemo(() => {
+    if (!pool) return "0";
+    
+    // Using the sqrtPrice from the pool to calculate the price
+    const sqrtPriceQ64 = pool.sqrtPrice;
+    if (!sqrtPriceQ64) return "0";
+    
+    try {
+      const sqrtPrice = new BN(sqrtPriceQ64);
+      const Q64 = new BN(1).shln(64);
+      
+      // Calculate price = sqrtPrice^2 / 2^64
+      const price = sqrtPrice.mul(sqrtPrice).div(Q64);
+      
+      // Format the price based on token decimals
+      const decimalAdjustment = Math.pow(10, (token2?.decimals || 0) - (token1?.decimals || 0));
+      const formattedPrice = parseFloat(price.toString()) * decimalAdjustment;
+      
+      return formattedPrice.toFixed(6);
+    } catch (error) {
+      console.error("Error calculating price:", error);
+      return "0";
+    }
+  }, [pool, token1, token2]);
+  
+  // Mock pool APR based on fee tier (would be calculated from real data in production)
+  const estimatedAPR = useMemo(() => {
+    return feeTier === "0.01" ? "4.2"
+      : feeTier === "0.05" ? "8.5"
+      : feeTier === "0.3" ? "15.2"
+      : "22.8";
+  }, [feeTier]);
+  
+  // Handle token selection
+  const handleToken1Select = useCallback((token) => {
+    setToken1(token);
+    setToken1Address(token.address);
+    // Reset amounts when tokens change
+    setAmount1("");
+    setAmount2("");
+  }, []);
+  
+  const handleToken2Select = useCallback((token) => {
+    setToken2(token);
+    setToken2Address(token.address);
+    // Reset amounts when tokens change
+    setAmount1("");
+    setAmount2("");
+  }, []);
+  
+  // Handle input changes with price calculation
+  const handleAmount1Change = useCallback((value: string) => {
+    setAmount1(value);
+    
+    if (pool && value && !isNaN(parseFloat(value))) {
+      try {
+        // Use the real price from the pool
+        const amount1BN = new BN(parseFloat(value) * Math.pow(10, token1?.decimals || 0));
+        const price = new BN(pool.sqrtPrice || "0").mul(new BN(pool.sqrtPrice || "0")).div(new BN(1).shln(64));
+        
+        const amount2BN = amount1BN.mul(price).div(new BN(Math.pow(10, token1?.decimals || 0)));
+        const calculatedAmount2 = parseFloat(amount2BN.toString()) / Math.pow(10, token2?.decimals || 0);
+        
+        setAmount2(calculatedAmount2.toFixed(6));
+      } catch (error) {
+        console.error("Error calculating amount2:", error);
+        // If calculation fails, don't update amount2
+      }
+    } else {
+      // If no pool data or invalid input, clear amount2
+      setAmount2("");
+    }
+  }, [pool, token1, token2]);
+  
+  const handleAmount2Change = useCallback((value: string) => {
+    setAmount2(value);
+    
+    if (pool && value && !isNaN(parseFloat(value))) {
+      try {
+        // Use the real price from the pool
+        const amount2BN = new BN(parseFloat(value) * Math.pow(10, token2?.decimals || 0));
+        const price = new BN(pool.sqrtPrice || "0").mul(new BN(pool.sqrtPrice || "0")).div(new BN(1).shln(64));
+        
+        const amount1BN = amount2BN.div(price).mul(new BN(Math.pow(10, token1?.decimals || 0)));
+        const calculatedAmount1 = parseFloat(amount1BN.toString()) / Math.pow(10, token1?.decimals || 0);
+        
+        setAmount1(calculatedAmount1.toFixed(6));
+      } catch (error) {
+        console.error("Error calculating amount1:", error);
+        // If calculation fails, don't update amount1
+      }
+    } else {
+      // If no pool data or invalid input, clear amount1
+      setAmount1("");
+    }
+  }, [pool, token1, token2]);
+  
+  // Calculate tick range based on price range percentages
+  const calculateTickRange = useCallback(() => {
+    if (!pool || !priceRange) return { tickLower: 0, tickUpper: 0 };
+    
+    const currentTick = pool.currentTick || 0;
+    const tickSpacing = pool.tickSpacing || 1;
+    
+    // Calculate lower and upper ticks based on percentage range
+    const lowerPricePercent = priceRange[0] / 100;
+    const upperPricePercent = priceRange[1] / 100;
+    
+    // Convert price percentage to log base 1.0001 to get tick
+    const tickLower = Math.floor(currentTick + Math.log(lowerPricePercent) / Math.log(1.0001));
+    const tickUpper = Math.ceil(currentTick + Math.log(upperPricePercent) / Math.log(1.0001));
+    
+    // Ensure ticks are aligned with tick spacing
+    const alignedTickLower = Math.floor(tickLower / tickSpacing) * tickSpacing;
+    const alignedTickUpper = Math.ceil(tickUpper / tickSpacing) * tickSpacing;
+    
+    return { tickLower: alignedTickLower, tickUpper: alignedTickUpper };
+  }, [pool, priceRange]);
+  
+  // Handle adding liquidity
+  const handleAddLiquidity = async () => {
+    if (!connected || !publicKey || !pool || !token1 || !token2 || !amount1 || !amount2) {
+      toast({
+        title: "Cannot Add Liquidity",
+        description: "Please connect wallet and select tokens and amounts",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Convert amounts to on-chain representation (considering decimals)
+      const amount1BN = new BN(parseFloat(amount1) * Math.pow(10, token1.decimals));
+      const amount2BN = new BN(parseFloat(amount2) * Math.pow(10, token2.decimals));
+      
+      // Calculate minimum amounts (e.g., 95% of desired amount to account for slippage)
+      const amount1Min = amount1BN.mul(new BN(95)).div(new BN(100));
+      const amount2Min = amount2BN.mul(new BN(95)).div(new BN(100));
+      
+      // Calculate tick range based on price range
+      const { tickLower, tickUpper } = calculateTickRange();
+      
+      // Call the createPosition mutation
+      await createPosition({
+        poolAddress: pool.id,
+        tickLower,
+        tickUpper,
+        amount0Desired: amount1BN,
+        amount1Desired: amount2BN,
+        amount0Min: amount1Min,
+        amount1Min: amount2Min,
+      });
+      
+      toast({
+        title: "Liquidity Added",
+        description: `Added ${amount1} ${token1.symbol} and ${amount2} ${token2.symbol}`,
+      });
+      
+      // Reset form
+      setAmount1("");
+      setAmount2("");
+    } catch (error: any) {
+      console.error("Error adding liquidity:", error);
+      toast({
+        title: "Failed to Add Liquidity",
+        description: error.message || "An unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Determine if UI should show loading states
+  const isLoadingData = loadingPools || loadingPool || creatingPosition || isLoading;
+  
+  return (
+    <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+      <div className="space-y-6">
+        <Tabs defaultValue={poolType} onValueChange={setPoolType}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="concentrated">Concentrated Liquidity</TabsTrigger>
+            <TabsTrigger value="classic">Classic Pool</TabsTrigger>
+          </TabsList>
+          
+          {/* Concentrated Liquidity Tab */}
+          <TabsContent value="concentrated" className="space-y-6 mt-6">
+            <div className="grid grid-cols-2 gap-4">
+              <TokenInput
+                tokenLabel="Token 1"
+                selectedToken={token1}
+                otherToken={token2}
+                amount={amount1}
+                onAmountChange={handleAmount1Change}
+                onTokenSelect={handleToken1Select}
+                disabled={isLoadingData}
+              />
+              
+              <TokenInput
+                tokenLabel="Token 2"
+                selectedToken={token2}
+                otherToken={token1}
+                amount={amount2}
+                onAmountChange={handleAmount2Change}
+                onTokenSelect={handleToken2Select}
+                disabled={isLoadingData}
+              />
+            </div>
+            
+            <FeeTierSelector
+              feeTier={feeTier}
+              onFeeTierChange={setFeeTier}
+            />
+            
+            <PriceRangeSelector
+              priceRange={priceRange}
+              onPriceRangeChange={setPriceRange}
+            />
+          </TabsContent>
+          
+          {/* Classic Pool Tab */}
+          <TabsContent value="classic" className="space-y-6 mt-6">
+            <div className="grid grid-cols-2 gap-4">
+              <TokenInput
+                tokenLabel="Token 1"
+                selectedToken={token1}
+                otherToken={token2}
+                amount={amount1}
+                onAmountChange={handleAmount1Change}
+                onTokenSelect={handleToken1Select}
+                disabled={isLoadingData}
+              />
+              
+              <TokenInput
+                tokenLabel="Token 2"
+                selectedToken={token2}
+                otherToken={token1}
+                amount={amount2}
+                onAmountChange={handleAmount2Change}
+                onTokenSelect={handleToken2Select}
+                disabled={isLoadingData}
+              />
+            </div>
+            
+            <FeeTierSelector
+              feeTier={feeTier}
+              onFeeTierChange={setFeeTier}
+            />
+          </TabsContent>
+        </Tabs>
+        
+        <Button 
+          className="w-full" 
+          size="lg" 
+          disabled={!amount1 || !amount2 || !connected || isLoadingData}
+          onClick={handleAddLiquidity}
+        >
+          {isLoadingData ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Adding Liquidity...
+            </>
+          ) : !connected ? (
+            "Connect Wallet"
+          ) : (
+            "Add Liquidity"
+          )}
+        </Button>
+      </div>
+      
+      <div className="space-y-6">
+        <PositionSummary
+          poolType={poolType}
+          feeTier={feeTier}
+          priceRange={priceRange}
+          estimatedAPR={estimatedAPR}
+          totalValueUSD={totalValueUSD}
+        />
+        
+        {token1 && token2 && (
+          <PositionDetails
+            token1={token1}
+            token2={token2}
+            amount1={amount1}
+            amount2={amount2}
+            currentPrice={currentPrice}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
