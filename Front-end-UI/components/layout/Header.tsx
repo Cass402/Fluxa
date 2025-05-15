@@ -33,6 +33,7 @@ export default function Header() {
     { name: "Swap", href: "/swap" },
     { name: "Pools", href: "/pools" },
     { name: "Dashboard", href: "/dashboard" },
+    { name: "Wallet Test", href: "/wallet-test" },
   ];
 
   return (

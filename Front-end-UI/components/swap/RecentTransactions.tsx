@@ -18,7 +18,7 @@ export default function RecentTransactions() {
         <p className="text-sm text-muted-foreground mb-4">
           Connect your wallet to view your transaction history
         </p>
-        <Button variant="outline">Connect Wallet</Button>
+        <Button variant="outline" onClick={() => document.getElementById('connect-wallet-btn')?.click()}>Connect Wallet</Button>
       </div>
     );
   }

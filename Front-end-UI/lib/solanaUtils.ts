@@ -101,16 +101,52 @@ export const createAnchorProvider = (wallet: any): AnchorProvider => {
 /**
  * Get a Program instance with the given IDL
  * @param idl - Program IDL
- * @param provider - AnchorProvider instance
  * @param programId - Program ID (optional, defaults to config)
+ * @param provider - AnchorProvider instance
  * @returns A Program instance
  */
 export const getProgram = <T extends Idl = Idl>(
   idl: T,
-  provider: AnchorProvider,
-  programId: PublicKey = PROGRAM_ID
+  programId: PublicKey = PROGRAM_ID,
+  provider: AnchorProvider
 ): Program<T> => {
-  return new Program<T>(idl, programId, provider);
+  try {
+    console.log("[getProgram] Creating program with ID:", programId.toString());
+    console.log("[getProgram] IDL name:", (idl as any).name);
+    console.log("[getProgram] IDL version:", (idl as any).version);
+
+    // Check if IDL has account definitions
+    if (!idl.accounts || idl.accounts.length === 0) {
+      console.warn("[getProgram] Warning: IDL has no account definitions");
+    } else {
+      console.log(
+        "[getProgram] IDL has",
+        idl.accounts.length,
+        "account definitions"
+      );
+    }
+
+    // Add safety check for accounts needing the 'size' field
+    idl.accounts?.forEach((account: any, idx) => {
+      if (account.type?.kind === "struct" && !account.type.size) {
+        console.warn(
+          `[getProgram] Account ${account.name} (index ${idx}) is missing size property`
+        );
+      }
+    });
+
+    // Create the program instance with additional error wrapping
+    // @ts-ignore - Anchor's type definitions are sometimes inconsistent
+    return new Program<T>(idl, programId, provider);
+  } catch (error) {
+    console.error("[getProgram] Error creating program:", error);
+    // Re-throw with more context to help debugging
+    throw new Error(
+      `Failed to initialize Anchor Program: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 };
 
 /**
@@ -265,8 +301,63 @@ export const findTickPda = async (
  */
 export const priceToSqrtPriceQ64 = (price: number): BN => {
   if (price <= 0) throw new Error("Price must be positive");
-  const sqrtPrice = Math.sqrt(price);
-  return new BN(sqrtPrice * 2 ** 64);
+
+  try {
+    // Calculate square root of price with high precision
+    const sqrtPrice = Math.sqrt(price);
+
+    // Convert to string with high precision to avoid floating point errors
+    const sqrtPriceStr = sqrtPrice.toFixed(15);
+
+    // Split into integer and fractional parts
+    const [integerPart, fractionalPart = ""] = sqrtPriceStr.split(".");
+
+    // Create BN from integer part (shifted left by 64 bits for Q64 format)
+    let result = new BN(integerPart).shln(64);
+
+    // Handle fractional part if it exists
+    if (fractionalPart) {
+      // Ensure we don't lose precision with very small numbers
+      const fractionalStr = fractionalPart.padEnd(20, "0").substring(0, 20);
+      const scaleFactor = new BN(10).pow(new BN(fractionalStr.length));
+
+      // Calculate the fractional contribution: (frac / 10^digits) * 2^64
+      try {
+        const fracValue = new BN(fractionalStr);
+        const fracScaled = fracValue
+          .mul(new BN(2).pow(new BN(64)))
+          .div(scaleFactor);
+
+        // Add the fractional part to the result
+        result = result.add(fracScaled);
+      } catch (err) {
+        console.error("Error calculating fractional part:", err, {
+          fractionalStr,
+          price,
+          sqrtPrice,
+        });
+        // Fallback to a simpler method that won't cause assertion failures
+        const fracValue = Math.floor(
+          parseFloat(`0.${fractionalPart}`) * 2 ** 64
+        );
+        result = result.add(new BN(fracValue));
+      }
+    }
+
+    console.log("Converted price to sqrt price Q64:", {
+      price,
+      sqrtPrice,
+      sqrtPriceQ64: result.toString(),
+    });
+
+    return result;
+  } catch (error: unknown) {
+    console.error("Error in priceToSqrtPriceQ64:", error, { price });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to convert price ${price} to sqrtPriceQ64: ${errorMessage}`
+    );
+  }
 };
 
 /**

@@ -7,6 +7,7 @@ import { WalletProvider } from '@/contexts/WalletContext';
 import { Toaster } from '@/components/ui/toaster';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import dynamic from 'next/dynamic';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -33,6 +34,16 @@ export default function RootLayout({
             <WalletProvider>
               <div className="relative flex min-h-screen flex-col">
                 <Header />
+                {/* Debug panel - remove for production */}
+                <div className="mx-auto w-full max-w-screen-2xl px-4 mt-4">
+                  {(() => {
+                    const WalletDebug = dynamic(
+                      () => import('@/components/debug/WalletConnectionDebug'),
+                      { ssr: false }
+                    );
+                    return <WalletDebug />;
+                  })()}
+                </div>
                 <main className="flex-1 mx-auto w-full max-w-screen-2xl">{children}</main>
                 <Footer />
               </div>

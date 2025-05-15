@@ -1,6 +1,30 @@
 "use client";
 
-import { useState } from "react";
+// Define global window types for wallet extensions
+declare global {
+  interface Window {
+    solana?: {
+      isPhantom?: boolean;
+      isSolflare?: boolean;
+      isConnected?: boolean;
+      publicKey?: { toString(): string };
+      connect(options?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: { toString(): string } }>;
+      disconnect(): Promise<void>;
+    };
+    solflare?: {
+      isConnected?: boolean;
+      publicKey?: { toString(): string };
+      connect(): Promise<{ publicKey: { toString(): string } }>;
+      disconnect(): Promise<void>;
+    };
+    ethereum?: {
+      isMetaMask?: boolean;
+      request(args: { method: string }): Promise<string[]>;
+    };
+  }
+}
+
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,27 +42,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Wallet, Copy, ExternalLink, LogOut, ChevronDown } from "lucide-react";
+import { 
+  Wallet, 
+  Copy, 
+  ExternalLink, 
+  LogOut, 
+  ChevronDown, 
+  Check, 
+  ArrowRight,
+  RefreshCw
+} from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { useToast } from "@/hooks/use-toast";
-
-declare global {
-  interface Window {
-    solana?: {
-      isPhantom?: boolean;
-      isSolflare?: boolean;
-      connect(): Promise<{ publicKey: { toString(): string } }>;
-    };
-    ethereum?: {
-      isMetaMask?: boolean;
-      request(args: { method: string }): Promise<string[]>;
-    };
-  }
-}
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function ConnectWalletButton() {
-  const { connected, address, walletType, connect, disconnect } = useWallet();
+  const { connected, connecting, address, walletType, balance, connect, disconnect } = useWallet();
   const [showConnectModal, setShowConnectModal] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [connectionAnimation, setConnectionAnimation] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(0); // Add a force update state
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
   
   // Function to copy address to clipboard
@@ -56,6 +80,75 @@ export default function ConnectWalletButton() {
   const truncateAddress = (addr: string) => {
     return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "";
   };
+  
+  // Function to manually refresh wallet connection
+  const refreshConnection = async () => {
+    if (!walletType) return;
+    
+    setIsRefreshing(true);
+    try {
+      await connect(walletType);
+      toast({
+        title: "Connection refreshed",
+        description: "Wallet connection has been refreshed",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Refresh failed",
+        description: error.message || "Failed to refresh connection",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Show success animation when wallet connects
+  useEffect(() => {
+    if (connected && address) {
+      setShowSuccess(true);
+      setConnectionAnimation(true);
+      const timer = setTimeout(() => {
+        setShowSuccess(false);
+        // Keep connection animation for longer
+        setTimeout(() => {
+          setConnectionAnimation(false);
+        }, 2000);
+      }, 3000); // Show success animation for 3 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [connected, address]);
+  
+  // Additional debug logging for wallet connection state
+  useEffect(() => {
+    console.log("[ConnectWalletButton] Connection state changed:", { 
+      connected, 
+      address, 
+      walletType 
+    });
+    
+    // Check for Phantom wallet connection specifically
+    if (typeof window !== 'undefined' && window.solana) {
+      const isActuallyConnected = window.solana.isConnected && !!window.solana.publicKey;
+      console.log("[ConnectWalletButton] Phantom connection check:", {
+        isPhantom: window.solana.isPhantom,
+        isConnected: window.solana.isConnected,
+        hasPublicKey: !!window.solana.publicKey,
+        actualState: isActuallyConnected
+      });
+      
+      // If there's a discrepancy, log it
+      if (connected !== isActuallyConnected) {
+        console.warn("[ConnectWalletButton] Connection state mismatch:", {
+          contextState: connected,
+          actualState: isActuallyConnected
+        });
+      }
+    }
+    
+    // Force update the component to make sure UI reflects the current state
+    setForceUpdate(prev => prev + 1);
+  }, [connected, address, walletType]);
 
   const handleConnect = async (type: "phantom" | "solflare" | "metamask" | "walletconnect" | "coinbase") => {
     try {
@@ -73,45 +166,148 @@ export default function ConnectWalletButton() {
       });
     }
   };
+  
+  // Get wallet icon based on wallet type
+  const getWalletIcon = () => {
+    switch(walletType) {
+      case "phantom":
+        return <PhantomIcon />;
+      case "solflare":
+        return <SolflareIcon />;
+      case "metamask":
+        return <MetaMaskIcon />;
+      case "walletconnect":
+        return <WalletConnectIcon />;
+      case "coinbase":
+        return <CoinbaseWalletIcon />;
+      default:
+        return <Wallet className="h-4 w-4" />;
+    }
+  };
+
+  // Style for the connected button animation
+  const connectedButtonStyle = `
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+      70% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+    }
+    
+    @keyframes fadeInUp {
+      0% { 
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      100% { 
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes shine {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
+    .connected-pulse {
+      animation: pulse 2s infinite;
+      transition: all 0.3s ease;
+      border-width: 2px;
+    }
+    
+    .animate-fade-in-up {
+      animation: fadeInUp 0.4s ease-out forwards;
+    }
+    
+    .wallet-gradient {
+      background: linear-gradient(90deg, #f0fdf4, #dcfce7, #bbf7d0, #dcfce7, #f0fdf4);
+      background-size: 200% 100%;
+      animation: shine 3s linear infinite;
+    }
+    
+    .dark .wallet-gradient {
+      background: linear-gradient(90deg, #052e16, #065f46, #064e3b, #065f46, #052e16);
+      background-size: 200% 100%;
+      animation: shine 3s linear infinite;
+    }
+  `;
 
   return (
     <>
+      <style jsx>{connectedButtonStyle}</style>
       {connected ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="gap-2">
-              <div className="h-4 w-4 rounded-full bg-green-500"></div>
-              {truncateAddress(address || "")}
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Connected to {walletType}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={copyAddress}>
-              <Copy className="mr-2 h-4 w-4" />
-              Copy Address
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <ExternalLink className="mr-2 h-4 w-4" />
-              View on Explorer
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={disconnect} className="text-red-500">
-              <LogOut className="mr-2 h-4 w-4" />
-              Disconnect
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    className="gap-2 wallet-gradient border-green-500 connected-pulse transition-all duration-300 font-medium shadow-md hover:shadow-lg"
+                    onClick={() => console.log("Connected button clicked, address:", address)}
+                  >
+                    <div className="flex items-center justify-center h-8 w-8 mr-2 animate-fade-in-up bg-white dark:bg-gray-800 rounded-full p-1 shadow-sm">
+                      {getWalletIcon()}
+                    </div>
+                    <div className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse mr-2"></div>
+                    <span className="font-medium text-green-800 dark:text-green-200">{address ? truncateAddress(address) : "Address not available"}</span>
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-center h-6 w-6">{getWalletIcon()}</div>
+                      <span>Connected to {walletType || "unknown wallet"}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs break-all font-mono bg-muted p-2 rounded">{address || "No address"}</DropdownMenuLabel>
+                  {balance !== null && (
+                    <DropdownMenuLabel className="text-sm py-1">
+                      <span className="font-medium">Balance:</span> {balance.toFixed(4)} SOL
+                    </DropdownMenuLabel>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={copyAddress} className="cursor-pointer">
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Address
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={refreshConnection} 
+                    className="cursor-pointer"
+                    disabled={isRefreshing}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    {isRefreshing ? 'Refreshing...' : 'Refresh Connection'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View on Explorer
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={disconnect} className="text-red-500 cursor-pointer">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Disconnect
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-mono text-xs">{address || "No address available"}</p>
+              {balance !== null && <p className="text-xs mt-1">{balance.toFixed(4)} SOL</p>}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ) : (
         <Dialog open={showConnectModal} onOpenChange={setShowConnectModal}>
           <DialogTrigger asChild>
-            <Button>
+            <Button id="connect-wallet-btn" className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transition-all duration-300 shadow-md hover:shadow-lg">
               <Wallet className="mr-2 h-4 w-4" />
-              Connect
+              Connect Wallet
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Connect your wallet</DialogTitle>
               <DialogDescription>
@@ -123,28 +319,49 @@ export default function ConnectWalletButton() {
                 <Button
                   key={wallet.name}
                   variant="outline"
-                  className="flex items-center justify-between p-6"
+                  className={`flex items-center justify-between p-6 hover:bg-muted/50 hover:border-primary/50 transition-all duration-300 ${
+                    connecting && walletType === wallet.type ? 'border-primary' : ''
+                  }`}
                   onClick={() => handleConnect(wallet.type)}
+                  disabled={connecting && walletType !== wallet.type}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full border ${
+                      connecting && walletType === wallet.type ? 'border-primary border-2' : ''
+                    }`}>
                       {wallet.icon}
                     </div>
-                    <div className="text-lg font-medium">{wallet.name}</div>
+                    <div className="flex flex-col">
+                      <div className="text-lg font-medium">{wallet.name}</div>
+                      {connecting && walletType === wallet.type && (
+                        <div className="text-xs text-primary animate-pulse">Connecting...</div>
+                      )}
+                    </div>
                   </div>
-                  <ArrowRight className="h-5 w-5" />
+                  {connecting && walletType === wallet.type ? (
+                    <div className="h-5 w-5 rounded-full border-2 border-t-transparent border-primary animate-spin" />
+                  ) : (
+                    <ArrowRight className="h-5 w-5" />
+                  )}
                 </Button>
               ))}
             </div>
           </DialogContent>
         </Dialog>
       )}
+      {showSuccess && (
+        <div className="fixed bottom-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg z-50 animate-fade-in-up flex items-center gap-2">
+          <div className="flex items-center justify-center h-6 w-6">{getWalletIcon()}</div>
+          <div>
+            <div className="font-bold">Wallet connected successfully!</div>
+            <div className="text-sm">{address && truncateAddress(address)}</div>
+          </div>
+          <Check className="h-5 w-5 ml-2" />
+        </div>
+      )}
     </>
   );
 }
-
-// Import icons
-import { ArrowRight } from "lucide-react";
 
 const walletOptions = [
   {

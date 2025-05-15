@@ -39,7 +39,7 @@ export default function RemoveLiquidity() {
           <p className="text-muted-foreground">
             Connect your wallet to view and manage your liquidity positions
           </p>
-          <Button>Connect Wallet</Button>
+          <Button onClick={() => document.getElementById('connect-wallet-btn')?.click()}>Connect Wallet</Button>
         </div>
       </div>
     );

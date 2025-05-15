@@ -18,19 +18,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Loader2, Plus } from "lucide-react";
 import TokenPair from "@/components/common/TokenPair";
 import { usePools } from "@/hooks/use-solana-data";
 import VirtualizedList from "@/components/common/VirtualizedList";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import InitializePoolForm from "./InitializePoolForm";
 
 export default function PoolsList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<string>("tvl");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [feeTierFilter, setFeeTierFilter] = useState<string>("all");
+  const [isInitPoolOpen, setIsInitPoolOpen] = useState(false);
 
   // Fetch pools from API using React Query
-  const { data: pools = [], isLoading, isError } = usePools();
+  const { data: pools = [], isLoading, isError, refetch } = usePools();
 
   // Filter pools based on search term and fee tier
   const filteredPools = pools.filter((pool: any) => {
@@ -139,6 +142,28 @@ export default function PoolsList() {
             </SelectContent>
           </Select>
           <Button variant="outline">My Positions</Button>
+          
+          {/* Initialize Pool Dialog */}
+          <Dialog open={isInitPoolOpen} onOpenChange={setIsInitPoolOpen}>
+            <DialogTrigger asChild>
+              <Button variant="default">
+                <Plus className="mr-2 h-4 w-4" />
+                Initialize Pool
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Initialize New Pool</DialogTitle>
+                <DialogDescription>
+                  Create a new liquidity pool by selecting tokens and parameters.
+                </DialogDescription>
+              </DialogHeader>
+              <InitializePoolForm onSuccess={() => {
+                setIsInitPoolOpen(false);
+                refetch(); // Refresh the pool list
+              }} />
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

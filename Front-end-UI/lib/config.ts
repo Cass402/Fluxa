@@ -9,10 +9,10 @@ export enum SolanaCluster {
   LOCALNET = "localnet",
 }
 
-// Default to local development if not specified
+// Default to devnet for development if not specified
 export const SOLANA_CLUSTER =
   (process.env.NEXT_PUBLIC_SOLANA_CLUSTER as SolanaCluster) ||
-  SolanaCluster.LOCALNET;
+  SolanaCluster.DEVNET; // Using DEVNET instead of LOCALNET for better compatibility
 
 // Network RPC endpoints with fallbacks
 const RPC_ENDPOINTS: Record<SolanaCluster, string[]> = {
@@ -105,7 +105,7 @@ export const DEFAULT_CHART_TIMEFRAME = "1D";
 export const CHART_TIMEFRAMES = ["1H", "1D", "1W", "1M", "1Y"];
 
 // Wallet connection options
-export const WALLET_CONNECTION_TIMEOUT_MS = 30 * 1000; // 30 seconds timeout for wallet connections
+export const WALLET_CONNECTION_TIMEOUT_MS = 60 * 1000; // 60 seconds timeout for wallet connections
 
 // Token API endpoints - these would be used to fetch token metadata and prices
 export const TOKEN_METADATA_API = "https://token-list-api.solana.com";

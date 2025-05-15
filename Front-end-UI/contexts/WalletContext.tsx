@@ -10,7 +10,7 @@ import {
   useCallback,
 } from "react";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { SOLANA_NETWORK, WALLET_CONNECTION_TIMEOUT_MS } from "@/lib/config";
+import { SOLANA_NETWORK, WALLET_CONNECTION_TIMEOUT_MS, STORAGE_KEYS } from "@/lib/config";
 import { solanaService } from "@/services/solanaService";
 import { toast } from "@/hooks/use-toast";
 
@@ -28,6 +28,7 @@ interface WalletContextType {
   publicKey: PublicKey | null;
   sendTransaction: (transaction: any) => Promise<string>;
   signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  serviceInitialized: boolean;
 }
 
 const WalletContext = createContext<WalletContextType>({
@@ -41,6 +42,7 @@ const WalletContext = createContext<WalletContextType>({
   publicKey: null,
   sendTransaction: async () => "",
   signMessage: async () => new Uint8Array(),
+  serviceInitialized: false,
 });
 
 export const useWallet = () => useContext(WalletContext);
@@ -57,16 +59,87 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const [balance, setBalance] = useState<number | null>(null);
   const [wallet, setWallet] = useState<any>(null);
   const [publicKey, setPublicKey] = useState<PublicKey | null>(null);
+  const [serviceConnectionStatus, setServiceConnectionStatus] = useState(false);
 
   const connection = useMemo(() => new Connection(SOLANA_NETWORK, "confirmed"), []);
 
+  // Check for all available wallet types in window object
+  const detectAvailableWallets = useCallback(() => {
+    const wallets: Record<WalletType, boolean> = {
+      phantom: false,
+      solflare: false,
+      metamask: false,
+      walletconnect: false,
+      coinbase: false
+    };
+    
+    if (typeof window !== 'undefined') {
+      const { solana } = window as any;
+      wallets.phantom = !!solana?.isPhantom;
+      wallets.solflare = !!solana?.isSolflare || !!(window as any).solflare;
+      wallets.metamask = !!(window as any).ethereum?.isMetaMask;
+    }
+    
+    return wallets;
+  }, []);
+
   // Initialize wallet from localStorage on page load
   useEffect(() => {
-    const savedWalletType = localStorage.getItem("walletType") as WalletType | null;
-    if (savedWalletType) {
-      connect(savedWalletType).catch(console.error);
-    }
-  }, []);
+    const checkExistingConnection = async () => {
+      try {
+        console.log("[WalletContext] Checking for existing wallet connections...");
+        const availableWallets = detectAvailableWallets();
+        console.log("[WalletContext] Available wallets:", availableWallets);
+        
+        // Check if Phantom is already connected
+        const { solana } = window as any;
+        if (solana?.isPhantom && solana?.isConnected && solana?.publicKey) {
+          console.log("[WalletContext] Detected existing Phantom connection:", solana.publicKey.toString());
+          
+          // Auto-connect using the detected connection
+          try {
+            await connect("phantom");
+            return;
+          } catch (error) {
+            console.error("[WalletContext] Error auto-connecting to Phantom:", error);
+          }
+        }
+        
+        // Check if Solflare is connected
+        const { solflare } = window as any;
+        if (solflare?.isConnected && solflare?.publicKey) {
+          console.log("[WalletContext] Detected existing Solflare connection:", solflare.publicKey.toString());
+          
+          try {
+            await connect("solflare");
+            return;
+          } catch (error) {
+            console.error("[WalletContext] Error auto-connecting to Solflare:", error);
+          }
+        }
+        
+        // Fall back to saved wallet type from local storage
+        const savedWalletType = localStorage.getItem(STORAGE_KEYS.WALLET_TYPE) as WalletType | null;
+        const lastConnected = localStorage.getItem(STORAGE_KEYS.LAST_CONNECTED);
+        const connectionAge = lastConnected ? Date.now() - parseInt(lastConnected) : Infinity;
+        
+        // Only try to reconnect if the last connection was recent (within 1 day)
+        if (savedWalletType && connectionAge < 24 * 60 * 60 * 1000) {
+          console.log("[WalletContext] Reconnecting to saved wallet type:", savedWalletType);
+          await connect(savedWalletType);
+        }
+      } catch (error) {
+        console.error("[WalletContext] Error checking existing connections:", error);
+      }
+    };
+    
+    // Delay connection check slightly to ensure browser extension is loaded
+    const timer = setTimeout(() => {
+      checkExistingConnection();
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [detectAvailableWallets]);
 
   // Fetch balance when wallet is connected
   useEffect(() => {
@@ -111,6 +184,12 @@ export function WalletProvider({ children }: WalletProviderProps) {
         case "phantom": {
           // Check if Phantom is installed
           const { solana } = window as any;
+          console.log("[WalletContext] Phantom detection:", { 
+            detected: !!solana,
+            isPhantom: solana?.isPhantom,
+            isConnected: solana?.isConnected
+          });
+          
           if (!solana?.isPhantom) {
             window.open("https://phantom.app/", "_blank");
             throw new Error("Please install Phantom wallet");
@@ -118,7 +197,37 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
           // Connect to Phantom
           walletInstance = solana;
-          connectionPromise = solana.connect();
+          
+          // Make sure any previous connection attempt is handled
+          if (solana.isConnected) {
+            console.log("[WalletContext] Phantom already connected, trying to use existing connection");
+            try {
+              // First try using the existing connection
+              if (solana.publicKey) {
+                connectionPromise = Promise.resolve({ publicKey: solana.publicKey });
+                break;
+              }
+              
+              // If no public key, disconnect and reconnect
+              await solana.disconnect();
+              // Small delay to ensure disconnect is complete
+              await new Promise(resolve => setTimeout(resolve, 300));
+            } catch (e) {
+              console.log("[WalletContext] Error disconnecting existing connection:", e);
+            }
+          }
+          
+          console.log("[WalletContext] Attempting to connect to Phantom");
+          // Attempt connection with explicit options
+          connectionPromise = solana.connect({ onlyIfTrusted: false })
+            .then((response: any) => {
+              console.log("[WalletContext] Phantom connection success:", response);
+              return response;
+            })
+            .catch((error: Error) => {
+              console.error("[WalletContext] Phantom connection error:", error);
+              throw error;
+            });
           break;
         }
 
@@ -132,7 +241,13 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
           // Connect to Solflare
           walletInstance = solflare;
-          connectionPromise = solflare.connect();
+          
+          // Try to use existing connection first
+          if (solflare.isConnected && solflare.publicKey) {
+            connectionPromise = Promise.resolve({ publicKey: solflare.publicKey });
+          } else {
+            connectionPromise = solflare.connect();
+          }
           break;
         }
 
@@ -197,8 +312,17 @@ export function WalletProvider({ children }: WalletProviderProps) {
       const response = await Promise.race([connectionPromise, timeoutPromise]);
       clearTimeout(timeoutId!);
       
+      console.log("[WalletContext] Connection response:", response);
+      
+      if (!response || !response.publicKey) {
+        throw new Error("Wallet connected but no public key was returned");
+      }
+      
       const publicKey = response.publicKey;
+      console.log("[WalletContext] Public key object:", publicKey);
+      
       const addressString = publicKey.toString();
+      console.log("[WalletContext] Address string:", addressString);
 
       // Store in state and localStorage
       setWallet(walletInstance);
@@ -207,21 +331,56 @@ export function WalletProvider({ children }: WalletProviderProps) {
       setWalletType(type);
       setConnected(true);
       
-      localStorage.setItem("walletType", type);
-      localStorage.setItem("walletAddress", addressString);
+      localStorage.setItem(STORAGE_KEYS.WALLET_TYPE, type);
+      localStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, addressString);
+      localStorage.setItem(STORAGE_KEYS.LAST_CONNECTED, Date.now().toString());
 
       // Initialize Solana service with the wallet
-      solanaService.initialize({
-        publicKey,
-        signTransaction: walletInstance.signTransaction?.bind(walletInstance),
-        signAllTransactions: walletInstance.signAllTransactions?.bind(walletInstance),
-        signMessage: walletInstance.signMessage?.bind(walletInstance),
-        sendTransaction: async (transaction: any) => {
-          const signed = await walletInstance.signTransaction(transaction);
-          const signature = await connection.sendRawTransaction(signed.serialize());
-          return signature;
-        },
-      });
+      try {
+        // Log the wallet instance to debug
+        console.log("[WalletContext] Wallet instance methods:", Object.keys(walletInstance));
+        
+        // Make sure methods are available
+        const hasSigning = !!walletInstance.signTransaction && 
+                          typeof walletInstance.signTransaction === 'function';
+        
+        console.log("[WalletContext] Wallet has signing capabilities:", hasSigning);
+        
+        // Create a proper wallet adapter object with complete interface
+        const walletAdapter = {
+          publicKey,
+          connected: true,
+          signTransaction: walletInstance.signTransaction?.bind(walletInstance),
+          signAllTransactions: walletInstance.signAllTransactions?.bind(walletInstance),
+          signMessage: walletInstance.signMessage?.bind(walletInstance),
+        };
+        
+        console.log("[WalletContext] Initializing Solana service with wallet:", addressString);
+        
+        // Initialize the Solana service with the wallet
+        try {
+          // This may throw if there's an issue with the program ID, RPC connection, or IDL
+          solanaService.initialize(walletAdapter);
+          // If we get here, service initialization was successful
+          setServiceConnectionStatus(true);
+        } catch (serviceError) {
+          console.error("[WalletContext] Error initializing Solana service:", serviceError);
+          console.log("[WalletContext] Continuing with wallet connection despite service initialization failure");
+          
+          // Still allow wallet to connect, even if service fails
+          setServiceConnectionStatus(false);
+          
+          // Show toast notification
+          toast({
+            title: "Service Connection Warning",
+            description: "Connected to wallet, but backend services may be limited.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("[WalletContext] Error initializing wallet adapter:", error);
+        throw new Error("Failed to initialize wallet adapter");
+      }
 
       toast({
         title: "Wallet Connected",
@@ -262,8 +421,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setConnected(false);
     setBalance(null);
     
-    localStorage.removeItem("walletType");
-    localStorage.removeItem("walletAddress");
+    localStorage.removeItem(STORAGE_KEYS.WALLET_TYPE);
+    localStorage.removeItem(STORAGE_KEYS.WALLET_ADDRESS);
     
     toast({
       title: "Wallet Disconnected",
@@ -318,6 +477,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     publicKey,
     sendTransaction,
     signMessage,
+    serviceInitialized: serviceConnectionStatus,
   }), [
     connected,
     connecting,
@@ -329,6 +489,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     publicKey,
     sendTransaction,
     signMessage,
+    serviceConnectionStatus,
   ]);
 
   return (

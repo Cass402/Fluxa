@@ -51,12 +51,7 @@ export const usePool = (mintA: string | null, mintB: string | null) => {
     {
       enabled: connected && solanaService.isInitialized() && !!mintA && !!mintB,
       onError: (error: any) => {
-        const errorMessage = handleSolanaError(error);
-        toast({
-          title: "Error Fetching Pool",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        handleSolanaError(error, "Error Fetching Pool");
       },
     }
   );
@@ -74,12 +69,7 @@ export const usePositions = () => {
     {
       enabled: connected && solanaService.isInitialized(),
       onError: (error: any) => {
-        const errorMessage = handleSolanaError(error);
-        toast({
-          title: "Error Fetching Positions",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        handleSolanaError(error, "Error Fetching Positions");
       },
     }
   );
@@ -119,12 +109,8 @@ export const useCreatePool = () => {
         queryClient.invalidateQueries([QUERY_KEYS.POOLS]);
       },
       onError: (error: any) => {
-        const errorMessage = handleSolanaError(error);
-        toast({
-          title: "Error Creating Pool",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        const errorMessage = handleSolanaError(error, "Error Creating Pool");
+        console.error("Pool creation failed:", errorMessage);
       },
     }
   );
@@ -171,12 +157,7 @@ export const useCreatePosition = () => {
         queryClient.invalidateQueries([QUERY_KEYS.TOKEN_BALANCES]);
       },
       onError: (error: any) => {
-        const errorMessage = handleSolanaError(error);
-        toast({
-          title: "Error Creating Position",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        handleSolanaError(error, "Error Creating Position");
       },
     }
   );
@@ -214,12 +195,7 @@ export const useSwap = () => {
         queryClient.invalidateQueries([QUERY_KEYS.TRANSACTION_HISTORY]);
       },
       onError: (error: any) => {
-        const errorMessage = handleSolanaError(error);
-        toast({
-          title: "Swap Failed",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        handleSolanaError(error, "Swap Failed");
       },
     }
   );

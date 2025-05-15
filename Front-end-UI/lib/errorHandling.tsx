@@ -4,7 +4,6 @@
 import {
   SendTransactionError,
   TransactionError,
-  InstructionError,
   ComputeBudgetProgram,
   Transaction,
 } from "@solana/web3.js";
@@ -208,12 +207,12 @@ export function parseSolanaError(error: unknown): StructuredSolanaError {
  * Handle a Solana error and show a toast notification
  * @param error - The error to handle
  * @param customMessage - Optional custom message to show
- * @returns A structured error object
+ * @returns A human-readable error message string
  */
 export function handleSolanaError(
   error: unknown,
   customMessage?: string
-): StructuredSolanaError {
+): string {
   const parsedError = parseSolanaError(error);
 
   // Construct toast message
@@ -229,7 +228,7 @@ export function handleSolanaError(
     variant: "destructive",
   });
 
-  return parsedError;
+  return toastDescription;
 }
 
 /**

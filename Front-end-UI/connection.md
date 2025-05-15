@@ -8,7 +8,7 @@ This guide will walk you through setting up a local Solana development environme
 
 First, check if you have the Solana CLI installed:
 
-```bash
+````bash
 solana --version
 If it's not installed, run:sh -c "$(curl -sSfL [https://release.solana.com/v1.17.0/install](https://release.solana.com/v1.17.0/install))"
 Add Solana to your PATH if prompted. You may need to restart your terminal.Step 2: Configure Solana for Local DevelopmentSet your Solana configuration to use the local network:solana config set --url localhost
@@ -42,4 +42,120 @@ To list recent transactions:solana transaction-history <YOUR_WALLET_ADDRESS>
 Using Browser Developer ToolsOpen Developer Tools (F12)Go to the Network tabFilter by "Fetch/XHR"Look for requests to your local Solana nodeExamine the request payloads and responsesUsing the Program LogsIn the terminal running the validator, you'll see detailed logs for each transaction. These logs show:Transaction execution stepsAccount data changesError messages if transactions fail7. TroubleshootingProgram ID Not FoundDouble-check that the PROGRAM_ID in your frontend configuration matches the ID from anchor deployVerify the program was successfully deployed with:solana program show --programs
 Transaction FailuresEnsure your wallet has sufficient SOL for transaction feesCheck the validator logs for specific error messagesMake sure account addresses in your transaction are correctInsufficient BalanceFund your wallet on the local network:solana airdrop 10 <YOUR_WALLET_ADDRESS>
 Data Not Displaying CorrectlyCheck network requests to ensure data is being fetched properlyVerify that account data formats match what the frontend expectsEnsure the TickBitmapUtils implementation in the frontend is correctly deserializing the binary tick bitmap dataConnection IssuesMake sure your validator is runningVerify that SOLANA_NETWORK points to `http://
+
+# Solana Connection Guide
+
+## Creating a Development Wallet
+
+### Prerequisites
+1. Install the Solana CLI tools:
+```bash
+sh -c "$(curl -sSfL https://release.solana.com/v1.16.7/install)"
+````
+
+2. Add Solana to your PATH (if not already done):
+
+```bash
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+```
+
+### Create a New Development Wallet
+
+1. Generate a new keypair:
+
+```bash
+solana-keygen new --outfile ~/.config/solana/devnet-wallet.json
+```
+
+2. Set this as your default keypair:
+
+```bash
+solana config set --keypair ~/.config/solana/devnet-wallet.json
+```
+
+3. Switch to devnet:
+
+```bash
+solana config set --url https://api.devnet.solana.com
+```
+
+4. Check your configuration:
+
+```bash
+solana config get
+```
+
+5. Get your public key:
+
+```bash
+solana address
+```
+
+### Airdrop SOL for Testing
+
+1. Airdrop 2 SOL to your wallet (devnet only):
+
+```bash
+solana airdrop 2
+```
+
+2. Check your balance:
+
+```bash
+solana balance
+```
+
+3. For multiple airdrops (if needed):
+
+```bash
+for i in {1..5}; do solana airdrop 1 && sleep 2; done
+```
+
+### Using Your Wallet with Fluxa
+
+1. Use your keypair when initializing the Solana connection in the application
+2. For local testing, import your wallet in the Phantom browser extension:
+   - Open Phantom, click the menu, select "Add/Connect Wallet"
+   - Choose "Import Private Key"
+   - Run `cat ~/.config/solana/devnet-wallet.json` to view your private key
+   - Copy the private key (array of numbers) and paste into Phantom
+
+### Switching Between Localnet and Devnet
+
+#### For Localnet:
+
+```bash
+solana config set --url http://127.0.0.1:8899
+```
+
+#### For Devnet:
+
+```bash
+solana config set --url https://api.devnet.solana.com
+```
+
+### Useful Commands
+
+- Create a second wallet:
+
+```bash
+solana-keygen new --outfile ~/.config/solana/wallet2.json
+solana airdrop 2 $(solana address -k ~/.config/solana/wallet2.json)
+```
+
+- Transfer SOL between wallets:
+
+```bash
+solana transfer <RECIPIENT_ADDRESS> 1 --allow-unfunded-recipient
+```
+
+- View transaction history:
+
+```bash
+solana confirm -v <TRANSACTION_SIGNATURE>
+```
+
+```
+
+</rewritten_file>
 ```
