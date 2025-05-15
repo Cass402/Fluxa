@@ -1,0 +1,25 @@
+{
+  "name": "Fluxa Development",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "fluxa-dev",
+  "workspaceFolder": "/app",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "rust-analyzer.server.extraEnv": {
+          "RUSTUP_TOOLCHAIN": "stable"
+        }
+      }
+    }
+  },
+  "forwardPorts": [3000, 8899, 9900],
+  "postCreateCommand": "bash -c 'cd frontend && npm install'"
+}

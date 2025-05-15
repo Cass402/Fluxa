@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "programs/amm_core",
+    "programs/risk_engine",
 ]
 resolver = "2"
 

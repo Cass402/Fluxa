@@ -6,7 +6,7 @@ use anchor_lang::{
     AccountDeserialize, // Added for Pool::try_deserialize
     InstructionData,
 };
-use solana_program_test::{processor, BanksClientError, ProgramTest, ProgramTestContext}; // Explicit imports, Added BanksClientError
+use solana_program_test::{BanksClientError, ProgramTest, ProgramTestContext}; // Explicit imports, Added BanksClientError
 use solana_sdk::{
     instruction::AccountMeta, // Import AccountMeta directly
     instruction::Instruction,
@@ -18,8 +18,7 @@ use solana_sdk::{
 
 // Assuming your crate is named amm_core
 use amm_core::{
-    self, // Import the crate itself
-    entry,
+    self,                                                     // Import the crate itself
     errors::ErrorCode,                                        // Import ErrorCode
     instruction::InitializePoolHandler as InitializePoolData, // Correct instruction data struct
     state::pool::Pool,
@@ -66,6 +65,7 @@ async fn create_mint(
 }
 
 // Helper function to create a token account
+#[allow(dead_code)]
 async fn create_token_account(
     context: &mut ProgramTestContext,
     mint_pubkey: &Pubkey,

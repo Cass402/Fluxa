@@ -104,3 +104,8 @@ wallets/
 
 # Keep scripts
 !scripts/setup-test-accounts.sh
+
+lut.py
+chromaConnect.py
+docs/**/chroma/
+sqrt_price_lut.txt

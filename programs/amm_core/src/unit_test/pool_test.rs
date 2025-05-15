@@ -225,7 +225,7 @@ mod initialize_pool_tests {
             let result = pool.initialize(params.clone());
 
             match math::sqrt_price_q64_to_tick(initial_sqrt_price_q64) {
-                Ok(expected_tick) => {
+                Ok(_expected_tick) => {
                     assert!(result.is_ok());
                     let deserialized_bitmap: BTreeMap<i16, u64> = borsh::BorshDeserialize::try_from_slice(&pool.tick_bitmap_data).unwrap();
                     assert!(deserialized_bitmap.is_empty());

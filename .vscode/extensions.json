@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    "rust-lang.rust-analyzer",
+    "bungcip.better-toml",
+    "serayuzgur.crates",
+    "tamasfe.even-better-toml",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "juanblanco.solidity",
+    "jamesbirtles.svelte-vscode",
+    "bradlc.vscode-tailwindcss",
+    "JuanBlanco.solidity",
+    "github.copilot",
+    "eamodio.gitlens"
+  ]
+}

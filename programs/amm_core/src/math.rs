@@ -74,6 +74,7 @@ pub(crate) fn mul_fixed(a: u128, b: u128) -> u128 {
 /// ```
 #[inline(always)]
 pub(crate) fn div_fixed(a: u128, b: u128) -> u128 {
+    // Check for division by zero
     debug_assert!(b != 0, "Division by zero: div_fixed() divisor is zero");
 
     // Scale 'a' by 2^64 using U256 to prevent overflow before division

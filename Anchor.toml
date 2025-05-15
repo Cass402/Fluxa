@@ -3,7 +3,8 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-amm_core = "21qXErR6qXr41oTd9QLwMeenW6LYZpDAaxdQxKcCpA4v"
+amm_core = "BrbPGefYKdXgfmZTnasv3dkcE7TfQ82ueBwqmQX1Y8Ly"
+fluxa_risk_engine = "6wVb2AKyTcGE3x2xFjpPaDR1CE3q8LZZkHx3JvYrKNoa"
 
 [registry]
 url = "https://api.apr.dev"

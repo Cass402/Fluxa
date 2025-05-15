@@ -95,7 +95,7 @@ describe("AMM Core - Initialize Pool (TypeScript)", () => {
   });
 
   it("Successfully initializes a new pool", async () => {
-    const initialSqrtPriceQ64 = new BN("36893488147419103232");
+    const initialSqrtPriceQ64 = new BN("18446744073709551616");
     const feeRate = 30; // 0.3% in basis points
     const tickSpacing = 60;
 

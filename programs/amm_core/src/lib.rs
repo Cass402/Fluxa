@@ -9,7 +9,7 @@ use tick::TickData;
 
 // Your program's on-chain ID.
 // Replace with your actual program ID after deployment.
-declare_id!("21qXErR6qXr41oTd9QLwMeenW6LYZpDAaxdQxKcCpA4v");
+declare_id!("BrbPGefYKdXgfmZTnasv3dkcE7TfQ82ueBwqmQX1Y8Ly");
 
 // Modules for constants, errors, core math, and state definitions
 pub mod constants;
@@ -91,6 +91,21 @@ pub mod amm_core {
             amount_out_minimum,
             sqrt_price_limit_q64,
         )
+    }
+
+    /// Updates an existing concentrated liquidity position's tick boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - The context containing all necessary accounts.
+    /// * `new_tick_lower_index` - The new lower tick boundary for the position.
+    /// * `new_tick_upper_index` - The new upper tick boundary for the position.
+    pub fn update_position_handler(
+        ctx: Context<UpdatePosition>,
+        new_tick_lower_index: i32,
+        new_tick_upper_index: i32,
+    ) -> Result<()> {
+        instructions::update_position::handler(ctx, new_tick_lower_index, new_tick_upper_index)
     }
 
     // Potentially add decrease_liquidity_handler and collect_fees_handler for MVP+
@@ -250,4 +265,67 @@ pub struct InitializePool<'info> {
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>, // Anchor uses Rent sysvar for `init` to ensure rent exemption.
+}
+
+#[derive(Accounts)]
+#[instruction(new_tick_lower_index: i32, new_tick_upper_index: i32)]
+pub struct UpdatePosition<'info> {
+    #[account(mut)]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        mut,
+        // Constraint: Ensure the signer is the owner of the position
+        // Or, for risk engine integration, the signer might be the risk engine's PDA
+        // For MVP, owner signing is simpler.
+        has_one = owner 
+    )]
+    pub position: Account<'info, PositionData>,
+
+    // Old Ticks (may or may not be needed depending on how you handle liquidity removal)
+    // For MVP, we might assume they are loaded if needed by modify_liquidity
+    // Or, for a simpler MVP, the modify_liquidity for removal might not need them if it just updates net liquidity.
+    // However, to correctly update liquidity_gross, they are needed.
+
+    #[account(
+        mut, // TickData needs to be mutable
+        seeds = [b"tick".as_ref(), pool.key().as_ref(), position.tick_lower_index.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub old_tick_lower: AccountLoader<'info, TickData>,
+
+    #[account(
+        mut, // TickData needs to be mutable
+        seeds = [b"tick".as_ref(), pool.key().as_ref(), position.tick_upper_index.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub old_tick_upper: AccountLoader<'info, TickData>,
+
+    // New Ticks
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = TickData::LEN,
+        seeds = [b"tick".as_ref(), pool.key().as_ref(), new_tick_lower_index.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub new_tick_lower: AccountLoader<'info, TickData>,
+
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = TickData::LEN,
+        seeds = [b"tick".as_ref(), pool.key().as_ref(), new_tick_upper_index.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub new_tick_upper: AccountLoader<'info, TickData>,
+
+    // Signer: Could be the position owner or the risk engine PDA
+    pub owner: Signer<'info>, // For MVP, position owner triggers
+
+    #[account(mut)]
+    pub payer: Signer<'info>, // To pay for new tick accounts if created
+
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }

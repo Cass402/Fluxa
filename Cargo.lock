@@ -1741,6 +1741,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxa_risk_engine"
+version = "0.1.0"
+dependencies = [
+ "amm_core",
+ "anchor-lang",
+ "anchor-spl",
+ "primitive-types",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
