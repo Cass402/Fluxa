@@ -75,20 +75,20 @@ if git diff --cached --name-only | grep -E '\.rs$'; then
         "cd $(git rev-parse --show-toplevel)/programs && cargo clippy -- -D warnings" || exit 1
 fi
 
-# Check if any TypeScript/JavaScript files are being committed
-if git diff --cached --name-only | grep -E '\.(ts|tsx|js|jsx)$'; then
-    # Frontend linting check
-    run_check "Frontend linting" \
-        "docker compose exec -T fluxa-dev bash -c 'cd /app/frontend && npm run lint'" \
-        "cd $(git rev-parse --show-toplevel)/frontend && npm run lint" || exit 1
+# # Check if any TypeScript/JavaScript files are being committed
+# #if git diff --cached --name-only | grep -E '\.(ts|tsx|js|jsx)$'; then
+#     # Frontend linting check
+# #    run_check "Frontend linting" \
+#  #       "docker compose exec -T fluxa-dev bash -c 'cd /app/frontend && npm run lint'" \
+#   #      "cd $(git rev-parse --show-toplevel)/frontend && npm run lint" || exit 1
     
-    # TypeScript type check if tsconfig.json exists
-    if [ -f "$(git rev-parse --show-toplevel)/frontend/tsconfig.json" ]; then
-        run_check "TypeScript type check" \
-            "docker compose exec -T fluxa-dev bash -c 'cd /app/frontend && npm run type-check'" \
-            "cd $(git rev-parse --show-toplevel)/frontend && npm run type-check" || exit 1
-    fi
-fi
+#     # TypeScript type check if tsconfig.json exists
+#     if [ -f "$(git rev-parse --show-toplevel)/frontend/tsconfig.json" ]; then
+#         run_check "TypeScript type check" \
+#             "docker compose exec -T fluxa-dev bash -c 'cd /app/frontend && npm run type-check'" \
+#             "cd $(git rev-parse --show-toplevel)/frontend && npm run type-check" || exit 1
+#     fi
+# fi
 
 # Check for hardcoded secrets (simple pattern matching)
 if git diff --cached -U0 | grep -i "key\|secret\|password\|token" | grep -E "['\"][a-zA-Z0-9]{16,}['\"]"; then

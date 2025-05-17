@@ -1,0 +1,131 @@
+name: "Deploy Solana Program"
+description: "Deploys a Solana program to the specified cluster"
+inputs:
+  cluster:
+    description: "Solana cluster to deploy to (devnet, testnet, mainnet-beta)"
+    required: true
+  keypair_json:
+    description: "JSON string of the keypair to use for deployment"
+    required: true
+  program_keypair_path:
+    description: "Path to the program keypair file"
+    required: true
+    default: "target/deploy/amm_core-keypair.json"
+  program_so_path:
+    description: "Path to the compiled program .so file"
+    required: true
+    default: "target/deploy/amm_core.so"
+  upgrade_authority_keypair:
+    description: "Path to the upgrade authority keypair (if different from deployer)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Solana Config
+      shell: bash
+      run: |
+        SOLANA_URL=""
+        case "${{ inputs.cluster }}" in
+          "devnet")
+            SOLANA_URL="https://api.devnet.solana.com"
+            ;;
+          "testnet")
+            SOLANA_URL="https://api.testnet.solana.com"
+            ;;
+          "mainnet-beta")
+            SOLANA_URL="https://api.mainnet-beta.solana.com"
+            ;;
+          *)
+            echo "Invalid cluster: ${{ inputs.cluster }}"
+            exit 1
+            ;;
+        esac
+
+        # Create temporary keypair file
+        mkdir -p ~/.config/solana
+        echo '${{ inputs.keypair_json }}' > ~/.config/solana/deploy-keypair.json
+
+        # Configure Solana CLI
+        solana config set --keypair ~/.config/solana/deploy-keypair.json
+        solana config set --url $SOLANA_URL
+
+        # Check balance
+        BALANCE=$(solana balance)
+        echo "Current balance: $BALANCE"
+
+        # Minimum balance required for deployment (0.5 SOL)
+        MIN_BALANCE="0.5 SOL"
+
+        # Simple check if balance is less than 1 SOL
+        if [[ "$BALANCE" == "0 SOL" || "$BALANCE" == *"0."* ]]; then
+          echo "⚠️ Warning: Low balance detected. Deployment may fail."
+        fi
+
+    - name: Deploy Program
+      shell: bash
+      run: |
+        # Determine if this is an initial deploy or upgrade
+        PROGRAM_ID=$(solana address -k ${{ inputs.program_keypair_path }})
+        echo "Program ID: $PROGRAM_ID"
+
+        # Try to get program info (to check if it's already deployed)
+        PROGRAM_INFO=$(solana program show $PROGRAM_ID --output json 2>/dev/null || echo '{"error": "Not deployed"}')
+
+        if [[ $PROGRAM_INFO == *"error"* ]]; then
+          echo "🚀 Initial program deployment"
+          DEPLOY_ARGS=""
+          
+          # Add upgrade authority if provided
+          if [[ -n "${{ inputs.upgrade_authority_keypair }}" ]]; then
+            DEPLOY_ARGS="--upgrade-authority ${{ inputs.upgrade_authority_keypair }}"
+          fi
+          
+          # Deploy the program
+          echo "Deploying program to ${{ inputs.cluster }}..."
+          solana program deploy ${{ inputs.program_so_path }} -k ~/.config/solana/deploy-keypair.json $DEPLOY_ARGS
+        else
+          echo "🔄 Upgrading existing program"
+          
+          # Determine upgrade authority
+          AUTHORITY_ARG=""
+          if [[ -n "${{ inputs.upgrade_authority_keypair }}" ]]; then
+            AUTHORITY_ARG="--upgrade-authority ${{ inputs.upgrade_authority_keypair }}"
+          else
+            AUTHORITY_ARG="--upgrade-authority ~/.config/solana/deploy-keypair.json"
+          fi
+          
+          # Upgrade the program
+          echo "Upgrading program on ${{ inputs.cluster }}..."
+          solana program deploy ${{ inputs.program_so_path }} -k ~/.config/solana/deploy-keypair.json $AUTHORITY_ARG --program-id $PROGRAM_ID
+        fi
+
+    - name: Record Deployment
+      shell: bash
+      run: |
+        PROGRAM_ID=$(solana address -k ${{ inputs.program_keypair_path }})
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # Create deployment record
+        mkdir -p deployment-records
+        cat > deployment-records/deploy-${{ inputs.cluster }}-$PROGRAM_ID.json << EOF
+        {
+          "program_id": "$PROGRAM_ID",
+          "cluster": "${{ inputs.cluster }}",
+          "timestamp": "$TIMESTAMP",
+          "workflow": "${{ github.workflow }}",
+          "run_id": "${{ github.run_id }}",
+          "run_number": "${{ github.run_number }}",
+          "deployed_by": "${{ github.actor }}"
+        }
+        EOF
+
+        echo "Deployment record created: deployment-records/deploy-${{ inputs.cluster }}-$PROGRAM_ID.json"
+
+    - name: Cleanup
+      shell: bash
+      if: always()
+      run: |
+        # Remove temporary keypair file
+        rm -f ~/.config/solana/deploy-keypair.json

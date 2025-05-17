@@ -1,0 +1,157 @@
+name: Frontend Deployment
+
+on:
+  push:
+    branches: [main, staging, develop]
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+        default: "development"
+
+jobs:
+  determine_environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      vercel_env: ${{ steps.set-env.outputs.vercel_env }}
+    steps:
+      - name: Set environment based on branch or input
+        id: set-env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            
+            if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+              echo "vercel_env=production" >> $GITHUB_OUTPUT
+            elif [[ "${{ github.event.inputs.environment }}" == "staging" ]]; then
+              echo "vercel_env=preview" >> $GITHUB_OUTPUT
+            else
+              echo "vercel_env=development" >> $GITHUB_OUTPUT
+            fi
+          else
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "environment=production" >> $GITHUB_OUTPUT
+              echo "vercel_env=production" >> $GITHUB_OUTPUT
+            elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+              echo "environment=staging" >> $GITHUB_OUTPUT
+              echo "vercel_env=preview" >> $GITHUB_OUTPUT
+            else
+              echo "environment=development" >> $GITHUB_OUTPUT
+              echo "vercel_env=development" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  build:
+    needs: determine_environment
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine_environment.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      - name: Set environment variables for build
+        run: |
+          echo "NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}" > frontend/.env.local
+          echo "NEXT_PUBLIC_ENVIRONMENT=${{ needs.determine_environment.outputs.environment }}" >> frontend/.env.local
+          echo "NEXT_PUBLIC_SOLANA_NETWORK=${{ vars.NEXT_PUBLIC_SOLANA_NETWORK }}" >> frontend/.env.local
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          yarn build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-build
+          path: frontend/.next/
+          retention-days: 7
+
+  deploy:
+    needs: [determine_environment, build]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine_environment.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend-build
+          path: frontend/.next/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          cd frontend
+          DEPLOYMENT_URL=$(vercel --token ${{ secrets.VERCEL_TOKEN }} --prod=${{ needs.determine_environment.outputs.vercel_env == 'production' }} --env NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} --env NEXT_PUBLIC_ENVIRONMENT=${{ needs.determine_environment.outputs.environment }} --env NEXT_PUBLIC_SOLANA_NETWORK=${{ vars.NEXT_PUBLIC_SOLANA_NETWORK }})
+          echo "deployment_url=${DEPLOYMENT_URL}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub deployment
+        uses: chrnorm/deployment-action@v2
+        id: create_deployment
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: ${{ needs.determine_environment.outputs.environment }}
+          description: "Frontend deployment to ${{ needs.determine_environment.outputs.environment }}"
+
+      - name: Set deployment status
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'success',
+              environment_url: '${{ steps.deploy.outputs.deployment_url }}'
+            })
+
+  notify:
+    needs: [determine_environment, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Send notification
+        uses: ./.github/actions/send-notification
+        with:
+          status: ${{ needs.deploy.result == 'success' && 'success' || 'failure' }}
+          environment: ${{ needs.determine_environment.outputs.environment }}
+          message: |
+            Frontend deployment to ${{ needs.determine_environment.outputs.environment }} environment was ${{ needs.deploy.result == 'success' && 'successful' || 'unsuccessful' }}.
+            Deployed by: ${{ github.actor }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

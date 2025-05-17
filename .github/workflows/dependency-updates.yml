@@ -1,0 +1,158 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    - cron: "0 0 * * MON" # Run weekly on Mondays
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  rust-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Check for outdated Rust dependencies
+        run: |
+          cargo install cargo-outdated
+          cargo outdated -R > rust-outdated.txt
+
+      - name: Run cargo audit for security vulnerabilities
+        run: |
+          cargo install cargo-audit
+          cargo audit > rust-audit.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: rust-dependency-reports
+          path: |
+            rust-outdated.txt
+            rust-audit.txt
+
+  js-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Check for outdated JS dependencies in frontend
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+          yarn outdated --json > js-outdated.json
+
+      - name: Run npm audit for security vulnerabilities
+        run: |
+          cd frontend
+          yarn audit --json > js-audit.json || true
+
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: js-dependency-reports
+          path: |
+            frontend/js-outdated.json
+            frontend/js-audit.json
+
+  create-pull-request:
+    needs: [rust-dependencies, js-dependencies]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dependency reports
+        uses: actions/download-artifact@v3
+        with:
+          path: dependency-reports/
+
+      # Setup Node.js for frontend dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      # Setup Rust for program dependencies
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      # Update Rust dependencies for non-breaking updates
+      - name: Update Rust dependencies (minor versions)
+        run: |
+          cargo install cargo-edit
+          cargo update --workspace
+
+      # Update frontend dependencies for non-breaking updates
+      - name: Update frontend dependencies (minor versions)
+        run: |
+          cd frontend
+          yarn upgrade --pattern "@*/*" --latest
+          yarn upgrade --pattern "!@*/*" --latest
+
+      # Create summary of updates
+      - name: Create update summary
+        run: |
+          echo "# Dependency Updates" > update-summary.md
+          echo "" >> update-summary.md
+          echo "## Rust Updates" >> update-summary.md
+          echo '```' >> update-summary.md
+          cat dependency-reports/rust-dependency-reports/rust-outdated.txt >> update-summary.md
+          echo '```' >> update-summary.md
+          echo "" >> update-summary.md
+          echo "## JavaScript Updates" >> update-summary.md
+          echo '```' >> update-summary.md
+          cat dependency-reports/js-dependency-reports/js-outdated.json | jq >> update-summary.md
+          echo '```' >> update-summary.md
+
+          # Highlight security vulnerabilities
+          echo "" >> update-summary.md
+          echo "## Security Vulnerabilities" >> update-summary.md
+          echo "### Rust" >> update-summary.md
+          echo '```' >> update-summary.md
+          cat dependency-reports/rust-dependency-reports/rust-audit.txt >> update-summary.md
+          echo '```' >> update-summary.md
+          echo "" >> update-summary.md
+          echo "### JavaScript" >> update-summary.md
+          echo '```' >> update-summary.md
+          cat dependency-reports/js-dependency-reports/js-audit.json | jq >> update-summary.md
+          echo '```' >> update-summary.md
+
+      # Create Pull Request with updates
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update dependencies"
+          branch: dependency-updates/auto-update-${{ github.run_id }}
+          delete-branch: true
+          title: "chore: automated dependency updates"
+          body-path: update-summary.md
+          labels: |
+            dependencies
+            automated-pr
+          assignees: ${{ github.actor }}
+          reviewers: ${{ github.repository_owner }}
+
+      - name: Send notification
+        uses: ./.github/actions/send-notification
+        with:
+          status: "info"
+          environment: "all"
+          message: "Dependency update PR created. Please review and merge if appropriate."
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

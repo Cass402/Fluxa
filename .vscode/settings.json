@@ -1,0 +1,27 @@
+{
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit"
+    },
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.allFeatures": true,
+    "rust-analyzer.cargo.loadOutDirsFromCheck": true,
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.lens.enable": true,
+    "files.associations": {
+      "*.toml": "toml",
+      "Anchor.toml": "toml"
+    },
+    "solidity.linter": "solhint",
+    "solidity.packageDefaultDependenciesContractsDirectory": "programs",
+    "solidity.formatter": "prettier",
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[rust]": {
+      "editor.defaultFormatter": "rust-lang.rust-analyzer"
+    }
+  }

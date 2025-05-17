@@ -1,0 +1,121 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to rollback (devnet, testnet, mainnet)"
+        required: true
+        type: choice
+        options:
+          - devnet
+          - testnet
+          - mainnet
+      version:
+        description: "Version to rollback to (e.g., v1.0.42)"
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.31.0"
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate environment input
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" != "devnet" && \
+                "${{ github.event.inputs.environment }}" != "testnet" && \
+                "${{ github.event.inputs.environment }}" != "mainnet" ]]; then
+            echo "Invalid environment. Must be one of: devnet, testnet, mainnet"
+            exit 1
+          fi
+          echo "Initiating rollback to version ${{ github.event.inputs.version }} on ${{ github.event.inputs.environment }}"
+
+  rollback:
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    environment: ${{ github.event.inputs.environment == 'mainnet' && 'production' || (github.event.inputs.environment == 'testnet' && 'staging' || 'development') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      # Use our custom actions for installation
+      - name: Install Solana
+        uses: ./.github/actions/install-solana
+        with:
+          solana_version: ${{ env.SOLANA_VERSION }}
+
+      - name: Install Anchor
+        uses: ./.github/actions/install-anchor
+        with:
+          anchor_version: ${{ env.ANCHOR_VERSION }}
+
+      # Build programs for the selected version
+      - name: Build
+        run: anchor build
+
+      # Get appropriate keypair for selected environment
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "devnet" ]]; then
+            echo "KEYPAIR_SECRET=SOLANA_DEVNET_PRIVATE_KEY" >> $GITHUB_OUTPUT
+            echo "CLUSTER=devnet" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.inputs.environment }}" == "testnet" ]]; then
+            echo "KEYPAIR_SECRET=SOLANA_TESTNET_PRIVATE_KEY" >> $GITHUB_OUTPUT
+            echo "CLUSTER=testnet" >> $GITHUB_OUTPUT
+          else
+            echo "KEYPAIR_SECRET=SOLANA_MAINNET_PRIVATE_KEY" >> $GITHUB_OUTPUT
+            echo "CLUSTER=mainnet-beta" >> $GITHUB_OUTPUT
+          fi
+
+      # Deploy program using our custom action
+      - name: Deploy rollback version
+        uses: ./.github/actions/deploy-program
+        with:
+          cluster: ${{ steps.set-env.outputs.CLUSTER }}
+          keypair_json: ${{ secrets[steps.set-env.outputs.KEYPAIR_SECRET] }}
+          program_keypair_path: target/deploy/amm_core-keypair.json
+          program_so_path: target/deploy/amm_core.so
+
+      # Verify rollback using our custom action
+      - name: Verify rollback
+        uses: ./.github/actions/verify-deployment
+        with:
+          cluster: ${{ steps.set-env.outputs.CLUSTER }}
+          program_keypair_path: target/deploy/amm_core-keypair.json
+
+      # Create rollback record
+      - name: Create rollback record
+        run: |
+          ROLLBACK_INFO=$(cat <<EOF
+          {
+            "action": "rollback",
+            "environment": "${{ github.event.inputs.environment }}",
+            "version": "${{ github.event.inputs.version }}",
+            "date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "initiator": "${{ github.actor }}",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
+          )
+          echo "$ROLLBACK_INFO" > rollback-record.json
+
+      - name: Upload rollback record
+        uses: actions/upload-artifact@v3
+        with:
+          name: rollback-record
+          path: rollback-record.json
+
+      # Notify rollback using our custom action
+      - name: Send rollback notification
+        uses: ./.github/actions/send-notification
+        with:
+          status: warning
+          environment: ${{ github.event.inputs.environment }}
+          message: "Successfully rolled back ${{ github.event.inputs.environment }} to version ${{ github.event.inputs.version }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

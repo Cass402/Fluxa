@@ -1,0 +1,93 @@
+name: "Verify Deployment"
+description: "Verifies that a program has been deployed correctly"
+inputs:
+  cluster:
+    description: "Solana cluster to verify on (devnet, testnet, mainnet-beta)"
+    required: true
+  program_keypair_path:
+    description: "Path to the program keypair file"
+    required: true
+    default: "target/deploy/amm_core-keypair.json"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set Solana config
+      shell: bash
+      run: |
+        SOLANA_URL=""
+        case "${{ inputs.cluster }}" in
+          "devnet")
+            SOLANA_URL="https://api.devnet.solana.com"
+            ;;
+          "testnet")
+            SOLANA_URL="https://api.testnet.solana.com"
+            ;;
+          "mainnet-beta")
+            SOLANA_URL="https://api.mainnet-beta.solana.com"
+            ;;
+          *)
+            echo "Invalid cluster: ${{ inputs.cluster }}"
+            exit 1
+            ;;
+        esac
+        solana config set --url $SOLANA_URL
+
+    - name: Verify program deployment
+      shell: bash
+      run: |
+        echo "Verifying deployment on ${{ inputs.cluster }}..."
+        PROGRAM_ID=$(solana address -k ${{ inputs.program_keypair_path }})
+        echo "Program ID: $PROGRAM_ID"
+
+        # Check if program exists
+        PROGRAM_INFO=$(solana program show $PROGRAM_ID --output json || echo '{"error": "Program not found"}')
+
+        if [[ $PROGRAM_INFO == *"error"* ]]; then
+          echo "❌ Program not deployed correctly"
+          echo "::error::Program deployment verification failed"
+          exit 1
+        else
+          echo "✅ Program deployed correctly"
+          echo "Program Info:"
+          echo "$PROGRAM_INFO"
+        fi
+
+    - name: Verify executable status
+      shell: bash
+      run: |
+        PROGRAM_ID=$(solana address -k ${{ inputs.program_keypair_path }})
+        ACCOUNT_INFO=$(solana account $PROGRAM_ID --output json)
+
+        # Extract executable status
+        IS_EXECUTABLE=$(echo $ACCOUNT_INFO | grep -o '"executable":true')
+
+        if [[ -z "$IS_EXECUTABLE" ]]; then
+          echo "❌ Program is not executable"
+          echo "::error::Program is not executable"
+          exit 1
+        else
+          echo "✅ Program is executable"
+        fi
+
+    - name: Record verification results
+      shell: bash
+      run: |
+        PROGRAM_ID=$(solana address -k ${{ inputs.program_keypair_path }})
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # Create deployment verification record
+        mkdir -p deployment-records
+        cat > deployment-records/verification-${{ inputs.cluster }}.json << EOF
+        {
+          "program_id": "$PROGRAM_ID",
+          "cluster": "${{ inputs.cluster }}",
+          "status": "verified",
+          "timestamp": "$TIMESTAMP",
+          "workflow": "${{ github.workflow }}",
+          "run_id": "${{ github.run_id }}",
+          "run_number": "${{ github.run_number }}"
+        }
+        EOF
+
+        echo "Deployment verification record created: deployment-records/verification-${{ inputs.cluster }}.json"
