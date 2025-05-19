@@ -23,7 +23,7 @@ anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.1", features = ["metadata"] }
 bytemuck = { version = "1.15.0", features = ["derive"] }
 # kani = { git = "https://github.com/model-checking/kani", tag = "kani-0.61.0", optional = true }
-primitive-types = "0.12.2"
+primitive-types = "0.13.1"
 
 [dev-dependencies]
 anchor-client = "0.31.1"
