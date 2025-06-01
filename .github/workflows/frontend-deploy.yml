@@ -126,7 +126,7 @@ jobs:
           description: "Frontend deployment to ${{ needs.determine_environment.outputs.environment }}"
 
       - name: Set deployment status
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
