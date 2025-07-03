@@ -3,15 +3,14 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-amm_core = "BrbPGefYKdXgfmZTnasv3dkcE7TfQ82ueBwqmQX1Y8Ly"
-fluxa_risk_engine = "6wVb2AKyTcGE3x2xFjpPaDR1CE3q8LZZkHx3JvYrKNoa"
+fluxa_core = "11111111111111111111111111111112"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
-wallet = "~/.config/solana/id.json"
+cluster = "devnet"
+wallet = "~/.config/solana/devnet.json"
 
 [typescript]
 out-dir = "target/types"

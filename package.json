@@ -8,7 +8,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node --loader ts-node/esm ./node_modules/mocha/bin/mocha --extensions ts tests/**/*.test.ts"
+    "test": "node --loader ts-node/esm ./node_modules/mocha/bin/mocha --extensions ts tests/**/*.test.ts --timeout 60000"
   },
   "keywords": [],
   "type": "module",

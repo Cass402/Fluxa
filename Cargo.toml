@@ -1,7 +1,6 @@
 [workspace]
 members = [
-    "programs/amm_core",
-    "programs/risk_engine",
+    "programs/fluxa_core",
 ]
 resolver = "2"
 
