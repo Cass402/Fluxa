@@ -1,1 +1,4 @@
-pub mod fixed_point;
+pub mod core_arithmetic;
+
+#[cfg(test)]
+mod tests;

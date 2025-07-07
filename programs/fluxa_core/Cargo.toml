@@ -16,19 +16,31 @@ no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 cpi = ["no-entrypoint"]
-testing = []
+cu_testing = []
+verification = ["prusti-contracts"]
 
 [dependencies]
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.1", features = ["metadata"] }
 solana-program = "2.3.0"
+ethnum = { version = "1.5.2", features = ["macros", "llvm-intrinsics"] }
+prusti-contracts = { version = "0.2.0", features = ["prusti"], optional = true }
+
 
 [dev-dependencies]
 anchor-client = "0.31.1"
 tokio = { version = "1.45.1", features = ["full"] }
 solana-program-test = "2.3.2"
+solana-bpf-loader-program = "2.3.2"
 solana-sdk = "2.3.1"
+proptest = "1.7.0"
+criterion = { version = "0.6.0", features = ["html_reports"] }
+rand = "0.9.1"
+
+[[bench]]
+name = "core_arithmetic_bench"
+harness = false
 
 [[test]]
 name = "cu_integration_test"
-required-features = ["testing"]
+required-features = ["cu_testing"]

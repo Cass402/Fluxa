@@ -9,8 +9,8 @@ fluxa_core = "11111111111111111111111111111112"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
-wallet = "~/.config/solana/devnet.json"
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
 
 [typescript]
 out-dir = "target/types"
