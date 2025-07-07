@@ -28,7 +28,7 @@ primitive-types = "0.12.2"
 [dev-dependencies]
 anchor-client = "0.31.1"
 proptest = "1.2.0"
-tokio = { version = "1.38.1", features = ["macros", "rt", "rt-multi-thread"] } # Updated tokio for compatibility
+tokio = { version = "1.46.1", features = ["macros", "rt", "rt-multi-thread"] } # Updated tokio for compatibility
 # kani-verifier = "0.61.0"
 solana-program-test = "2.2.7"
 solana-sdk = "2.2.2"
