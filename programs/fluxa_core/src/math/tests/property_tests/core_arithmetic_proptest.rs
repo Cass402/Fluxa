@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::math::core_arithmetic::*;
+    use crate::utils::constants::*;
     use ethnum::U256;
     use proptest::prelude::*;
 

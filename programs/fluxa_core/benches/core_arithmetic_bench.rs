@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use fluxa_core::math::core_arithmetic::*;
+use fluxa_core::utils::constants::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::hint::black_box;
 

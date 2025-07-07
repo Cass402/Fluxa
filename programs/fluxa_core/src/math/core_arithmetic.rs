@@ -3,18 +3,10 @@
 //! Zero heap, minimal branches, deterministic compute units
 //! Author: Cass402
 
+use crate::error::MathError;
+use crate::utils::constants::{FRAC_BITS, MAX_SQRT_X64, MAX_TICK, MIN_SQRT_X64, MIN_TICK, ONE_X64};
 use anchor_lang::prelude::*;
 use ethnum::U256;
-
-// ---------- Constants (compile-time optimized) -----------------------------
-
-pub const FRAC_BITS: u32 = 64; // Q64.64
-pub const ONE_X64: u128 = 1u128 << FRAC_BITS;
-pub const MAX_SAFE: u128 = u128::MAX;
-
-// sqrt(price) bounds from Raydium CLMM spec
-pub const MIN_SQRT_X64: u128 = 4295128739;
-pub const MAX_SQRT_X64: u128 = 79226673521066979257578248091u128;
 
 // Newton-Raphson sqrt lookup table (16 entries for initial guess)
 const SQRT_LUT: [u128; 16] = [
@@ -35,20 +27,6 @@ const SQRT_LUT: [u128; 16] = [
     0x3A0E3E02B0C3F8E26, // sqrt(14) ≈ 3.742
     0x3B99D4BDAD0AB7142, // sqrt(15) ≈ 3.873
 ];
-
-// ---------- Error Codes -----------------------------------------------------
-
-#[error_code]
-pub enum MathError {
-    #[msg("overflow")]
-    Overflow,
-    #[msg("division by zero")]
-    DivideByZero,
-    #[msg("input out of bounds")]
-    OutOfRange,
-    #[msg("sqrt did not converge")]
-    SqrtNoConverge,
-}
 
 // ---------- Core Fixed-Point Wrapper ---------------------------------------
 
@@ -211,9 +189,6 @@ const POW2_COEFF: [u128; 19] = [
     0x005d6af8dedb8119, // bit 17 → 2¹⁷
     0x00002216e584f5fa, // bit 18 → 2¹⁸
 ];
-
-pub const MIN_TICK: i32 = -443_636;
-pub const MAX_TICK: i32 = 443_636;
 
 #[inline(always)]
 pub fn tick_to_sqrt_x64(tick: i32) -> Result<Q64x64> {

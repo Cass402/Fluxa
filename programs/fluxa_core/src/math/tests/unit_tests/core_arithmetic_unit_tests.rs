@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::math::core_arithmetic::*;
+    use crate::utils::constants::*;
     use anchor_lang::prelude::*;
 
     // Helper function for approximate equality testing with tolerance
