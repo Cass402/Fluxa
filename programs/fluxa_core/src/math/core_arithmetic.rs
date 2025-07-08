@@ -1,14 +1,39 @@
-//! High-performance on-chain fixed-point math for Solana CLMM
-//! Uses u128-backed Q64.64 with optimized Newton-Raphson sqrt and mulhi operations
-//! Zero heap, minimal branches, deterministic compute units
-//! Author: Cass402
+//! # fluxa_core::math::core_arithmetic
+//!
+//! High-performance on-chain fixed-point math utilities for Solana CLMM (Concentrated Liquidity Market Maker).
+//!
+//! ## Features
+//! - Uses u128-backed Q64.64 fixed-point arithmetic for deterministic, branch-minimized, and heapless computation.
+//! - Provides optimized Newton-Raphson square root with LUT (lookup table) for fast and accurate sqrt calculations.
+//! - Implements Uniswap-style `mul_div` and `mul_div_round_up` for precise and overflow-safe multiplication/division.
+//! - Includes tick-to-sqrt price and liquidity math for CLMM pools, with all operations clamped to safe ranges.
+//!
+//! ## Main Components
+//! - `Q64x64`: Transparent wrapper for Q64.64 fixed-point numbers with checked arithmetic.
+//! - `mul_div`, `mul_div_round_up`, `mul_div_q64`: Overflow-safe multiplication and division helpers.
+//! - `sqrt_x64`: Fast square root for Q64.64 numbers using Newton-Raphson and LUT for initial guess.
+//! - `tick_to_sqrt_x64`: Converts a tick index to its corresponding sqrt price in Q64.64.
+//! - `liquidity_from_amount_0` / `liquidity_from_amount_1`: Computes liquidity from token amounts and price bounds.
+//!
+//! ## Safety & Determinism
+//! - All arithmetic is checked for overflows and underflows, returning `MathError` on failure.
+//! - All functions are deterministic and suitable for on-chain execution.
+//!
+//! ## Author
+//! - Cass402
 
 use crate::error::MathError;
 use crate::utils::constants::{FRAC_BITS, MAX_SQRT_X64, MAX_TICK, MIN_SQRT_X64, MIN_TICK, ONE_X64};
 use anchor_lang::prelude::*;
 use ethnum::U256;
 
-// Newton-Raphson sqrt lookup table (16 entries for initial guess)
+/// Lookup table for initial guesses in the Newton-Raphson square root algorithm for Q64.64 fixed-point numbers.
+///
+/// - Contains 16 entries corresponding to sqrt(0) through sqrt(15), precomputed in Q64.64 format.
+/// - Used to provide a fast and accurate starting point for the iterative square root calculation,
+///   significantly improving convergence speed and reducing compute cost on-chain.
+/// - The LUT ensures that the square root function achieves high precision with minimal iterations,
+///   and can be expanded for even greater accuracy if needed.
 const SQRT_LUT: [u128; 16] = [
     0x0000000000000000,  // sqrt(0) = 0
     0x10000000000000000, // sqrt(1) ≈ 1.0 in Q64.64
@@ -32,8 +57,48 @@ const SQRT_LUT: [u128; 16] = [
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// A fixed-point numeric type with 64 bits for the integer part and 64 bits for the fractional part,
+/// represented internally as a `u128`.
+///
+/// This type is useful for high-precision arithmetic where floating-point rounding errors are undesirable.
+/// The value is interpreted as `value / 2^64`.
 pub struct Q64x64(u128);
 
+/// Implements core arithmetic operations for the `Q64x64` fixed-point type.
+///
+/// # Methods
+///
+/// - `raw(self) -> u128`  
+///   Returns the underlying raw `u128` value of the fixed-point number.
+///
+/// - `from_raw(v: u128) -> Self`  
+///   Constructs a `Q64x64` from a raw `u128` value.
+///
+/// - `from_int(x: u64) -> Self`  
+///   Converts an integer value to a `Q64x64` by shifting it to the fixed-point representation.
+///
+/// - `zero() -> Self`  
+///   Returns the zero value in `Q64x64` format.
+///
+/// - `one() -> Self`  
+///   Returns the value one in `Q64x64` format.
+///
+/// - `checked_mul(self, rhs: Self) -> Result<Self>`  
+///   Multiplies two `Q64x64` values, returning an error if the result overflows.
+///
+/// - `checked_div(self, rhs: Self) -> Result<Self>`  
+///   Divides two `Q64x64` values, returning an error if dividing by zero or if the result overflows.
+///
+/// - `checked_add(self, rhs: Self) -> Result<Self>`  
+///   Adds two `Q64x64` values, returning an error if the result overflows.
+///
+/// - `checked_sub(self, rhs: Self) -> Result<Self>`  
+///   Subtracts one `Q64x64` value from another, returning an error if the result underflows.
+///
+/// # Errors
+///
+/// Arithmetic operations return a `Result` and may fail with `MathError::Overflow`,
+/// `MathError::Underflow`, or `MathError::DivideByZero` as appropriate.
 impl Q64x64 {
     #[inline(always)]
     pub const fn raw(self) -> u128 {
@@ -60,7 +125,11 @@ impl Q64x64 {
         Self(ONE_X64)
     }
 
-    // Optimized multiply: uses single mulhi when possible
+    // An optimized multiplication for Q64.64 fixed-point numbers
+    // Uses u256 intermediate to avoid overflow, then collapses to mulhi
+    // This is a checked operation that returns an error if the result overflows.
+    // The multiplication is done in a way that preserves the fixed-point format.
+    // The result is shifted right by FRAC_BITS to maintain the Q64.64 representation
     #[inline(always)]
     pub fn checked_mul(self, rhs: Self) -> Result<Self> {
         // Use u256 intermediate, then collapse to mulhi
@@ -71,7 +140,11 @@ impl Q64x64 {
         Ok(Self(prod.as_u128()))
     }
 
-    // Optimized division: exact (a<<64)/b
+    // Optimized division for Q64.64 fixed-point numbers
+    // Uses u256 intermediate to avoid overflow, then collapses to divhi
+    // This is a checked operation that returns an error if dividing by zero or if the result overflows.
+    // The division is done in a way that preserves the fixed-point format.
+    // The result is shifted left by FRAC_BITS to maintain the Q64.64 representation
     #[inline(always)]
     pub fn checked_div(self, rhs: Self) -> Result<Self> {
         require!(rhs.0 != 0, MathError::DivideByZero);
@@ -83,19 +156,25 @@ impl Q64x64 {
         Ok(Self(result.as_u128()))
     }
 
+    // Optimized addition for Q64.64 fixed-point numbers
     #[inline(always)]
     pub fn checked_add(self, rhs: Self) -> Result<Self> {
         Ok(Self(self.0.checked_add(rhs.0).ok_or(MathError::Overflow)?))
     }
 
+    // Optimized subtraction for Q64.64 fixed-point numbers
     #[inline(always)]
     pub fn checked_sub(self, rhs: Self) -> Result<Self> {
-        Ok(Self(self.0.checked_sub(rhs.0).ok_or(MathError::Overflow)?))
+        Ok(Self(self.0.checked_sub(rhs.0).ok_or(MathError::Underflow)?))
     }
 }
 
 // ---------- Uniswap-style mul_div for exact (a * b) / c --------------------
 
+// This function performs the multiplication of two u128 values `a` and `b`, then divides the result by `c`.
+// It uses U256 to handle potential overflow during multiplication and division.
+// The result is returned as a u128, or an error if the division by zero occurs
+// or if the result exceeds the maximum value of u128.
 #[inline(always)]
 pub fn mul_div(a: u128, b: u128, c: u128) -> Result<u128> {
     require!(c != 0, MathError::DivideByZero);
@@ -109,6 +188,11 @@ pub fn mul_div(a: u128, b: u128, c: u128) -> Result<u128> {
 
 /// Ceil division: (a*b + (c-1)) / c  (or detect remainder and +1)
 /// Only use this for tick → price so we never under-credit LPs.
+/// This function performs the multiplication of two u128 values `a` and `b`, then divides the result by `c`.
+/// It uses U256 to handle potential overflow during multiplication and division.
+/// The result is rounded up to the nearest integer, ensuring that any remainder results in an increment.
+/// The result is returned as a u128, or an error if the division by zero occurs
+/// or if the result exceeds the maximum value of u128.
 #[inline(always)]
 pub fn mul_div_round_up(a: u128, b: u128, c: u128) -> Result<u128> {
     require!(c != 0, MathError::DivideByZero);
@@ -130,8 +214,21 @@ pub fn mul_div_q64(a: Q64x64, b: Q64x64, c: Q64x64) -> Result<Q64x64> {
 // ---------- Optimized Newton-Raphson √ with LUT ----------------------------
 // has 0.0000046461147% error in known sqrt values, negligible for CLMM but can be improved with more LUT entries
 // precision around very small values (1.382720978E-14) is around 0.003% more than tolerance of 0.1%, can be improved with more iterations (but increases compute cost)
+/// This function computes the square root of a Q64x64 fixed-point number using the Newton-Raphson method.
+/// It uses a lookup table (LUT) for an initial guess, which significantly speeds up convergence.
+/// The function performs 4 iterations of the Newton-Raphson method to refine the guess.
+/// It clamps the result to the valid square root range defined by `MIN_SQRT_X64` and `MAX_SQRT_X64`.
+///
+/// # Arguments
+/// * `value`: A `Q64x64` fixed-point number for which the square root is to be computed.
+/// # Returns
+/// * `Result<Q64x64>`: The square root of the input value as a `Q64x64` fixed-point number.
+///   Returns an error if the input is negative or if the square root does not converge within
+///   the defined precision.
+#[inline(always)]
 pub fn sqrt_x64(value: Q64x64) -> Result<Q64x64> {
     let v = value.raw();
+    // Early return for zero
     if v == 0 {
         return Ok(Q64x64::zero());
     }
@@ -146,6 +243,9 @@ pub fn sqrt_x64(value: Q64x64) -> Result<Q64x64> {
     let mut x = SQRT_LUT[lut_index];
 
     // Scale initial guess based on input magnitude
+    // This ensures we start with a reasonable approximation for the square root
+    // We shift the guess to match the leading bits of v, ensuring we don't underflow
+    // or overflow during the Newton-Raphson iterations.
     let shift = (128 - v.leading_zeros()) as i32;
     if shift > 68 {
         x <<= (shift - 68) / 2;
@@ -155,6 +255,10 @@ pub fn sqrt_x64(value: Q64x64) -> Result<Q64x64> {
 
     // Newton-Raphson: x' = (x + v/x) / 2
     // Optimized to 4 iterations (sufficient for Q64.64 precision)
+    // This method converges quickly to the square root, especially for large values.
+    // Each iteration refines the guess by averaging the current guess with the quotient of v and x.
+    // The number of iterations is chosen to balance precision and compute cost.
+    // The loop runs 4 times, which is generally sufficient for convergence in Q64.64.
     for _ in 0..4 {
         // x = (x + (v << 64) / x) >> 1
         x = (x + mul_div(v, ONE_X64, x)?) >> 1;
@@ -168,6 +272,9 @@ pub fn sqrt_x64(value: Q64x64) -> Result<Q64x64> {
 
 // ---------- Tick ⇄ √Price (optimized constants) ----------------------------
 
+// The POW2_COEFF array contains precomputed coefficients for the tick-to-sqrt conversion.
+// Each coefficient corresponds to a power of 2, allowing for efficient bitwise operations
+// to compute the square root price from a tick index.
 const POW2_COEFF: [u128; 19] = [
     0xfffcb933bd6fad38, // bit 0 → 2⁰
     0xfff97272373d4132, // bit 1 → 2¹
@@ -190,6 +297,17 @@ const POW2_COEFF: [u128; 19] = [
     0x00002216e584f5fa, // bit 18 → 2¹⁸
 ];
 
+// Converts a tick index to its corresponding square root price in Q64.64 format.
+// This function uses a bitwise approach to efficiently compute the square root price
+// from the tick index, leveraging precomputed coefficients for powers of 2.
+// It handles both positive and negative ticks, ensuring the result is clamped to valid square root
+// price bounds defined by `MIN_SQRT_X64` and `MAX_SQRT_X64`.
+//// # Arguments
+// * `tick`: An i32 tick index, which must be within the valid range defined by `MIN_TICK` and `MAX_TICK`.
+// # Returns
+// * `Result<Q64x64>`: The square root price corresponding to the tick index.
+//   Returns an error if the tick is out of range or if the computed square root price is
+//   outside the valid bounds defined by `MIN_SQRT_X64` and `MAX_SQRT_X64`.
 #[inline(always)]
 pub fn tick_to_sqrt_x64(tick: i32) -> Result<Q64x64> {
     require!((MIN_TICK..=MAX_TICK).contains(&tick), MathError::OutOfRange);
@@ -198,9 +316,14 @@ pub fn tick_to_sqrt_x64(tick: i32) -> Result<Q64x64> {
     let abs_tick = tick.unsigned_abs();
 
     // Unrolled bit-by-bit multiplication for minimal branches
+    // This approach uses bitwise operations to multiply the ratio by the appropriate coefficients
+    // based on the bits set in the absolute tick index.
+
+    // 0x1 is the base case, which is already set to ONE_X64
     if abs_tick & 0x1 != 0 {
         ratio = mul_div(ratio, POW2_COEFF[0], ONE_X64)?;
     }
+    // For each subsequent bit, we multiply the ratio by the corresponding coefficient from the POW2_COEFF array.
     if abs_tick & 0x2 != 0 {
         ratio = mul_div(ratio, POW2_COEFF[1], ONE_X64)?;
     }
@@ -269,6 +392,10 @@ pub fn tick_to_sqrt_x64(tick: i32) -> Result<Q64x64> {
 
 // ---------- Optimized Liquidity Formulas -----------------------------------
 
+/// Computes the liquidity from a given amount of token0 and the price bounds defined by `sqrt_a` and `sqrt_b`.
+/// This function calculates the liquidity based on the formula:
+/// L = (amount0 * sqrt_a) * sqrt_b / (sqrt_b - sqrt_a)
+/// It ensures that the square root prices are in the correct order (sqrt_a < sqrt_b).
 #[inline(always)]
 pub fn liquidity_from_amount_0(sqrt_a: Q64x64, sqrt_b: Q64x64, amount0: u64) -> Result<u128> {
     require!(sqrt_a.raw() < sqrt_b.raw(), MathError::OutOfRange);
@@ -280,6 +407,10 @@ pub fn liquidity_from_amount_0(sqrt_a: Q64x64, sqrt_b: Q64x64, amount0: u64) -> 
     mul_div(raw_n, sqrt_b.raw(), delta)
 }
 
+/// Computes the liquidity from a given amount of token1 and the price bounds defined by `sqrt_a` and `sqrt_b`.
+/// This function calculates the liquidity based on the formula:
+/// L = amount1 / (sqrt_b - sqrt_a)
+/// It ensures that the square root prices are in the correct order (sqrt_a < sqrt_b).
 #[inline(always)]
 pub fn liquidity_from_amount_1(sqrt_a: Q64x64, sqrt_b: Q64x64, amount1: u64) -> Result<u128> {
     require!(sqrt_a.raw() < sqrt_b.raw(), MathError::OutOfRange);
