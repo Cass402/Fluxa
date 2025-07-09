@@ -21,4 +21,8 @@ pub enum MathError {
     ExcessiveTokenAmount,
     #[msg("Invalid Liquidity")]
     InvalidLiquidity,
+    #[msg("Invalid Sqrt Price")]
+    InvalidSqrtPrice,
+    #[msg("Invalid Price")]
+    InvalidPrice,
 }
