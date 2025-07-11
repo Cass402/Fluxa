@@ -12,3 +12,11 @@ pub const FEE_TIER_0_01: u32 = 100; // 0.01%
 pub const FEE_TIER_0_05: u32 = 500; // 0.05%
 pub const FEE_TIER_0_30: u32 = 3000; // 0.30%
 pub const FEE_TIER_1_00: u32 = 10000; // 1.00%
+
+/// Security Authority constants
+pub const AUTHORITY_CHANGE_DELAY: i64 = 48 * 3600; // 48 hours in seconds
+pub const EMERGENCY_PAUSE_TIMEOUT: i64 = 24 * 7 * 3600; // 7 days in seconds
+
+/// Timelock operation constants
+pub const MIN_DELAY: i64 = 24 * 3600; // 24 hours
+pub const MAX_DELAY: i64 = 30 * 24 * 3600; // 30 days
