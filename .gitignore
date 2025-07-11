@@ -106,3 +106,4 @@ wallets/
 !scripts/setup-test-accounts.sh
 
 lookup_table.py
+sdk/
