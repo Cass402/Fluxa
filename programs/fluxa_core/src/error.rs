@@ -74,3 +74,19 @@ pub enum PdaSecurityAuthorityError {
     #[msg("Timelock operation expired")]
     TimelockOperationExpired,
 }
+
+#[error_code]
+pub enum FactoryError {
+    #[msg("Invalid fee tier specified")]
+    InvalidFeeTier,
+    #[msg("Invalid shard index")]
+    InvalidShardIndex,
+    #[msg("Factory is paused")]
+    FactoryPaused,
+    #[msg("Insufficient Permissions")]
+    InsufficientPermissions,
+    #[msg("Invalid authority provided")]
+    InvalidAuthority,
+    #[msg("Shard is at maximum capacity")]
+    ShardAtCapacity,
+}
