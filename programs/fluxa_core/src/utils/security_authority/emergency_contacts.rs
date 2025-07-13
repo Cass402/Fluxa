@@ -9,9 +9,6 @@ use anchor_lang::prelude::*;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct EmergencyContacts {
-    /// Account discriminator
-    pub discriminator: [u8; 8],
-
     /// Pool reference
     pub pool_core: Pubkey,
 
@@ -45,9 +42,6 @@ impl EmergencyContacts {
     /// # Returns
     /// A `Result` indicating success or failure of the initialization.
     pub fn initialize(&mut self, pool_core: Pubkey, pause_authority: Pubkey) -> Result<()> {
-        // Initialize the account discriminator which is used to identify the account type
-        self.discriminator = Self::discriminator();
-
         // Initialize the pool core and pause authority
         self.pool_core = pool_core;
         self.pause_authority = pause_authority;
@@ -141,11 +135,6 @@ impl EmergencyContacts {
     /// A boolean indicating whether the provided public key has emergency authority.
     pub fn has_emergency_authority(&self, pubkey: &Pubkey) -> bool {
         *pubkey == self.pause_authority || self.is_emergency_contact(pubkey)
-    }
-
-    /// Returns the account discriminator for the EmergencyContacts account.
-    fn discriminator() -> [u8; 8] {
-        [0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x82]
     }
 }
 

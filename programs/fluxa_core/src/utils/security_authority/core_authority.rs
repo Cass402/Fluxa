@@ -10,9 +10,6 @@ use anchor_lang::prelude::*;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct CoreAuthority {
-    /// The discriminator for the CoreAuthority account for type safety during deserialization.
-    pub discriminator: [u8; 8],
-
     /// The public key of the pool core associated with this authority.
     pub pool_core: Pubkey,
 
@@ -67,9 +64,6 @@ impl CoreAuthority {
         initial_authority: Pubkey,
         required_confirmations: u8,
     ) -> Result<()> {
-        // Initialize the discriminator
-        self.discriminator = Self::discriminator();
-
         // Initialize the pool core
         self.pool_core = pool_core;
 
@@ -261,13 +255,6 @@ impl CoreAuthority {
         self.last_updated = clock.unix_timestamp;
 
         Ok(())
-    }
-
-    /// Returns the discriminator for the CoreAuthority account. (This is used for type safety during deserialization.)
-    /// The discriminator is a unique identifier for the CoreAuthority account type.
-    /// This function is used to ensure that the account being deserialized is indeed a CoreAuthority account.
-    fn discriminator() -> [u8; 8] {
-        [0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]
     }
 }
 

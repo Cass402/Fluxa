@@ -6,10 +6,6 @@ use anchor_lang::prelude::*;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct MultisigConfig {
-    /// The discriminator is used to identify the account type
-    /// and should be unique for each account type.
-    pub discriminator: [u8; 8],
-
     /// The public key of the pool core that this multisig config is associated with
     pub pool_core: Pubkey,
 
@@ -62,7 +58,6 @@ impl MultisigConfig {
         }
 
         // Initialize the multisig config
-        self.discriminator = Self::discriminator();
         self.pool_core = pool_core;
         self.threshold = threshold;
         self.member_count = members.len() as u8;
@@ -174,12 +169,6 @@ impl MultisigConfig {
         // Update the last updated timestamp
         let clock = Clock::get().unwrap();
         self.last_updated = clock.unix_timestamp;
-    }
-
-    /// Returns the discriminator for the MultisigConfig account.
-    /// This is used to identify the account type in the Anchor framework.
-    fn discriminator() -> [u8; 8] {
-        [0x11, 0x21, 0x31, 0x41, 0x51, 0x61, 0x71, 0x81]
     }
 }
 

@@ -10,9 +10,6 @@ use anchor_lang::prelude::*;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct FactoryShard {
-    /// Account discriminator for type safety
-    pub discriminator: [u8; 8],
-
     /// Reference to parent factory
     pub factory: Pubkey,
 
@@ -46,9 +43,6 @@ pub struct FactoryShard {
 
 /// FactoryShard implementation
 impl FactoryShard {
-    /// Account discriminator
-    pub const DISCRIMINATOR: [u8; 8] = [0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8];
-
     /// Initialize shard with optimized defaults
     /// This function initializes the FactoryShard with the provided factory and shard index,
     /// setting the initial state and preparing it for use.
@@ -64,9 +58,6 @@ impl FactoryShard {
         shard_index: u16,
         current_slot: u64,
     ) -> Result<()> {
-        // Initialize the account discriminator
-        self.discriminator = Self::DISCRIMINATOR;
-
         // Set factory reference and shard index
         self.factory = factory;
         self.shard_index = shard_index;

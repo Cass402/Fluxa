@@ -35,9 +35,6 @@ impl Default for FactoryConfig {
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct Factory {
-    /// Account discriminator for type safety
-    pub discriminator: [u8; 8],
-
     /// Reference to core authority PDA
     pub core_authority: Pubkey,
 
@@ -82,9 +79,6 @@ pub struct Factory {
 }
 
 impl Factory {
-    /// Account discriminator
-    pub const DISCRIMINATOR: [u8; 8] = [0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8];
-
     /// Initialize the factory account with the provided configuration and core authority.
     /// This method sets up the factory with initial parameters and validates them.
     /// # Arguments
@@ -113,9 +107,6 @@ impl Factory {
             config.max_pools_per_shard > 0 && config.max_pools_per_shard <= 1000,
             FactoryError::InvalidShardIndex
         );
-
-        // Initialize the discriminator
-        self.discriminator = Self::DISCRIMINATOR;
 
         // Set the core authority of the factory
         self.core_authority = core_authority;

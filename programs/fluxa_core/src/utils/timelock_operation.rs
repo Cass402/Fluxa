@@ -12,9 +12,6 @@ use anchor_lang::solana_program::hash::hashv;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct TimelockOperation {
-    /// Account discriminator
-    pub discriminator: [u8; 8],
-
     /// Pool core and operation identification
     /// 'pool_core' - The public key of the pool core associated with this operation.
     /// 'operation_id' - Unique identifier for the operation.
@@ -104,9 +101,6 @@ impl TimelockOperation {
         if instruction_data.len() > 1024 {
             return Err(PdaSecurityAuthorityError::InvalidInstructionData.into());
         }
-
-        // Initialize the discriminator
-        self.discriminator = Self::discriminator();
 
         // Pool core and operation identification
         self.pool_core = pool_core;
@@ -272,11 +266,6 @@ impl TimelockOperation {
     /// A slice of the instruction data.
     pub fn get_instruction_data(&self) -> &[u8] {
         &self.instruction_data[..self.instruction_data_len as usize]
-    }
-
-    /// Get the discriminator for this account type
-    fn discriminator() -> [u8; 8] {
-        [0x15, 0x25, 0x35, 0x45, 0x55, 0x65, 0x75, 0x85]
     }
 }
 

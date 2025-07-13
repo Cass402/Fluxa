@@ -9,9 +9,6 @@ use anchor_lang::prelude::*;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct AuditTrailHead {
-    /// Account discriminator
-    pub discriminator: [u8; 8],
-
     /// Pool reference
     pub pool_core: Pubkey,
 
@@ -41,8 +38,6 @@ impl AuditTrailHead {
     /// # Returns
     /// A `Result` indicating success or failure of the initialization.
     pub fn initialize(&mut self, pool_core: Pubkey) -> Result<()> {
-        // Initialize the account discriminator
-        self.discriminator = Self::discriminator();
         // Initialize the pool core
         self.pool_core = pool_core;
         // Initialize the audit state
@@ -73,21 +68,12 @@ impl AuditTrailHead {
 
         Ok(self.current_index)
     }
-
-    /// Returns the discriminator for the AuditTrailHead account.
-    /// This is used to identify the account type in the Anchor framework.
-    fn discriminator() -> [u8; 8] {
-        [0x13, 0x23, 0x33, 0x43, 0x53, 0x63, 0x73, 0x83]
-    }
 }
 
 /// Audit Trail Entry - individual audit log entry
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct AuditTrailEntry {
-    /// Account discriminator
-    pub discriminator: [u8; 8],
-
     /// Pool reference
     pub pool_core: Pubkey,
 
@@ -142,9 +128,6 @@ impl AuditTrailEntry {
         data_hash: [u8; 32],
         previous_hash: [u8; 32],
     ) -> Result<()> {
-        // Initialize the account discriminator
-        self.discriminator = Self::discriminator();
-
         // Initialize the pool core
         self.pool_core = pool_core;
 
@@ -188,11 +171,6 @@ impl AuditTrailEntry {
             self.timestamp,
             self.audit_index,
         )
-    }
-
-    /// Returns the discriminator for the AuditTrailEntry account.
-    fn discriminator() -> [u8; 8] {
-        [0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74, 0x84]
     }
 }
 
