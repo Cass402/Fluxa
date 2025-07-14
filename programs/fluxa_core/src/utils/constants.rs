@@ -26,3 +26,6 @@ pub const STATUS_PAUSED: u8 = 0x01; // Paused status flag for factory
 pub const STATUS_EMERGENCY: u8 = 0x02; // Emergency status flag for factory
 pub const STATUS_MAINTENANCE: u8 = 0x04; // Maintenance status flag for factory
 pub const STATUS_DEPRECATED: u8 = 0x08; // Deprecated status flag for factory
+
+/// Pool constants
+pub const STANDARD_LAMBDA: u32 = 61604; // Standard RiskMetrics lambda value (0.94) in fixed point (Q16.16)
