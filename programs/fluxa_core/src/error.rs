@@ -90,3 +90,9 @@ pub enum FactoryError {
     #[msg("Shard is at maximum capacity")]
     ShardAtCapacity,
 }
+
+#[error_code]
+pub enum PoolError {
+    #[msg("Volatility update too frequent")]
+    VolatilityUpdateTooFrequent,
+}
