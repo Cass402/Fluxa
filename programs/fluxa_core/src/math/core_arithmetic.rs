@@ -125,6 +125,14 @@ impl Q64x64 {
         Self(ONE_X64)
     }
 
+    #[inline(always)]
+    pub fn to_q64x64signed(self) -> Result<Q64x64Signed> {
+        if self.raw() > i128::MAX as u128 {
+            return Err(MathError::InvalidInput.into());
+        }
+        Ok(Q64x64Signed::from_raw(self.raw() as i128))
+    }
+
     // An optimized multiplication for Q64.64 fixed-point numbers
     // Uses u256 intermediate to avoid overflow, then collapses to mulhi
     // This is a checked operation that returns an error if the result overflows.
@@ -166,6 +174,105 @@ impl Q64x64 {
     #[inline(always)]
     pub fn checked_sub(self, rhs: Self) -> Result<Self> {
         Ok(Self(self.0.checked_sub(rhs.0).ok_or(MathError::Underflow)?))
+    }
+}
+
+/// ---------- Signed Q64.64 Wrapper ------------------------------------------
+/// A signed fixed-point numeric type with 64 bits for the integer part and 64 bits for the fractional part,
+/// represented internally as an `i128`.
+///
+/// This type is useful for high-precision arithmetic where floating-point rounding errors are undesirable.
+/// The value is interpreted as `value / 2^64`.
+#[repr(transparent)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Q64x64Signed(i128);
+
+/// Implements core arithmetic operations for the `Q64x64Signed` fixed-point type.
+/// # Methods
+/// - `zero() -> Self`  
+///   Returns the zero value in `Q64x64Signed` format.
+///
+/// - `from_raw(value: i128) -> Self`  
+///   Constructs a `Q64x64Signed` from a raw `i128` value.
+///
+/// - `raw(self) -> i128`  
+///   Returns the underlying raw `i128` value of the fixed-point number.
+///
+/// - `from_int(x: i64) -> Self`  
+///   Converts an integer value to a `Q64x64Signed` by shifting it to the fixed-point representation.
+///
+/// - `checked_add(self, other: Self) -> Result<Self>`  
+///   Adds two `Q64x64Signed` values, returning an error if the result overflows.
+///
+/// - `checked_sub(self, other: Self) -> Result<Self>`
+///   Subtracts two `Q64x64Signed` values, returning an error if the result underflows.
+///
+/// - `is_negative(self) -> bool`  
+///   Returns `true` if the value is negative, `false` otherwise.
+///
+/// - `to_q64x64(self) -> Result<Q64x64>`  
+///   Converts the `Q64x64Signed` value to a `Q64x64` value, returning an error if the value is negative.
+///
+/// # Errors
+/// Arithmetic operations return a `Result` and may fail with `MathError::Overflow`,
+/// `MathError::Underflow`, or `MathError::InvalidInput` as appropriate.
+impl Q64x64Signed {
+    #[inline(always)]
+    pub const fn zero() -> Self {
+        Self(0)
+    }
+
+    #[inline(always)]
+    pub const fn from_raw(value: i128) -> Self {
+        Self(value)
+    }
+
+    #[inline(always)]
+    pub const fn raw(self) -> i128 {
+        self.0
+    }
+
+    #[inline(always)]
+    pub const fn from_int(x: i64) -> Self {
+        Self((x as i128) << FRAC_BITS)
+    }
+
+    /// Adds two `Q64x64Signed` values, returning an error if the result overflows.
+    #[inline(always)]
+    pub fn checked_add(self, other: Self) -> Result<Self> {
+        Ok(Self(
+            self.0.checked_add(other.0).ok_or(MathError::Overflow)?,
+        ))
+    }
+
+    /// Subtracts two `Q64x64Signed` values, returning an error if the result underflows.
+    #[inline(always)]
+    pub fn checked_sub(self, other: Self) -> Result<Self> {
+        Ok(Self(
+            self.0.checked_sub(other.0).ok_or(MathError::Underflow)?,
+        ))
+    }
+
+    #[inline(always)]
+    pub fn is_negative(self) -> bool {
+        self.0 < 0
+    }
+
+    pub fn negate(self) -> Result<Self> {
+        Ok(Self(self.0.checked_neg().ok_or(MathError::Overflow)?))
+    }
+
+    pub fn abs(self) -> Self {
+        Self(self.0.abs())
+    }
+
+    /// Converts the `Q64x64Signed` value to a `Q64x64` value, returning an error if the value is negative.
+    #[inline(always)]
+    pub fn to_q64x64(self) -> Result<Q64x64> {
+        if self.raw() < 0 {
+            return Err(MathError::InvalidInput.into());
+        }
+        Ok(Q64x64::from_raw(self.raw().unsigned_abs()))
     }
 }
 
@@ -302,7 +409,7 @@ const POW2_COEFF: [u128; 19] = [
 // from the tick index, leveraging precomputed coefficients for powers of 2.
 // It handles both positive and negative ticks, ensuring the result is clamped to valid square root
 // price bounds defined by `MIN_SQRT_X64` and `MAX_SQRT_X64`.
-//// # Arguments
+// # Arguments
 // * `tick`: An i32 tick index, which must be within the valid range defined by `MIN_TICK` and `MAX_TICK`.
 // # Returns
 // * `Result<Q64x64>`: The square root price corresponding to the tick index.

@@ -29,3 +29,19 @@ pub const STATUS_DEPRECATED: u8 = 0x08; // Deprecated status flag for factory
 
 /// Pool constants
 pub const STANDARD_LAMBDA: u32 = 61604; // Standard RiskMetrics lambda value (0.94) in fixed point (Q16.16)
+
+/// Tick constants
+pub const DEFAULT_SUSPICIOUS_THRESHOLD: u32 = 1000; // Default threshold for suspicious activity detection
+                                                    // Status flag bit positions for efficient operations
+pub const FLAG_ACTIVE: u16 = 0x01; // 0000 0001
+pub const FLAG_EMERGENCY_PAUSE: u16 = 0x02; // 0000 0010
+pub const FLAG_REQUIRES_AUDIT: u16 = 0x04; // 0000 0100
+pub const FLAG_HIGH_VOLUME: u16 = 0x08; // 0000 1000
+pub const MAX_TICK_SPACING: u16 = 1000; // Maximum tick spacing for the Fluxa protocol
+pub const MAX_BITMAP_CAPACITY: i32 = 65536; // Maximum capacity for tick bitmap (2^16)
+pub const SLOTS_PER_MINUTE: u64 = 150; // Number of slots per minute
+pub const MAX_TICK_CROSSES_PER_HOUR: u32 = 10000; // Maximum tick crosses allowed per hour
+pub const MIN_TICK_CROSS_INTERVAL: u64 = 2; // Minimum interval between tick crosses
+pub const SUSPICIOUS_CROSS_INTERVAL: u64 = 10; // Interval for suspicious tick crosses
+pub const RESET_SUSPICION_INTERVAL: u64 = 1000; // Interval to reset suspicion
+pub const MAX_SUSPICION_SCORE: u32 = 100; // Maximum suspicion score

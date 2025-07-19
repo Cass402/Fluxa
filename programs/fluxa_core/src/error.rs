@@ -38,6 +38,7 @@ pub enum MathError {
     InvalidPrice,
 }
 
+/// The PdaSecurityAuthorityError enum defines various error codes related to security and authority management and timelock operations in the Fluxa protocol.
 #[error_code]
 pub enum PdaSecurityAuthorityError {
     // Error InvalidBumpSeed occurs when the bump seed used in PDA derivation is invalid.
@@ -75,6 +76,7 @@ pub enum PdaSecurityAuthorityError {
     TimelockOperationExpired,
 }
 
+/// The FactoryError enum defines various error codes related to factory operations in the Fluxa protocol.
 #[error_code]
 pub enum FactoryError {
     #[msg("Invalid fee tier specified")]
@@ -91,8 +93,52 @@ pub enum FactoryError {
     ShardAtCapacity,
 }
 
+/// The PoolError enum defines various error codes related to pool operations in the Fluxa protocol.
 #[error_code]
 pub enum PoolError {
     #[msg("Volatility update too frequent")]
     VolatilityUpdateTooFrequent,
+}
+
+/// The TickError enum defines various error codes related to tick operations in the Fluxa protocol.
+#[error_code]
+pub enum TickError {
+    #[msg("Tick already initialized")]
+    TickAlreadyInitialized,
+    #[msg("Invalid tick alignment")]
+    InvalidTickAlignment,
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
+    #[msg("Tick not initialized")]
+    TickNotInitialized,
+    #[msg("Invalid tick index")]
+    InvalidTickIndex,
+    #[msg("Suspicious activity detected")]
+    SuspiciousActivityDetected,
+    #[msg("Delta too large for safe conversion")]
+    DeltaTooLarge,
+    #[msg("Tick in emergency pause")]
+    TickInEmergencyPause,
+    #[msg("Invalid tick spacing configuration")]
+    InvalidTickSpacing,
+    #[msg("Tick spacing fee tier mismatch")]
+    TickSpacingFeeTierMismatch,
+    #[msg("Tick spacing exceeds bitmap capacity")]
+    TickSpacingExceedsCapacity,
+    #[msg("Unsupported fee tier")]
+    UnsupportedFeeTier,
+    #[msg("Excessive tick crossing rate detected")]
+    ExcessiveTickCrossing,
+    #[msg("Rapid tick manipulation detected")]
+    RapidTickManipulation,
+    #[msg("Suspicious tick activity detected")]
+    SuspiciousTickActivity,
+    #[msg("Liquidity overflow in calculation")]
+    LiquidityOverflow,
+    #[msg("Price manipulation threshold exceeded")]
+    PriceManipulationDetected,
+    #[msg("Volume spike anomaly detected")]
+    VolumeSpikeDetected,
+    #[msg("Liquidity Underflow in calculation")]
+    LiquidityUnderflow,
 }
