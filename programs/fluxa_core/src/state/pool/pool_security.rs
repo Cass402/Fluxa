@@ -1,3 +1,4 @@
+use crate::math::core_arithmetic::Q64x64;
 use anchor_lang::prelude::*;
 
 /// Enhanced Pool Security with MEV protection and efficient tracking
@@ -14,8 +15,8 @@ pub struct PoolSecurity {
     /// 'total_swap_volume_0' - Total swap volume for token 0
     /// 'total_swap_volume_1' - Total swap volume for token 1
     /// 'active_positions_count' - Count of active positions for monitoring
-    pub total_swap_volume_0: u64,
-    pub total_swap_volume_1: u64,
+    pub total_swap_volume_0: Q64x64,
+    pub total_swap_volume_1: Q64x64,
     pub active_positions_count: u32,
 
     /// Security monitoring
