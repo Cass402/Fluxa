@@ -1,3 +1,4 @@
+use crate::math::core_arithmetic::Q64x64;
 use crate::state::pool::volatility_tracker::EwmaVolatilityTracker;
 use anchor_lang::prelude::*;
 
@@ -15,8 +16,8 @@ pub struct OptimizedPoolConfig {
     /// 'protocol_fees_token_1' - Accumulated fees in token 1
     pub protocol_fee_0: u32,
     pub protocol_fee_1: u32,
-    pub protocol_fees_token_0: u64,
-    pub protocol_fees_token_1: u64,
+    pub protocol_fees_token_0: Q64x64,
+    pub protocol_fees_token_1: Q64x64,
 
     /// Optimized EWMA volatility tracker
     pub volatility_tracker: EwmaVolatilityTracker,
