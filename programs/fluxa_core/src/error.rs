@@ -142,3 +142,26 @@ pub enum TickError {
     #[msg("Liquidity Underflow in calculation")]
     LiquidityUnderflow,
 }
+
+/// The PositionError enum defines various error codes related to position management in the Fluxa protocol.
+#[error_code]
+pub enum PositionError {
+    #[msg("Invalid position nonce")]
+    InvalidPositionNonce,
+    #[msg("Position integrity check failed")]
+    PositionIntegrityFailure,
+    #[msg("Batch size limit exceeded")]
+    BatchSizeExceeded,
+    #[msg("Invalid position hash")]
+    InvalidPositionHash,
+    #[msg("Merkle proof verification failed")]
+    MerkleProofFailed, // Consolidated: removed duplicate InvalidMerkleProof
+    #[msg("Position not found in batch")]
+    PositionNotFound,
+    #[msg("Batch hash mismatch")]
+    BatchHashMismatch,
+    #[msg("Compressed position limit exceeded")]
+    CompressedPositionLimitExceeded,
+    #[msg("Duplicate position nonce")]
+    DuplicatePositionNonce,
+}

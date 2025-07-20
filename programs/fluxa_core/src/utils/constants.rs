@@ -45,3 +45,9 @@ pub const MIN_TICK_CROSS_INTERVAL: u64 = 2; // Minimum interval between tick cro
 pub const SUSPICIOUS_CROSS_INTERVAL: u64 = 10; // Interval for suspicious tick crosses
 pub const RESET_SUSPICION_INTERVAL: u64 = 1000; // Interval to reset suspicion
 pub const MAX_SUSPICION_SCORE: u32 = 100; // Maximum suspicion score
+
+/// Position constants
+pub const MAX_POSITIONS_PER_BATCH: usize = 200; // Maximum number of positions that can be processed in a single batch
+pub const POSITION_HASH_SIZE: usize = 32; // Size of the position hash in bytes
+pub const MERKLE_TREE_DEPTH: usize = 20; // Depth of the Merkle tree for position storage
+pub const ACCOUNT_SIZE_LIMIT: usize = 10_240; // 10 KiB limit
