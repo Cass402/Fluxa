@@ -1807,6 +1807,7 @@ dependencies = [
  "anchor-client",
  "anchor-lang",
  "anchor-spl",
+ "bytemuck",
  "criterion",
  "ethnum",
  "proptest",
