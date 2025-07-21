@@ -9,8 +9,15 @@ use crate::utils::security_authority::emergency_contacts::EmergencyContacts;
 use crate::utils::security_authority::multisig_config::MultisigConfig;
 use anchor_lang::prelude::*;
 
-/// FactoryConfig structure for managing protocol-level configurations and state.
-/// This configuration includes parameters such as protocol fee rates, creation fees, and supported fee tiers.
+/// Protocol-level configuration for the factory, governing fee structure and pool creation limits.
+///
+/// # Why this structure?
+/// - All fields are fixed-size and aligned for deterministic account size and rent cost.
+/// - No dynamic allocations (e.g., Vec), ensuring safety and predictable performance on Solana.
+/// - Encapsulates all protocol-level parameters for atomic updates and easier auditing.
+///
+/// ## Usage
+/// Used for initializing and updating the factory's global parameters, referenced by all pool creation and fee logic.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct FactoryConfig {
     pub protocol_fee_rate: u32,
@@ -31,56 +38,95 @@ impl Default for FactoryConfig {
     }
 }
 
-/// Factory account structure for managing protocol-level configurations and state.
+/// Main factory state for protocol-level configuration, pool tracking, and fee accounting.
+///
+/// # Why this structure?
+/// - Uses zero-copy layout for maximum on-chain efficiency and deterministic account size, critical for Solana's rent and compute model.
+/// - All fields are fixed-size and aligned, with no dynamic allocations, ensuring safety and predictable performance.
+/// - Packs all protocol, fee, and status logic into a single account for atomic updates and easier auditing.
+/// - Bitfields are used for status flags, minimizing storage and enabling atomic status changes.
+///
+/// ## Usage
+/// This struct is the canonical source of truth for protocol state, referenced by all pool, admin, and monitoring logic.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct Factory {
-    /// Reference to core authority PDA
+    /// Reference to the core authority PDA.
+    ///
+    /// Why: Ensures this factory is always bound to a specific authority, preventing misconfiguration or spoofing. Used for Anchor constraint validation and upgrade safety.
     pub core_authority: Pubkey,
 
-    /// Protocol fee rate in basis points
+    /// Protocol fee rate in basis points (0-10000).
+    ///
+    /// Why: Integer basis points allow for fine-grained fee control, and u32 is sufficient for all practical use cases. Used for protocol revenue and risk management.
     pub protocol_fee_rate: u32,
 
-    /// Total number of pools created
+    /// Total number of pools created by the factory.
+    ///
+    /// Why: Used for pool indexing, monitoring, and capacity planning. Saturating arithmetic prevents overflows.
     pub pool_count: u32,
 
-    /// Number of active shards
+    /// Number of active shards for pool distribution.
+    ///
+    /// Why: Sharding enables horizontal scaling and load balancing. u16 is sufficient for all practical deployments.
     pub shard_count: u16,
 
-    /// Maximum pools per shard (configurable)
+    /// Maximum pools allowed per shard (configurable).
+    ///
+    /// Why: Prevents any single shard from becoming a bottleneck or DoS vector. Enforced at pool creation.
     pub max_pools_per_shard: u16,
 
-    /// Creation fee in lamports
+    /// Pool creation fee in lamports.
+    ///
+    /// Why: Discourages spam pool creation and funds protocol operations. u64 allows for future fee increases.
     pub creation_fee: u64,
 
-    /// Last update slot for tracking
+    /// Last slot when any factory state was updated.
+    ///
+    /// Why: Enables time-based logic, replay protection, and monitoring. Used for rate limiting and audit trails.
     pub last_update_slot: u64,
 
-    /// Factory status flags (bitfield for various states)
+    /// Status flags packed into a single u8 bitfield.
+    ///
+    /// Why: Bitfields allow multiple statuses (e.g., paused, emergency) to be tracked compactly and atomically, minimizing storage and compute. Enables efficient flag checks and updates.
     pub status_flags: u8,
 
-    /// Alignment padding
+    /// Alignment padding for 8-byte boundary.
+    ///
+    /// Why: Ensures zero-copy safety and future extensibility. Required by Anchor for deterministic account layout.
     pub _padding: [u8; 7],
 
-    /// Supported fee tiers (fixed size for efficiency)
+    /// Supported fee tiers (fixed-size array for efficiency).
+    ///
+    /// Why: Fixed-size array avoids dynamic allocation and ensures deterministic account size. Enables fast lookups and prevents unsupported fee tiers.
     pub supported_fee_tiers: [u32; MAX_FEE_TIERS],
 
-    /// Statistics for monitoring
-    /// 'total_volume' - total volume of trades across all pools
-    /// 'total_fees_collected' - total fees collected by the factory
+    /// Statistics for protocol monitoring and analytics.
+    ///
+    /// - `total_volume`: Total volume of trades across all pools, in Q64.64. Why: Enables protocol analytics and capacity planning.
+    /// - `total_fees_collected`: Total protocol fees collected, in Q64.64. Why: Used for revenue tracking and auditing.
     pub total_volume: Q64x64,
     pub total_fees_collected: Q64x64,
 
-    /// Factory version for upgrades
+    /// Factory version for protocol upgrades and migrations.
+    ///
+    /// Why: Allows for safe migrations and backward compatibility. u32 is sufficient for all practical upgrade paths.
     pub version: u32,
 
-    /// Reserved space for future expansion (tightly packed)
+    /// Reserved for future upgrades (e.g., new features, protocol extensions) without breaking account layout.
+    ///
+    /// Why: Pre-allocating space allows for seamless upgrades and avoids costly migrations or rent increases.
     pub reserved: [u64; 8],
 }
 
 impl Factory {
-    /// Initialize the factory account with the provided configuration and core authority.
-    /// This method sets up the factory with initial parameters and validates them.
+    /// Initialize the factory with safe, validated parameters and authority binding.
+    ///
+    /// # Why this pattern?
+    /// - All parameters are validated up front to prevent misconfiguration or protocol bricking.
+    /// - Authority is set at initialization for upgrade safety and governance.
+    /// - All counters and reserved fields are zeroed for deterministic state and upgradeability.
+    ///
     /// # Arguments
     /// * `core_authority` - The public key of the core authority managing the factory.
     /// * `config` - The configuration parameters for the factory.
@@ -131,8 +177,13 @@ impl Factory {
         Ok(())
     }
 
-    /// Update protocol fee
-    /// This method allows the core authority to update the protocol fee rate.
+    /// Update protocol fee, only callable by core authority.
+    ///
+    /// # Why this method?
+    /// - Ensures only authorized changes to protocol fee, protecting protocol revenue and user trust.
+    /// - All updates are tracked by slot for auditability and replay protection.
+    /// - Fee is validated to prevent bricking the protocol with an out-of-range value.
+    ///
     /// # Arguments
     /// * `new_fee` - The new protocol fee rate to set.
     /// * `current_slot` - The current slot number for tracking updates.
@@ -140,9 +191,6 @@ impl Factory {
     /// * `Result<()>` - Returns Ok if the update is successful, or an error if validation fails.
     /// # Errors
     /// * `FactoryError::InvalidFeeTier` - If the new fee exceeds the maximum allowed value.
-    /// # Note
-    /// This method is designed to be called by the core authority, ensuring that only authorized changes
-    /// to the protocol fee can be made. It also updates the last update slot to track when the change occurred.
     pub fn update_protocol_fee(&mut self, new_fee: u32, current_slot: u64) -> Result<()> {
         require!(
             self.status_flags == STATUS_NORMAL || self.status_flags == STATUS_MAINTENANCE,
@@ -158,25 +206,23 @@ impl Factory {
         Ok(())
     }
 
-    /// Increment pool count atomically
-    /// This method increments the pool count by one and updates the last update slot.
-    /// It is designed to be called whenever a new pool is created within the factory.
-    /// # Arguments
-    /// * `current_slot` - The current slot number for tracking updates.
-    /// # Note
-    /// This method is optimized for performance and should be called in the context of pool creation.
-    /// It ensures that the pool count is incremented atomically, preventing race conditions.
+    /// Atomically increment pool count and update slot.
+    ///
+    /// # Why this method?
+    /// - Ensures pool count is always consistent and prevents race conditions.
+    /// - Slot is updated for auditability and replay protection.
+    /// - Designed for high performance in pool creation logic.
     pub fn increment_pool_count(&mut self, current_slot: u64) {
         self.pool_count = self.pool_count.saturating_add(1);
         self.last_update_slot = current_slot;
     }
 
-    /// Add new shard
-    /// This method adds a new shard to the factory and updates the last update slot.
-    /// # Arguments
-    /// * `current_slot` - The current slot number for tracking updates.
-    /// # Returns
-    /// * `Result<u16>` - Returns the index of the newly created shard or an error if the maximum shard limit is reached.
+    /// Add a new shard and update slot.
+    ///
+    /// # Why this method?
+    /// - Enables horizontal scaling and load balancing by adding new shards.
+    /// - Slot is updated for auditability and replay protection.
+    /// - Returns new shard index for downstream logic.
     pub fn add_shard(&mut self, current_slot: u64) -> Result<u16> {
         let new_shard_index = self.shard_count; // Use current shard count as the new index
         self.shard_count = self.shard_count.saturating_add(1); // Increment shard count
@@ -185,14 +231,11 @@ impl Factory {
         Ok(new_shard_index)
     }
 
-    /// Set pause status
-    /// This method allows the factory to be paused or resumed.
-    /// # Arguments
-    /// * `paused` - A boolean indicating whether to pause or resume the factory.
-    /// * `current_slot` - The current slot number for tracking updates.
-    /// # Note
-    /// This method updates the status flags to reflect the paused state and sets the last update slot.
-    /// It is designed to be called by the core authority or during maintenance operations.
+    /// Set pause status (paused/resumed) and update slot.
+    ///
+    /// # Why this method?
+    /// - Allows for safe protocol upgrades and maintenance without redeploying.
+    /// - Status flags are updated atomically for safety and auditability.
     pub fn set_paused(&mut self, paused: bool, current_slot: u64) {
         // Update the status flags based on the paused state
         if paused {
@@ -203,14 +246,11 @@ impl Factory {
         self.last_update_slot = current_slot;
     }
 
-    /// Set emergency pause status
-    /// This method allows the factory to be set into an emergency pause state.
-    /// # Arguments
-    /// * `active` - A boolean indicating whether to activate or deactivate the emergency pause.
-    /// * `current_slot` - The current slot number for tracking updates.
-    /// # Note
-    /// This method updates the status flags to reflect the emergency pause state and sets the last update slot.
-    /// It is designed to be called in critical situations where immediate action is required to protect the system.
+    /// Set emergency pause status and update slot.
+    ///
+    /// # Why this method?
+    /// - Enables rapid response to critical failures or attacks, protecting protocol funds and users.
+    /// - Status flags are updated atomically for safety and auditability.
     pub fn set_emergency_pause(&mut self, active: bool, current_slot: u64) {
         if active {
             self.status_flags |= STATUS_EMERGENCY;
@@ -220,21 +260,22 @@ impl Factory {
         self.last_update_slot = current_slot;
     }
 
-    /// Update statistics
-    /// This method updates the total volume and fees collected by the factory.
-    /// # Arguments
-    /// * `volume` - The volume of trades to add to the total.
-    /// * `fees` - The fees collected to add to the total.
-    /// # Note
-    /// This method is designed to be called whenever trades are executed within the factory.
-    /// It ensures that the statistics are updated atomically to prevent inconsistencies.
+    /// Atomically update total volume and fees collected.
+    ///
+    /// # Why this method?
+    /// - Ensures protocol analytics are always consistent and up to date.
+    /// - All updates are atomic to prevent inconsistencies and race conditions.
     pub fn update_stats(&mut self, volume: Q64x64, fees: Q64x64) -> Result<()> {
         self.total_volume = self.total_volume.checked_add(volume)?;
         self.total_fees_collected = self.total_fees_collected.checked_add(fees)?;
         Ok(())
     }
 
-    /// Status check methods
+    /// Status check methods for protocol state.
+    ///
+    /// # Why these methods?
+    /// - Bitwise checks are used for efficiency and atomicity.
+    /// - Enables fast, safe gating of protocol operations based on status.
     pub fn is_paused(&self) -> bool {
         self.status_flags & STATUS_PAUSED != 0
     }
@@ -247,15 +288,11 @@ impl Factory {
         self.status_flags & (STATUS_PAUSED | STATUS_EMERGENCY) == 0
     }
 
-    /// Check if fee tier is supported
-    /// This method checks if a given fee tier is supported by the factory.
-    /// # Arguments
-    /// * `fee_tier` - The fee tier to check.
-    /// # Returns
-    /// * `bool` - Returns true if the fee tier is supported, false otherwise.
-    /// # Note
-    /// This method uses an optimized approach to check for common fee tiers first, improving performance for
-    /// frequently used tiers. It also handles custom fee tiers defined in the supported_fee_tiers array
+    /// Check if a fee tier is supported by the factory.
+    ///
+    /// # Why this method?
+    /// - Optimized for common fee tiers to improve performance for frequent lookups.
+    /// - Custom fee tiers are supported via array search, enabling protocol flexibility.
     pub fn is_fee_tier_supported(&self, fee_tier: u32) -> bool {
         // Optimized loop unrolling for common case
         if fee_tier == 0 {
@@ -273,14 +310,11 @@ impl Factory {
             .any(|&tier| tier == fee_tier && tier != 0)
     }
 
-    /// Get optimal shard for new pool
-    /// This method determines the optimal shard index for a new pool based on the current shard count.
-    /// It uses a simple round-robin approach for now, but can be extended to consider shard utilization in the future.
-    /// # Returns
-    /// * `Option<u16>` - Returns the index of the optimal shard or None if there are no shards available.
-    /// # Note
-    /// This method is designed to be efficient and should be called when creating new pools to ensure
-    /// that they are distributed evenly across available shards.
+    /// Get optimal shard index for new pool (round-robin for now).
+    ///
+    /// # Why this method?
+    /// - Ensures even distribution of pools across shards for load balancing.
+    /// - Can be extended to consider shard utilization in the future for more advanced balancing.
     pub fn get_optimal_shard_index(&self) -> Option<u16> {
         // Simple round-robin for now
         // In production, this would consider shard utilization
@@ -291,16 +325,12 @@ impl Factory {
         }
     }
 
-    /// Calculate protocol fees
-    /// This method calculates the protocol fees based on the provided amount and the current protocol fee rate.
-    /// It uses an optimized approach to avoid division where possible, improving performance for common fee rates.
-    /// # Arguments
-    /// * `amount` - The amount to calculate the protocol fee for.
-    /// # Returns
-    /// * `u64` - The calculated protocol fee.
-    /// # Note
-    /// This method is designed to be efficient and should be used whenever protocol fees need to be
-    /// calculated, such as during trade executions or pool creations.
+    /// Calculate protocol fee for a given amount, using optimized math for common rates.
+    ///
+    /// # Why this method?
+    /// - Avoids division where possible for performance, using fast paths for common fee rates.
+    /// - All math is performed in fixed-point for on-chain safety and predictability.
+    /// - Used for all protocol fee calculations (trades, pool creation, etc.).
     pub fn calculate_protocol_fee(&self, amount: Q64x64) -> Result<u64> {
         // Optimized calculation avoiding division where possible
         if self.protocol_fee_rate == 0 {
@@ -324,8 +354,11 @@ impl Factory {
     }
 }
 
-/// Initialize Factory with Authority Integration
-/// This context is used to initialize a new factory with the provided configuration.
+/// Anchor context for initializing a new factory with authority integration.
+///
+/// # Why this context?
+/// - All accounts are validated and initialized atomically, minimizing risk of partial state.
+/// - Seeds and bumps are used for deterministic address derivation and upgrade safety.
 #[derive(Accounts)]
 #[instruction(config: FactoryConfig)]
 pub struct InitializeFactory<'info> {
@@ -354,10 +387,11 @@ pub struct InitializeFactory<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Update Factory Configuration
-/// This context is used to update the factory configuration with multisig validation.
-/// It requires the factory account, core authority, multisig config, and the authority making the change.
-/// This ensures that critical changes to the factory configuration are validated through a multisig process.
+/// Anchor context for updating factory configuration with multisig validation.
+///
+/// # Why this context?
+/// - Ensures only authorized and multisig-validated changes to protocol configuration.
+/// - All accounts are validated atomically for safety and auditability.
 #[derive(Accounts)]
 pub struct UpdateFactoryConfig<'info> {
     /// The Factory account to be updated
@@ -386,10 +420,11 @@ pub struct UpdateFactoryConfig<'info> {
     pub authority: Signer<'info>,
 }
 
-/// Emergency Pause Factory
-/// This context is used to pause the factory in emergency situations.
-/// It requires the factory account, core authority, emergency contacts, and the emergency responder.
-/// This ensures that the factory can be paused safely during emergencies, preventing further operations until resolved.
+/// Anchor context for pausing the factory in emergency situations.
+///
+/// # Why this context?
+/// - Ensures only authorized emergency responders can pause protocol operations.
+/// - All accounts are validated atomically for safety and auditability.
 #[derive(Accounts)]
 pub struct EmergencyPauseFactory<'info> {
     /// The Factory account to be paused
@@ -418,14 +453,11 @@ pub struct EmergencyPauseFactory<'info> {
     pub emergency_responder: Signer<'info>,
 }
 
-/// Initialize factory with authority.rs integration
-/// This function initializes the factory with the provided configuration and core authority.
-/// It sets up the factory account with initial parameters and validates them.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for initialization.
-/// * `config` - The configuration parameters for the factory.
-/// # Returns
-/// A `Result<()>` indicating success or failure of the initialization.
+/// Anchor instruction for initializing the factory with authority integration.
+///
+/// # Why this function?
+/// - All parameters and authorities are validated up front for safety and upgradeability.
+/// - Ensures atomic initialization of all protocol state, preventing partial or inconsistent state.
 pub fn initialize_factory(ctx: Context<InitializeFactory>, config: FactoryConfig) -> Result<()> {
     let factory = &mut ctx.accounts.factory.load_init()?;
     let clock = Clock::get()?;
@@ -446,14 +478,11 @@ pub fn initialize_factory(ctx: Context<InitializeFactory>, config: FactoryConfig
     Ok(())
 }
 
-/// Update factory configuration with multisig validation
-/// This function updates the factory configuration with the provided parameters.
-/// It requires the authority to be a member of the multisig if critical changes are made.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for updating the factory.
-/// * `new_config` - The new configuration parameters for the factory.
-/// # Returns
-/// A `Result<()>` indicating success or failure of the update.
+/// Anchor instruction for updating factory configuration with multisig validation.
+///
+/// # Why this function?
+/// - Ensures only authorized and multisig-validated changes to protocol configuration.
+/// - All updates are atomic and validated for safety and auditability.
 pub fn update_factory_config(
     ctx: Context<UpdateFactoryConfig>,
     new_config: FactoryConfig,
@@ -487,14 +516,11 @@ pub fn update_factory_config(
     Ok(())
 }
 
-/// Emergency pause factory
-/// This function pauses the factory in emergency situations.
-/// It requires the emergency responder to have the authority to pause operations.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for pausing the factory.
-/// * `pause_active` - A boolean indicating whether to activate or deactivate the emergency pause.
-/// # Returns
-/// A `Result<()>` indicating success or failure of the operation.
+/// Anchor instruction for pausing the factory in emergency situations.
+///
+/// # Why this function?
+/// - Ensures only authorized emergency responders can pause protocol operations.
+/// - All updates are atomic and validated for safety and auditability.
 pub fn emergency_pause_factory(
     ctx: Context<EmergencyPauseFactory>,
     pause_active: bool,
