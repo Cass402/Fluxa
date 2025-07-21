@@ -1,43 +1,47 @@
-//! PDA (Program Derived Address) management utilities
+//! PDA (Program Derived Address) management utilities for Fluxa protocol
 //!
-//! This module provides a clean, type-safe interface for PDA derivation.
-//! This file is primarily for the client SDK so that it can derive PDAs
+//! # Rationale
+//! This module centralizes all PDA derivation logic to ensure deterministic, collision-resistant, and auditable address generation across the protocol.
+//! By enforcing canonical token ordering, explicit domain separation, and type-safe interfaces, we prevent subtle bugs, replay attacks, and address collisions.
+//! The design is optimized for both on-chain and client SDK usage, supporting robust authority isolation and minimizing the risk of mis-derivation or privilege escalation.
 
 use crate::error::MathError::InvalidPriceRange;
 use anchor_lang::prelude::*;
 
-/// Information about a derived PDA.
+/// Represents a derived PDA and its bump seed.
+///
+/// # Why this struct?
+/// Encapsulates both the address and bump, ensuring that all PDA operations are explicit and type-safe.
+/// This prevents accidental loss of the bump (which is required for signing) and makes intent clear at call sites.
 #[derive(Clone, Copy, Debug)]
 pub struct PdaInfo {
     pub address: Pubkey,
     pub bump: u8,
 }
 
-/// Centralized PDA manager that provides a clean interface for PDA operations and provides consistent patterns for PDA derivation and validation.
+/// Centralized PDA manager for all protocol address derivations.
+///
+/// # Design Intent
+/// - All PDA derivations are funneled through this type to guarantee consistency and prevent duplication of seed logic.
+/// - Each method encodes domain separation and canonicalization, reducing the risk of address collision or privilege confusion.
+/// - By using explicit arguments and seed construction, we make all address derivations auditable and reproducible.
 pub struct PdaManager;
 
 impl PdaManager {
-    /// Derives the core pool PDA for a given pair of tokens and fee tier.
-    /// This function ensures that the tokens are in canonical order and that the fee tier is correctly applied.
-    /// # Arguments
-    /// * `token_0` - The first token's public key.
-    /// * `token_1` - The second token's public key.
-    /// * `fee_tier` - The fee tier for the pool, represented as a u32.
-    /// * `program_id` - The program ID that will be used to derive the PDA.
-    /// # Returns
-    /// * `Ok(PdaInfo)` - If the PDA is successfully derived and validated.
-    /// * `Err(MathError)` - If the tokens are the same, indicating an invalid price range.
+    /// Deterministically derives the core pool PDA for a token pair and fee tier.
+    ///
+    /// # Why this approach?
+    /// - **Canonicalization:** Enforces a single, canonical order for token pairs, preventing duplicate pools and address collisions.
+    /// - **Domain Separation:** Uses a unique seed prefix ("pool_core") and explicit fee tier bytes to ensure that each pool is uniquely identified by its parameters.
+    /// - **Safety:** Returns an error if tokens are identical, preventing degenerate pools and price range ambiguity.
     pub fn pool_core(
         token_0: &Pubkey,
         token_1: &Pubkey,
         fee_tier: u32,
         program_id: &Pubkey,
     ) -> Result<PdaInfo> {
-        // Ensure that the tokens are in canonical order
+        // Canonical ordering is critical for preventing duplicate pools and ensuring address determinism.
         let (token_a, token_b) = Self::canonical_token_order(token_0, token_1)?;
-
-        // Convert the fee tier to bytes and derive the PDA
-        // This ensures that the same pair of tokens and fee tier always results in the same PDA
         let fee_tier_bytes = fee_tier.to_le_bytes();
         let seeds = [
             b"pool_core",
@@ -45,15 +49,15 @@ impl PdaManager {
             token_b.as_ref(),
             &fee_tier_bytes,
         ];
-
         let (address, bump) = Pubkey::find_program_address(&seeds, program_id);
-
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the core authority PDA for a given pool core.
-    /// This function provides a way to uniquely identify the core authority for a specific pool core,
-    /// ensuring that authority operations are securely managed.
+    /// Derives the core authority PDA for a pool core.
+    ///
+    /// # Why this approach?
+    /// - **Authority Isolation:** Each pool core has a unique authority, preventing cross-pool privilege escalation.
+    /// - **Domain Separation:** Uses a unique seed prefix to ensure no overlap with other PDAs.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `program_id` - The program ID that will be used to derive the PDA.
@@ -70,9 +74,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the multisig configuration PDA for a given pool core.
-    /// This function provides a way to uniquely identify the multisig configuration for a specific pool core,
-    /// ensuring that multisig operations are securely managed. Multisig configurations are used to manage permissions and authority in a decentralized manner.
+    /// Derives the multisig configuration PDA for a pool core.
+    ///
+    /// # Why this approach?
+    /// - **Decentralized Control:** Each pool core can have its own multisig config, supporting flexible, pool-specific governance.
+    /// - **Domain Separation:** Prevents accidental overlap with other authority or config PDAs.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `program_id` - The program ID that will be used to derive the PDA.
@@ -89,9 +95,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the emergency contacts PDA for a given pool core which is list of emergency contacts for the pool.
-    /// This function provides a way to uniquely identify the emergency contacts for a specific pool core,
-    /// ensuring that emergency contacts are securely managed. Emergency contacts are used to handle critical situations in the protocol.
+    /// Derives the emergency contacts PDA for a pool core.
+    ///
+    /// # Why this approach?
+    /// - **Crisis Response:** Each pool core can have a dedicated set of emergency contacts, supporting rapid, pool-specific incident response.
+    /// - **Domain Separation:** Ensures emergency contacts are isolated from other authority/config PDAs.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `program_id` - The program ID that will be used to derive the PDA.
@@ -108,10 +116,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the individual emergency contact PDA for a given pool core and emergency contact public key.
-    /// This function provides a way to uniquely identify an emergency contact within the pool core,
-    /// ensuring that each emergency contact is securely managed. Emergency contacts are used to handle critical situations
-    /// in the protocol.
+    /// Derives the PDA for an individual emergency contact within a pool core.
+    ///
+    /// # Why this approach?
+    /// - **Fine-Grained Control:** Allows for per-contact management and revocation, rather than a monolithic list.
+    /// - **Domain Separation:** Prevents address collision with other pool or contact PDAs.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `emergency_contact` - The public key of the emergency contact.
@@ -137,10 +146,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the timelock operation PDA for a given pool core and operation ID.
-    /// This function provides a way to uniquely identify a timelock operation within the pool core,
-    /// ensuring that each operation is securely managed. Timelock operations are used to delay the
-    /// execution of certain actions in the protocol, providing a safety mechanism against immediate changes.
+    /// Derives the timelock operation PDA for a pool core and operation ID.
+    ///
+    /// # Why this approach?
+    /// - **Change Management:** Each operation is uniquely identified, supporting granular timelock enforcement and auditability.
+    /// - **Replay Protection:** Operation ID is included to prevent replay or overwrite of timelock actions.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `operation_id` - The unique identifier for the timelock operation, represented as a u64.
@@ -167,10 +177,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the audit trail entry PDA for a given pool core and audit index.
-    /// This function provides a way to uniquely identify an audit trail entry within the pool core,
-    /// ensuring that each entry is securely managed. Audit trail entries are used to track changes and
-    /// operations performed on the pool, providing a transparent history of actions.
+    /// Derives the audit trail entry PDA for a pool core and audit index.
+    ///
+    /// # Why this approach?
+    /// - **Forensic Traceability:** Each audit entry is uniquely addressable, supporting tamper-evident, append-only audit trails.
+    /// - **Indexing:** Audit index ensures strict ordering and prevents accidental overwrites.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `audit_index` - The unique identifier for the audit trail entry, represented as a u64.
@@ -193,10 +204,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the audit trail head PDA for a given pool core.
-    /// This function provides a way to uniquely identify the head of the audit trail for a specific pool core,
-    /// ensuring that the audit trail is securely managed. The audit trail head is used to track the latest entry in the audit trail,
-    /// providing a point of reference for all audit trail entries.
+    /// Derives the audit trail head PDA for a pool core.
+    ///
+    /// # Why this approach?
+    /// - **Efficient Lookups:** Provides a single, canonical reference to the latest audit entry, supporting efficient append and verification.
+    /// - **Domain Separation:** Prevents collision with audit entry PDAs.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `program_id` - The program ID that will be used to derive the PDA.
@@ -213,9 +225,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the position PDA for a given pool core, owner, and position ID.
-    /// This function provides a way to uniquely identify positions within a pool,
-    /// ensuring that each position is associated with a specific owner and ID.
+    /// Derives the position PDA for a pool core, owner, and position ID.
+    ///
+    /// # Why this approach?
+    /// - **User Isolation:** Each position is uniquely tied to both the pool and the owner, preventing cross-user or cross-pool confusion.
+    /// - **Indexing:** Position ID ensures that multiple positions per user are uniquely addressable.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `owner` - The public key of the owner of the position.
@@ -245,9 +259,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the optimized batch - position batch PDA for a given pool core, owner, and batch ID.
-    /// This function provides a way to uniquely identify position batches within a pool,
-    /// ensuring that each batch is associated with a specific owner and ID.
+    /// Derives the position batch PDA for a pool core, owner, and batch ID.
+    ///
+    /// # Why this approach?
+    /// - **Batch Operations:** Enables efficient, atomic operations on groups of positions, supporting advanced DeFi use cases.
+    /// - **User Isolation:** Batch is tied to both pool and owner, preventing privilege confusion.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `owner` - The public key of the owner of the position batch.
@@ -277,9 +293,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Derives the governance authority PDA for a given pool core and governance realm.
-    /// This function provides a way to uniquely identify the governance authority for a specific pool core
-    /// and governance realm, ensuring that governance operations are securely managed.
+    /// Derives the governance authority PDA for a pool core and governance realm.
+    ///
+    /// # Why this approach?
+    /// - **Governance Isolation:** Each pool core and governance realm pair has a unique authority, supporting flexible, multi-realm governance.
+    /// - **Domain Separation:** Prevents overlap with other authority PDAs.
     /// # Arguments
     /// * `pool_core` - The public key of the pool core.
     /// * `governance_realm` - The public key of the governance realm.
@@ -305,11 +323,11 @@ impl PdaManager {
         Ok(PdaInfo { address, bump })
     }
 
-    /// Returns the canonical order of two tokens.
-    /// This function ensures that the tokens are always returned in a consistent order,
-    /// regardless of the order they are provided in. This is important for ensuring that
-    /// the same pair of tokens always results in the same PDA, which is crucial for
-    /// security and consistency in the protocol.
+    /// Returns the canonical (lexicographic) order of two tokens.
+    ///
+    /// # Why this approach?
+    /// - **Determinism:** Ensures that all address derivations for a token pair are order-independent, preventing duplicate pools and address collisions.
+    /// - **Safety:** Returns an error if tokens are identical, preventing degenerate pools and ambiguous price ranges.
     /// # Arguments
     /// * `token_0` - The first token's public key.
     /// * `token_1` - The second token's public key.
@@ -320,12 +338,11 @@ impl PdaManager {
         token_0: &'a Pubkey,
         token_1: &'a Pubkey,
     ) -> Result<(&'a Pubkey, &'a Pubkey)> {
-        // Ensure that the tokens are not the same
+        // Reject identical tokens to prevent degenerate pools and ambiguous price ranges.
         if token_0 == token_1 {
             return Err(InvalidPriceRange.into());
         }
-
-        // Return the tokens in a canonical order (lexicographically)
+        // Lexicographic ordering is used for determinism and to prevent duplicate pools.
         if token_0 < token_1 {
             Ok((token_0, token_1))
         } else {
@@ -334,10 +351,11 @@ impl PdaManager {
     }
 }
 
-/// Security domain enumeration for authority isolation.
-/// This enum defines the different security domains that can be used to isolate authority
-/// and permissions within the Fluxa protocol. Each domain represents a specific area of
-/// responsibility and control, allowing for fine-grained access control and security management.
+/// Enumerates protocol security domains for authority isolation.
+///
+/// # Why this enum?
+/// - **Fine-Grained Access Control:** Each domain represents a distinct area of protocol responsibility, supporting least-privilege and separation of duties.
+/// - **Auditability:** Explicit domain tagging makes privilege boundaries clear for future maintainers and auditors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub enum SecurityDomain {
     ProtocolAdmin,
@@ -349,12 +367,11 @@ pub enum SecurityDomain {
 
 /// Implementation of the SecurityDomain enum
 impl SecurityDomain {
-    /// Converts the SecurityDomain to a byte representation.
-    /// This method provides a way to serialize the security domain into a single byte,
-    /// which can be useful for storage or transmission purposes.
-    /// # Returns
-    /// * `[u8; 1]` - A byte array representing the security domain.
-    /// Each security domain is mapped to a unique byte value, allowing for efficient storage and comparison
+    /// Serializes the security domain to a single byte.
+    ///
+    /// # Why this approach?
+    /// - **Storage Efficiency:** Compact representation for on-chain storage and cross-program communication.
+    /// - **Protocol Safety:** Each domain is mapped to a unique byte, preventing ambiguity in privilege checks.
     pub fn to_bytes(&self) -> [u8; 1] {
         match self {
             SecurityDomain::ProtocolAdmin => [0],
