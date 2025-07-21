@@ -1,47 +1,63 @@
 use crate::math::core_arithmetic::Q64x64;
 use anchor_lang::prelude::*;
 
-/// Enhanced Pool Security with MEV protection and efficient tracking
+/// Security and risk management state for a concentrated liquidity pool.
+///
+/// # Why this structure?
+/// - Uses zero-copy layout for maximum on-chain efficiency and deterministic account size, critical for Solana's rent and compute model.
+/// - All fields are fixed-size and aligned, with no dynamic allocations, ensuring safety and predictable performance.
+/// - Packs all security, MEV protection, and circuit breaker logic into a single account for atomic updates and easier auditing.
+/// - Bitfields and booleans are used for efficient flag management, minimizing storage and compute costs.
+///
+/// ## Usage
+/// This struct is the canonical security and risk control state for a pool, referenced by all swap, admin, and monitoring logic.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct PoolSecurity {
-    /// Pool Account reference
+    /// Reference to the associated PoolCore account.
+    ///
+    /// Why: Ensures this security state is always bound to a specific pool, preventing misconfiguration or spoofing. Used for Anchor constraint validation.
     pub pool_core: Pubkey,
 
-    /// Security flags packed into single u32 for efficiency
-    pub security_flags: u32, // Bitfield: 0x01=MEV protection, 0x02=emergency pause, etc.
+    /// Security flags packed into a single u32 bitfield.
+    ///
+    /// Why: Bitfields allow multiple security statuses (e.g., MEV protection, emergency pause) to be tracked compactly and atomically, minimizing storage and compute. Enables efficient flag checks and updates.
+    pub security_flags: u32,
 
-    /// Volume tracking with overflow protection
-    /// 'total_swap_volume_0' - Total swap volume for token 0
-    /// 'total_swap_volume_1' - Total swap volume for token 1
-    /// 'active_positions_count' - Count of active positions for monitoring
+    /// Volume and position tracking for risk monitoring.
+    ///
+    /// - `total_swap_volume_0`/`total_swap_volume_1`: Cumulative swap volume for each token, in Q64.64. Why: Enables detection of abnormal activity and supports circuit breaker logic. Fixed-point ensures precision and overflow safety.
+    /// - `active_positions_count`: Number of active LP positions. Why: Used for monitoring pool health and potential attack surface.
     pub total_swap_volume_0: Q64x64,
     pub total_swap_volume_1: Q64x64,
     pub active_positions_count: u32,
 
-    /// Security monitoring
-    /// 'last_security_check' - Slot of last security check
-    /// 'suspicious_activity_score' - Score for suspicious activity (0-1000)
+    /// Security monitoring and anomaly detection.
+    ///
+    /// - `last_security_check`: Last slot when security checks were performed. Why: Enables time-based logic and replay protection.
+    /// - `suspicious_activity_score`: Composite score for suspicious activity (0-1000). Why: Allows for nuanced threat detection and automated circuit breaker triggers.
     pub last_security_check: u64,
     pub suspicious_activity_score: u32,
 
-    /// MEV protection parameters
+    /// MEV protection parameters and emergency contacts.
+    ///
+    /// - `mev_protection_enabled`: Enables/disables MEV protection logic. Why: Allows for dynamic risk management and protocol upgrades without redeploying the contract.
+    /// - `emergency_contacts`: Pubkey for emergency response (e.g., multisig, DAO). Why: Enables rapid intervention in case of attack or critical failure.
     pub mev_protection_enabled: bool,
-    // pub mev_protection_window: u16, // Slots to delay large trades
-    // pub max_price_impact: u16,       // Basis points (e.g., 500 = 5%)
-    // pub volume_spike_threshold: u32, // Multiplier for normal volume
-    /// Emergency contacts for pool_core security
+    // Future: Add MEV protection window, price impact, and volume spike thresholds for more granular controls.
     pub emergency_contacts: Pubkey,
 
-    /// Circuit breaker state
-    /// 'circuit_breaker_triggered_at' - Slot when circuit breaker was triggered
-    /// 'circuit_breaker_threshold' - Threshold for triggering circuit breaker (e.g.,
+    /// Circuit breaker state and configuration.
+    ///
+    /// - `circuit_breaker_triggered_at`: Slot when circuit breaker was last triggered. Why: Enables time-based lockouts and post-mortem analysis.
+    /// - `circuit_breaker_threshold`: Threshold for triggering circuit breaker (e.g., suspicious activity score, volume spike). Why: Allows for flexible, automated risk controls.
     pub circuit_breaker_triggered_at: u64,
     pub circuit_breaker_threshold: u32,
 
-    /// Alignment and future expansion
-    /// '_padding' - Padding for alignment for 8-byte boundary
-    /// 'reserved' - Reserved space for future enhancements
-    pub _padding: [u8; 4], // Align to 8-byte boundary
+    /// Alignment and future expansion.
+    ///
+    /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
+    /// - `reserved`: Pre-allocated space for future upgrades (e.g., new risk controls, monitoring fields) without breaking account layout.
+    pub _padding: [u8; 4],
     pub reserved: [u64; 4],
 }
