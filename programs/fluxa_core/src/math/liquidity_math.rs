@@ -2,154 +2,108 @@ use crate::error::MathError;
 use crate::math::core_arithmetic::{
     liquidity_from_amount_0, liquidity_from_amount_1, tick_to_sqrt_x64, Q64x64,
 };
+use crate::state::position::position_account::Position;
 use crate::utils::constants::MAX_TOKEN_AMOUNT;
 use anchor_lang::prelude::*;
 
-/// Calculates the amount of token0 required for a given liquidity between two square root price boundaries.
+/// Computes the amount of token0 needed to provide a given liquidity between two price boundaries.
 ///
-/// # Arguments
+/// # Why
+/// This function implements the core Uniswap v3-style math for concentrated liquidity, where liquidity is only active within a price range.
+/// The formula ensures that liquidity providers only need to supply token0 proportional to the width of the price range and the liquidity amount.
 ///
-/// * `sqrt_price_lower` - The lower boundary of the price range as a Q64x64 fixed-point number.
-/// * `sqrt_price_upper` - The upper boundary of the price range as a Q64x64 fixed-point number.
-/// * `liquidity` - The amount of liquidity as a Q64x64 fixed-point number.
+/// # Design Rationale
+/// - Uses Q64x64 fixed-point math for deterministic, overflow-resistant on-chain computation.
+/// - Enforces that the lower price is strictly less than the upper price and nonzero, preventing degenerate or unsafe ranges.
+/// - All arithmetic is checked to prevent overflows, which is critical for protocol safety and auditability.
+/// - Returns a u64, matching SPL token accounting and ensuring compatibility with Solana's token program.
 ///
-/// # Returns
+/// # Trade-offs
+/// - Shifts by 64 bits to convert from Q64x64 to integer, which is safe because the protocol bounds liquidity and price ranges.
+/// - Does not use Vec or dynamic allocation, ensuring deterministic compute and zero-copy compatibility.
 ///
-/// Returns `Ok(u64)` with the amount of token0 required, or an error if the input is invalid or an arithmetic operation fails.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The lower price is not less than the upper price.
-/// - The lower price is zero.
-/// - Any arithmetic operation overflows or underflows.
-///
-/// # Formula
-///
-/// The calculation is based on the formula:
-/// amount0 = liquidity * (sqrt_price_upper - sqrt_price_lower) / (sqrt_price_lower * sqrt_price_upper)
-///
-/// The result is returned as a u64 value.
+/// # Usage
+/// Used by the AMM to determine how much token0 a user must deposit to mint a position, and for withdrawal calculations.
 #[inline(always)]
 fn calculate_amount_0_delta(
     sqrt_price_lower: Q64x64,
     sqrt_price_upper: Q64x64,
     liquidity: Q64x64,
 ) -> Result<u64> {
-    // Ensure that the lower price is less than the upper price and not zero
+    // Safety: Prevents invalid or degenerate price ranges, which could break AMM invariants or allow attacks.
     if sqrt_price_lower.raw() >= sqrt_price_upper.raw() || sqrt_price_lower.raw() == 0 {
         return Err(MathError::InvalidPriceRange.into());
     }
 
-    // Calculate the price difference between the upper and lower square root prices
+    // Intent: Compute price width in sqrt space, which is the basis for how much token0 is needed.
     let price_diff = sqrt_price_upper.checked_sub(sqrt_price_lower)?;
 
-    // Calculate the numerator as liquidity multiplied by the price difference
+    // Rationale: Multiplying liquidity by price width gives the numerator for the Uniswap v3 formula.
     let numerator = liquidity.checked_mul(price_diff)?;
 
-    // Calculate the denominator as the product of the lower and upper square root prices
-    // This is used to normalize the liquidity based on the price range
+    // Rationale: Denominator normalizes for the geometric mean of the price range, ensuring correct scaling.
     let denominator = sqrt_price_lower.checked_mul(sqrt_price_upper)?;
 
-    // Calculate the result by dividing the numerator by the denominator
-    // This gives the amount of token0 required for the specified liquidity in the price range
+    // Safety: All math is checked to prevent overflow/underflow, which is critical for on-chain safety.
     let result = numerator.checked_div(denominator)?;
 
-    // Extract the amount of token0 from the result
-    // The result is in Q64x64 format, so we shift right by 64
+    // Optimization: Q64x64 to u64 conversion by shifting, as all protocol values are bounded.
     let amount0 = (result.raw() >> 64) as u64;
 
     Ok(amount0)
 }
 
-/// Calculates the amount of token1 required for a given liquidity between two square root price boundaries.
+/// Computes the amount of token1 needed to provide a given liquidity between two price boundaries.
 ///
-/// # Arguments
+/// # Why
+/// This function is the counterpart to `calculate_amount_0_delta`, but for token1. It is used when the price is above the lower boundary.
 ///
-/// * `sqrt_price_lower` - The lower boundary of the price range as a Q64x64 fixed-point number.
-/// * `sqrt_price_upper` - The upper boundary of the price range as a Q64x64 fixed-point number.
-/// * `liquidity` - The amount of liquidity as a Q64x64 fixed-point number.
+/// # Design Rationale
+/// - Uses Q64x64 math for deterministic, overflow-resistant computation.
+/// - Enforces valid price range to prevent protocol-level errors.
+/// - All math is checked for overflow, which is essential for on-chain safety.
 ///
-/// # Returns
+/// # Trade-offs
+/// - Shifts by 64 bits to convert from Q64x64 to integer, which is safe due to protocol bounds.
 ///
-/// Returns `Ok(u64)` with the amount of token1 required, or an error if the input is invalid or an arithmetic operation fails.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The lower price is not less than the upper price.
-/// - Any arithmetic operation overflows or underflows.
-///
-/// # Formula
-///
-/// The calculation is based on the formula:
-/// amount1 = liquidity * (sqrt_price_upper - sqrt_price_lower)
-///
-/// The result is returned as a u64 value.
+/// # Usage
+/// Used by the AMM to determine how much token1 a user must deposit to mint a position, and for withdrawal calculations.
 #[inline(always)]
 fn calculate_amount_1_delta(
     sqrt_price_lower: Q64x64,
     sqrt_price_upper: Q64x64,
     liquidity: Q64x64,
 ) -> Result<u64> {
-    // Ensure that the lower price is less than the upper price
+    // Safety: Prevents invalid or degenerate price ranges.
     if sqrt_price_lower.raw() >= sqrt_price_upper.raw() {
         return Err(MathError::InvalidPriceRange.into());
     }
 
-    // Calculate the price difference between the upper and lower square root prices
+    // Intent: Compute price width in sqrt space, which is the basis for how much token1 is needed.
     let price_diff = sqrt_price_upper.checked_sub(sqrt_price_lower)?;
 
-    // Calculate the result by multiplying the liquidity by the price difference
+    // Rationale: Multiplying liquidity by price width gives the numerator for the Uniswap v3 formula for token1.
     let result = liquidity.checked_mul(price_diff)?;
 
-    // Extract the amount of token1 from the result
-    // The result is in Q64x64 format, so we shift right by 64
-    // This gives the amount of token1 required for the specified liquidity in the price range
+    // Optimization: Q64x64 to u64 conversion by shifting, as all protocol values are bounded.
     let amount1 = (result.raw() >> 64) as u64;
 
     Ok(amount1)
 }
 
-/// Calculates the required amounts of token0 and token1 for a given liquidity position,
-/// based on the current, lower, and upper square root price boundaries.
+/// Determines the required token0 and token1 amounts for a given liquidity position, based on the current price and the position's price range.
 ///
-/// This function determines the amounts of token0 and token1 needed to provide the specified
-/// liquidity, depending on the current price's position relative to the price range:
-/// - If the current price is below the lower boundary, only token0 is required.
-/// - If the current price is above the upper boundary, only token1 is required.
-/// - If the current price is within the range, both token0 and token1 are required.
+/// # Why
+/// This function implements the piecewise logic of Uniswap v3-style concentrated liquidity, where the required tokens depend on the current price's relation to the position's range.
 ///
-/// # Arguments
+/// # Design Rationale
+/// - Optimized for the most common case (active range) to improve branch prediction and runtime efficiency on-chain.
+/// - Enforces all protocol invariants: valid price range, nonzero liquidity, and bounded token amounts.
+/// - Uses Q64x64 math for deterministic, overflow-resistant computation.
+/// - Returns an error if the result would exceed protocol-defined token limits, preventing overflows and DoS vectors.
 ///
-/// * `sqrt_price_current` - The current square root price as a Q64x64 fixed-point number.
-/// * `sqrt_price_lower` - The lower boundary of the price range as a Q64x64 fixed-point number.
-/// * `sqrt_price_upper` - The upper boundary of the price range as a Q64x64 fixed-point number.
-/// * `liquidity` - The amount of liquidity as a Q64x64 fixed-point number.
-///
-/// # Returns
-///
-/// Returns `Ok((u64, u64))` with the amounts of token0 and token1 required, respectively.
-/// Returns an error if the input is invalid or if any arithmetic operation fails.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Any of the price boundaries or liquidity is zero.
-/// - The lower price is not less than the upper price.
-/// - Any arithmetic operation overflows or underflows.
-/// - The resulting token amounts exceed the maximum allowed value.
-///
-/// # Examples
-///
-/// ```
-/// let (amount_0, amount_1) = PriceMath::calculate_amounts_for_liquidity_piecewise(
-///     sqrt_price_current,
-///     sqrt_price_lower,
-///     sqrt_price_upper,
-///     liquidity,
-/// )?;
-/// ```
+/// # Usage
+/// Used by the AMM to calculate how much of each token a user must deposit or withdraw when minting/burning a position, and for position valuation.
 #[inline(always)]
 pub fn calculate_amounts_for_liquidity_piecewise(
     sqrt_price_current: Q64x64,
@@ -157,7 +111,7 @@ pub fn calculate_amounts_for_liquidity_piecewise(
     sqrt_price_upper: Q64x64,
     liquidity: Q64x64,
 ) -> Result<(u64, u64)> {
-    // Validate the input prices and liquidity
+    // Safety: Enforce all protocol invariants up front to prevent invalid state or attacks.
     if sqrt_price_lower.raw() == 0
         || sqrt_price_upper.raw() == 0
         || sqrt_price_lower.raw() >= sqrt_price_upper.raw()
@@ -166,30 +120,25 @@ pub fn calculate_amounts_for_liquidity_piecewise(
         return Err(MathError::InvalidInput.into());
     }
 
-    // Optimized branching - most common case first (active range)
+    // Optimization: Branch on the most common case (active range) first for better performance.
     let (amount_0, amount_1) = if sqrt_price_current.raw() > sqrt_price_lower.raw()
         && sqrt_price_current.raw() < sqrt_price_upper.raw()
     {
-        // Calculate the amounts of token0 and token1 required for the active range
+        // Both tokens are required when the price is within the range.
         let amount_0 = calculate_amount_0_delta(sqrt_price_current, sqrt_price_upper, liquidity)?;
-
         let amount_1 = calculate_amount_1_delta(sqrt_price_lower, sqrt_price_current, liquidity)?;
-
         (amount_0, amount_1)
     } else if sqrt_price_current.raw() <= sqrt_price_lower.raw() {
-        // If the current price is below the lower boundary, only token0 is required
+        // Only token0 is required when price is below the range.
         let amount_0 = calculate_amount_0_delta(sqrt_price_lower, sqrt_price_upper, liquidity)?;
-
         (amount_0, 0)
     } else {
-        // If the current price is above the upper boundary, only token1 is required
+        // Only token1 is required when price is above the range.
         let amount_1 = calculate_amount_1_delta(sqrt_price_lower, sqrt_price_upper, liquidity)?;
-
         (0, amount_1)
     };
 
-    // Ensure that the calculated amounts do not exceed the maximum allowed value
-    // This is to prevent overflow and ensure the amounts are within a reasonable range
+    // Safety: Prevents overflows and ensures protocol limits are respected.
     if amount_0 > MAX_TOKEN_AMOUNT || amount_1 > MAX_TOKEN_AMOUNT {
         return Err(MathError::ExcessiveTokenAmount.into());
     }
@@ -197,29 +146,19 @@ pub fn calculate_amounts_for_liquidity_piecewise(
     Ok((amount_0, amount_1))
 }
 
-/// Calculates the liquidity for a given price range and amounts of token0 and token1.
-/// This function determines the liquidity that can be provided based on the current square root price,
-/// the lower and upper square root prices, and the amounts of token0 and token1 available.
+/// Computes the liquidity that can be provided for a given price range and available token amounts.
 ///
-/// # Arguments
+/// # Why
+/// This function is the inverse of the token amount calculations: it determines how much liquidity a user can mint given their available tokens and the current price range.
 ///
-/// * `sqrt_price_current` - The current square root price as a Q64x64 fixed-point number.
-/// * `sqrt_price_lower` - The lower boundary of the price range as a Q64x64 fixed-point number.
-/// * `sqrt_price_upper` - The upper boundary of the price range as a Q64x64 fixed-point number.
-/// * `amount_0` - The amount of token0 available for liquidity as a `u64`.
-/// * `amount_1` - The amount of token1 available for liquidity as a `u64`.
+/// # Design Rationale
+/// - Uses Q64x64 math for deterministic, overflow-resistant computation.
+/// - Enforces all protocol invariants: valid price range, current price within range, and at least one nonzero token amount.
+/// - Returns the minimum liquidity that can be provided by either token, ensuring the position is fully collateralized and cannot be over-minted.
+/// - Returns an error if the result is zero, preventing dust or non-functional positions.
 ///
-/// # Returns
-/// Returns `Ok(u128)` with the calculated liquidity, or an error if the input is invalid or
-/// if any arithmetic operation fails.
-///
-/// # Errors
-/// Returns an error if:
-/// - The lower price is not less than the upper price.
-/// - The current price is outside the specified range.
-/// - The amounts of token0 and token1 are both zero.
-/// - Any arithmetic operation overflows or underflows.
-/// - The calculated liquidity is zero.
+/// # Usage
+/// Used by the AMM to determine how much liquidity to mint for a user, and for position management.
 pub fn calculate_liquidity(
     sqrt_price_current: Q64x64,
     sqrt_price_lower: Q64x64,
@@ -227,28 +166,20 @@ pub fn calculate_liquidity(
     amount_0: u64,
     amount_1: u64,
 ) -> Result<u128> {
-    // Validate the input prices and amounts
+    // Safety: Enforce all protocol invariants up front to prevent invalid state or attacks.
     if sqrt_price_lower.raw() == 0 || sqrt_price_upper.raw() == 0 {
         return Err(MathError::InvalidPriceRange.into());
     }
-
-    // Ensure that the lower price is less than the upper price
     if sqrt_price_current.raw() <= sqrt_price_lower.raw()
         || sqrt_price_current.raw() >= sqrt_price_upper.raw()
     {
         return Err(MathError::InvalidPriceRange.into());
     }
-
-    // Ensure that at least one of the amounts is non-zero
     if amount_0 == 0 && amount_1 == 0 {
         return Err(MathError::InvalidInput.into());
     }
 
-    // Calculate the liquidity based on the amounts of token0 and token1
-    // This uses the core arithmetic functions to compute the liquidity from the provided amounts
-    // The liquidity is calculated piecewise based on the current price and the price boundaries
-    // If amount_0 is greater than zero, we calculate liquidity from token0; otherwise, we set it to the maximum possible value.
-    // Similarly, if amount_1 is greater than zero, we calculate liquidity from token1; otherwise, we set it to the maximum possible value
+    // Rationale: Compute liquidity from each token, using the core AMM math. If a token is not provided, set its liquidity to max so it doesn't constrain the result.
     let liquidity_0 = if amount_0 > 0 {
         liquidity_from_amount_0(sqrt_price_current, sqrt_price_upper, amount_0)?
     } else {
@@ -260,14 +191,10 @@ pub fn calculate_liquidity(
         u64::MAX as u128
     };
 
-    // The final liquidity is the minimum of the two calculated values
-    // This ensures that the liquidity is constrained by the lesser of the two amounts
-    // If both amounts are zero, the final liquidity will also be zero.
+    // Protocol safety: Only the minimum liquidity is valid, ensuring the position is fully collateralized and cannot be over-minted.
     let final_liquidity = core::cmp::min(liquidity_0, liquidity_1);
 
-    // Ensure that the final liquidity is not zero
-    // This is to prevent invalid liquidity positions and ensure that the position can be used in the AMM
-    // If the final liquidity is zero, we return an error indicating invalid liquidity
+    // Safety: Prevents dust or non-functional positions.
     if final_liquidity == 0 {
         return Err(MathError::InvalidLiquidity.into());
     }
@@ -275,63 +202,32 @@ pub fn calculate_liquidity(
     Ok(final_liquidity)
 }
 
-/// Calculates the USD value of a liquidity position at a given current square root price.
+/// Computes the USD value of a liquidity position at a given price, including token breakdown and range status.
 ///
-/// This function determines the amounts of token0 and token1 held by the position at the specified
-/// current price, then computes their respective USD values using the provided token prices. The total
-/// USD value of the position is also calculated, along with an indicator of whether the position is
-/// currently active (i.e., the current price is within the position's range).
+/// # Why
+/// This function is used for user-facing analytics, risk management, and protocol accounting. It provides a full breakdown of a position's value, which is essential for UI, liquidation logic, and audits.
 ///
-/// # Arguments
+/// # Design Rationale
+/// - Converts ticks to sqrt prices to ensure all math is done in Q64x64, matching protocol invariants.
+/// - Uses the piecewise token amount logic to determine the position's current holdings.
+/// - Computes USD value using provided prices, with overflow checks for safety.
+/// - Returns a struct with all relevant fields for downstream use (UI, risk, etc.).
+/// - Precomputes range status for efficient downstream logic (e.g., UI highlighting, risk checks).
 ///
-/// * `position` - A reference to the `Position` struct, containing the position's tick range and liquidity.
-/// * `current_sqrt_price` - The current square root price as a Q64x64 fixed-point number.
-/// * `token_0_price_usd` - The price of token0 in USD, as a `u64`.
-/// * `token_1_price_usd` - The price of token1 in USD, as a `u64`.
-///
-/// # Returns
-///
-/// Returns `Ok(PositionValue)` containing:
-/// - `amount_0`: The amount of token0 held by the position.
-/// - `amount_1`: The amount of token1 held by the position.
-/// - `value_0_usd`: The USD value of token0 held.
-/// - `value_1_usd`: The USD value of token1 held.
-/// - `total_value_usd`: The total USD value of the position.
-/// - `price_range_active`: A boolean indicating if the current price is within the position's range.
-///
-/// Returns an error if any arithmetic operation fails, if the tick-to-sqrt conversion fails,
-/// or if the token amounts or values overflow.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The tick-to-sqrt conversion fails for the position's tick boundaries.
-/// - The calculation of token amounts or their USD values overflows.
-/// - Any arithmetic operation fails.
-///
-/// # Example
-///
-/// ```rust
-/// let position_value = PriceMath::calculate_position_value_at_price(
-///     &position,
-///     current_sqrt_price,
-///     token_0_price_usd,
-///     token_1_price_usd,
-/// )?;
-/// ```
+/// # Usage
+/// Used by the protocol to show users their position value, by risk management to assess exposure, and by auditors to verify accounting.
 #[inline(always)]
-fn calculate_position_value_at_price(
+pub fn calculate_position_value_at_price(
     position: &Position,
     current_sqrt_price: Q64x64,
     token_0_price_usd: u64,
     token_1_price_usd: u64,
 ) -> Result<PositionValue> {
-    // Calculate the square root prices for the lower and upper ticks of the position
-    // This converts the tick values to square root prices in Q64x64 format
+    // Convert ticks to sqrt prices for protocol-consistent math.
     let sqrt_price_lower = tick_to_sqrt_x64(position.tick_lower)?;
     let sqrt_price_upper = tick_to_sqrt_x64(position.tick_upper)?;
 
-    // Calculate the amounts of token0 and token1 based on the current price and the position's liquidity
+    // Use piecewise logic to determine current token holdings for this position.
     let (amount_0, amount_1) = calculate_amounts_for_liquidity_piecewise(
         current_sqrt_price,
         sqrt_price_lower,
@@ -339,7 +235,7 @@ fn calculate_position_value_at_price(
         position.liquidity,
     )?;
 
-    // Calculate the USD values of token0 and token1 held by the position
+    // Compute USD value for each token, with overflow checks for protocol safety.
     let value_0_usd = if amount_0 <= u32::MAX as u64 && token_0_price_usd <= u32::MAX as u64 {
         (amount_0 * token_0_price_usd) as u128
     } else {
@@ -356,12 +252,12 @@ fn calculate_position_value_at_price(
             .ok_or(MathError::Overflow)?
     };
 
-    // Calculate the total USD value of the position by summing the individual token values
+    // Sum for total value, with overflow check for auditability.
     let total_value_usd = value_0_usd
         .checked_add(value_1_usd)
         .ok_or(MathError::Overflow)?;
 
-    // Precompute price range check for better branch prediction
+    // Precompute range status for efficient downstream use (UI, risk, etc.).
     let price_range_active = current_sqrt_price.raw() >= sqrt_price_lower.raw()
         && current_sqrt_price.raw() < sqrt_price_upper.raw();
 
@@ -375,16 +271,15 @@ fn calculate_position_value_at_price(
     })
 }
 
-/// Represents the value of a position, including token amounts, their USD values,
-/// the total value in USD, and whether the price range is currently active.
+/// Full breakdown of a position's value at a given price, for analytics, risk, and protocol accounting.
 ///
-/// # Fields
-/// - `amount_0`: The amount of token 0 in the position.
-/// - `amount_1`: The amount of token 1 in the position.
-/// - `value_0_usd`: The USD value of token 0 in the position.
-/// - `value_1_usd`: The USD value of token 1 in the position.
-/// - `total_value_usd`: The total USD value of the position (sum of `value_0_usd` and `value_1_usd`).
-/// - `price_range_active`: Indicates if the position's price range is currently active.
+/// # Why
+/// This struct is designed to provide all the information needed for user interfaces, risk management, and audits in a single call.
+///
+/// # Design Rationale
+/// - Includes both token amounts and their USD values for transparency and downstream composability.
+/// - Includes a precomputed range status for efficient UI/risk logic.
+/// - All fields are u64 for compatibility with SPL token accounting and on-chain constraints.
 #[derive(Clone, Debug)]
 pub struct PositionValue {
     pub amount_0: u64,

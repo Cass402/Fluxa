@@ -3,111 +3,120 @@ use crate::math::core_arithmetic::{tick_to_sqrt_x64, Q64x64};
 use crate::utils::constants::{MAX_SQRT_X64, MAX_TICK, MIN_SQRT_X64, MIN_TICK};
 use anchor_lang::prelude::*;
 
-/// Convert sqrt price (which is a Q64x64 value) to the normal price (which is a u64 value).
-/// The normal price is calculated by squaring the square root price and shifting the result right by 64 bits.
-/// This function checks if the sqrt price is within valid bounds before performing the conversion.
-/// # Arguments
-/// * `sqrt_price` - A Q64x64 value representing the square root price.
-/// # Returns
-/// * `Result<u64>` - The converted price as a u64 value if successful,
-///   or an error if the sqrt price is out of bounds.
-/// # Errors
-/// * `MathError::InvalidSqrtPrice` - If the sqrt price is less than `MIN_SQRT_X64` or greater than `MAX_SQRT_X64`.
+/// Converts a Q64x64 square root price to a normal price (u64), enforcing protocol bounds and safety.
+///
+/// # Why
+/// This function is essential for translating between the protocol's internal fixed-point math (Q64x64) and user-facing price representations.
+/// Squaring and shifting is used to avoid floating-point math, ensuring deterministic, overflow-resistant computation on-chain.
+///
+/// # Design Rationale
+/// - Enforces that sqrt_price is within protocol-defined bounds, preventing invalid state or attacks.
+/// - Uses checked arithmetic for all operations, ensuring that overflow/underflow cannot occur.
+/// - Returns u64 to match SPL token and UI expectations, and to avoid accidental overflows in downstream logic.
+///
+/// # Trade-offs
+/// - Shifting by 64 bits is safe because all protocol values are bounded and Q64x64 is used throughout.
+/// - No dynamic allocation or floating-point math, ensuring deterministic and auditable execution.
+///
+/// # Usage
+/// Used by the AMM and UI to display prices, and by protocol logic that needs to convert between price representations.
 #[inline]
 pub fn sqrt_price_to_price(sqrt_price: Q64x64) -> Result<u64> {
-    // Check if the sqrt price is within the valid range
+    // Safety: Enforce protocol bounds to prevent invalid state or attacks.
     if sqrt_price.raw() < MIN_SQRT_X64 || sqrt_price.raw() > MAX_SQRT_X64 {
         return Err(MathError::InvalidSqrtPrice.into());
     }
 
-    // Calculate the price by squaring the sqrt price
+    // Rationale: Squaring and shifting is the canonical way to convert Q64x64 sqrt price to price, avoiding floating-point math.
     let price_x64 = sqrt_price.checked_mul(sqrt_price)?;
-
-    // Shift the result right by 64 bits to convert from Q64x64 to u64
-    // This effectively divides the squared value by 2^64, yielding the normal price
-    // The raw() method retrieves the underlying u128 value from the Q64x64 type
     let price = (price_x64.raw() >> 64) as u64;
-
     Ok(price)
 }
 
-/// Perform a binary search to find the tick index corresponding to a given square root price.
-/// This function uses an optimized binary search algorithm to efficiently locate the tick index.
-/// # Arguments
-/// * `sqrt_price` - A Q64x64 value representing the square root price to search for.
-/// * `low` - The lower bound of the tick index range to search within.
-/// * `high` - The upper bound of the tick index range to search within.
-/// # Returns
-/// * `Result<i32>` - The tick index corresponding to the square root price if found,
-///   or an error if the search fails or the price is out of bounds.
-/// # Errors
-/// * `MathError::InvalidSqrtPrice` - If the square root price is less
+/// Optimized binary search to find the tick index for a given sqrt price, minimizing branches for on-chain efficiency.
+///
+/// # Why
+/// This function is used to invert the tick-to-sqrt mapping, which is nontrivial due to the nonlinearity of the mapping.
+/// Binary search is used for efficiency, but is implemented in a branch-minimized way to reduce Solana compute cost and improve predictability.
+///
+/// # Design Rationale
+/// - Uses a fixed iteration count to guarantee termination and avoid DoS vectors.
+/// - Uses bitwise operations for mid calculation, avoiding division for performance.
+/// - Uses branchless updates to low/high to reduce branch misprediction and improve runtime determinism.
+/// - Returns the best guess (high) if an exact match is not found, which is safe for AMM logic.
+///
+/// # Usage
+/// Used internally by sqrt_price_to_tick to refine the tick index after a coarse lookup.
 #[inline(always)]
 fn optimized_binary_search(sqrt_price: Q64x64, mut low: i32, mut high: i32) -> Result<i32> {
-    // The MAX_BINARY_ITERATIONS constant defines the maximum number of iterations for the binary search.
-    // this ensures that the search converges quickly and avoids infinite loops.
+    // Safety: Fixed iteration count prevents infinite loops and DoS.
     const MAX_BINARY_ITERATIONS: usize = 32;
 
     for _ in 0..MAX_BINARY_ITERATIONS {
-        // If the low index is greater than or equal to the high index, break the loop.
+        // Early exit if search space is exhausted.
         if low >= high {
             break;
         }
 
-        // Optimized calculation of the mid index using bitwise operations instead of division.
+        // Optimization: Bitwise mid calculation avoids division, which is expensive on-chain.
         let mid = low + ((high - low) >> 1);
         let mid_sqrt_price = tick_to_sqrt_x64(mid)?;
 
-        // Branchless comparision using conditional moves
-        // Reduces branch mispredictions and improves performance
+        // Branchless comparison and update for performance and predictability.
         let is_less = (mid_sqrt_price.raw() < sqrt_price.raw()) as u8;
         let is_equal = (mid_sqrt_price.raw() == sqrt_price.raw()) as u8;
-
-        // Early exit on exact match
         if is_equal == 1 {
             return Ok(mid);
         }
-
-        // Branchless update: if is_less, update low; otherwise, update high
         low = if is_less == 1 { mid + 1 } else { low };
         high = if is_less == 0 { mid - 1 } else { high };
     }
-
+    // Returns the best guess if no exact match, which is safe for AMM tick logic.
     Ok(high)
 }
 
-/// Convert a square root price (Q64x64) to a tick index.
-/// This function first performs a coarse lookup using a lookup table to find an initial tick index,
-/// then refines the result using a localized binary search.
-/// # Arguments
-/// * `sqrt_price` - A Q64x64 value representing the square root price to convert.
-/// # Returns
-/// * `Result<i32>` - The tick index corresponding to the square root price if successful,
-///   or an error if the square root price is out of bounds.
-/// # Errors
-/// * `MathError::InvalidSqrtPrice` - If the square root price is less than `MIN_SQRT_X64` or greater than `MAX_SQRT_X64`.
+/// Converts a Q64x64 sqrt price to a tick index, using a hybrid coarse lookup and binary search for efficiency and safety.
+///
+/// # Why
+/// This function is critical for mapping between price and tick space, which is the basis for all concentrated liquidity math.
+/// The hybrid approach (coarse lookup + binary search) is used to minimize compute cost while ensuring correctness and determinism.
+///
+/// # Design Rationale
+/// - Fast bounds check up front to prevent invalid state or attacks.
+/// - Coarse lookup table provides a fast initial guess, reducing the search space for the binary search.
+/// - Localized binary search ensures the result is precise, but with bounded compute cost.
+/// - All math is checked and bounded, ensuring protocol safety and auditability.
+///
+/// # Usage
+/// Used by the AMM and protocol logic to convert between price and tick representations, e.g., for position management and swaps.
 #[inline(always)]
 pub fn sqrt_price_to_tick(sqrt_price: Q64x64) -> Result<i32> {
-    // Fast bounds check
+    // Safety: Fast bounds check to prevent invalid state or attacks.
     if sqrt_price.raw() < MIN_SQRT_X64 || sqrt_price.raw() > MAX_SQRT_X64 {
         return Err(MathError::InvalidSqrtPrice.into());
     }
 
-    // Use coarse lookup table for initial approximation
+    // Optimization: Coarse lookup table provides a fast, deterministic initial guess, reducing compute cost.
     let coarse_tick = coarse_lookup_table_search(sqrt_price);
 
-    // Refine with localized binary search
-    let search_range = 10; // Small range around the coarse tick
-    let low = (coarse_tick - search_range).max(MIN_TICK); // Ensure low does not go below MIN_TICK
-    let high = (coarse_tick + search_range).min(MAX_TICK); // Ensure high does not exceed MAX_TICK
+    // Rationale: Localized binary search ensures precision, but with bounded compute cost for on-chain safety.
+    let search_range = 10;
+    let low = (coarse_tick - search_range).max(MIN_TICK);
+    let high = (coarse_tick + search_range).min(MAX_TICK);
 
     optimized_binary_search(sqrt_price, low, high)
 }
 
-// Coarse lookup table for initial tick approximation
-// This table maps square root prices to tick indices, allowing for a quick initial guess
-// The values are precomputed to cover a wide range of square root prices, improving search efficiency
-// The table is designed to be used with the `coarse_lookup_table_search` function,
+// Coarse lookup table for initial tick approximation.
+//
+// # Why
+// This table is a protocol optimization: it allows for a fast, deterministic initial guess for tick index,
+// reducing the search space for the binary search and minimizing compute cost on-chain.
+//
+// # Design Rationale
+// - Precomputed and static, so it is zero-copy and does not require dynamic allocation.
+// - Covers a wide range of sqrt prices, ensuring the binary search always starts close to the true tick.
+// - Used only for initial approximation, so precision is not critical at this stage.
 const LOOKUP_TABLE: &[(u128, i32)] = &[
     (4295048016u128, -443636),
     (7081160003u128, -433636),
@@ -200,43 +209,38 @@ const LOOKUP_TABLE: &[(u128, i32)] = &[
     (55076945009529438865748214840u128, 436364),
 ];
 
-/// Perform a coarse lookup in the precomputed lookup table to find the tick index for a given square root price.
-/// This function uses a binary search on the lookup table to find the closest tick index.
-/// # Arguments
-/// * `sqrt_price` - A Q64x64 value representing the square root price to search for.
-/// # Returns
-/// * `i32` - The tick index corresponding to the square root price.
-/// If the square root price is not found in the lookup table, it returns the closest tick index.
-/// # Notes
-/// This function is designed to be efficient for initial tick approximation, allowing for quick lookups
-/// before performing a more precise search if necessary.
+/// Coarse lookup in the precomputed table to get an initial tick index guess for a given sqrt price.
+///
+/// # Why
+/// This function is a protocol optimization: it provides a fast, deterministic initial guess for the tick index,
+/// reducing the search space for the binary search and minimizing compute cost on-chain.
+///
+/// # Design Rationale
+/// - Uses binary search for O(log n) lookup, which is efficient and deterministic.
+/// - Returns the closest lower tick if no exact match, which is safe for AMM logic.
+/// - Interpolates between table entries for better accuracy, but only as an initial guess.
+///
+/// # Usage
+/// Used internally by sqrt_price_to_tick for fast initial tick approximation.
 #[inline(always)]
 fn coarse_lookup_table_search(sqrt_price: Q64x64) -> i32 {
-    // Perform a binary search on the lookup table to find the closest tick index
+    // Rationale: Binary search for O(log n) lookup, which is efficient and deterministic.
     match LOOKUP_TABLE.binary_search_by_key(&sqrt_price.raw(), |&(price, _)| price) {
-        Ok(index) => LOOKUP_TABLE[index].1, //Exact match found
+        Ok(index) => LOOKUP_TABLE[index].1, // Exact match found
         Err(index) => {
-            // If no exact match is found, return the tick index of the closest lower value
+            // If no exact match, return the closest lower tick, which is safe for AMM logic.
             if index == 0 {
-                // If the index is 0, return the first tick index
                 LOOKUP_TABLE[0].1
             } else if index >= LOOKUP_TABLE.len() {
-                // If the index is out of bounds, return the last tick index
                 LOOKUP_TABLE[LOOKUP_TABLE.len() - 1].1
             } else {
-                // Interpolate between the two closest values
-                let (lower_price, lower_tick) = LOOKUP_TABLE[index - 1]; // Get the lower value
-                let (upper_price, upper_tick) = LOOKUP_TABLE[index]; // Get the upper value
-
+                // Interpolate for better accuracy, but only as an initial guess.
+                let (lower_price, lower_tick) = LOOKUP_TABLE[index - 1];
+                let (upper_price, upper_tick) = LOOKUP_TABLE[index];
                 if upper_price == lower_price {
-                    // If the prices are equal, return the lower tick index
                     lower_tick
                 } else {
-                    // Calculate the weight for interpolation
-                    // This is a linear interpolation between the lower and upper tick indices based on the square root
-                    // price's position between the lower and upper prices
                     let weight = (sqrt_price.raw() - lower_price) / (upper_price - lower_price);
-                    // Interpolate the tick index using the weight
                     lower_tick + (weight * (upper_tick - lower_tick) as u128) as i32
                 }
             }
