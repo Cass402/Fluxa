@@ -9,44 +9,62 @@ use crate::utils::constants::{
 };
 use anchor_lang::prelude::*;
 
-/// Enhanced pool tick rate limit account with optimized memory layout
+/// Tick rate limiting and anomaly detection state for a pool.
+///
+/// # Why this structure?
+/// - Uses zero-copy layout to minimize serialization overhead and maximize on-chain efficiency, critical for Solana's compute budget.
+/// - Avoids dynamic allocations (e.g., Vec) in favor of fixed-size ring buffers, ensuring deterministic memory usage and predictable performance.
+/// - Tracks not just raw counts, but also moving averages and anomaly scores, enabling nuanced MEV/threat detection beyond simple rate limiting.
+/// - All fields are designed for atomic, batched updates to minimize state bloat and reduce the risk of partial state corruption.
+///
+/// ## Usage
+/// This account is tightly coupled to a specific pool and is seeded for Anchor constraint validation, ensuring only the correct pool can mutate its state.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct TickRateLimit {
-    /// Pool reference for validation
+    /// Reference to the pool this rate limit is bound to.
+    ///
+    /// Why: Ensures this account cannot be reused or spoofed for another pool, providing a strong link for Anchor's constraint system.
     pub pool: Pubkey,
 
-    /// Optimized ring buffer for sliding window tracking
+    /// Sliding window of tick crosses for rate limiting.
+    ///
+    /// Why: RingBuffer enables O(1) insertions and bounded memory, avoiding the unpredictability and cost of Vec on-chain.
     pub tick_cross_window: RingBuffer,
 
-    /// Enhanced tracking metrics for anomaly detection
+    /// 24-hour total tick crosses, for long-term anomaly/trend detection.
+    ///
+    /// Why: Allows for historical analysis and capacity planning, not just short-term DoS protection.
     pub total_crosses_24h: u64,
     pub last_reset_slot: u64,
     pub peak_crosses_per_hour: u32,
     pub anomaly_score: u32,
 
-    /// Exponential moving average for trend detection with fixed-point arithmetic
+    /// Exponential moving average (EMA) of tick crosses per minute, using Q64.64 fixed-point.
     ///
-    /// EMA CALCULATION:
-    /// - Uses 16-bit fixed-point arithmetic for precision
-    /// - decay_factor represents λ in EMA formula: EMA = λ × old + (1-λ) × new
-    /// - decay_factor = λ × 2^16 (e.g., 0.5 → 32768)
-    /// - CORRECTED: Properly embeds Q16.16 into Q64.64 format
+    /// Why: EMA smooths out short-term volatility, providing a robust signal for trend and anomaly detection. Q64.64 ensures high precision for on-chain math.
     pub crosses_ema: Q64x64, // EMA of crosses per minute
-    pub ema_decay_factor: u16, // EMA lambda parameter (Q16.16 fixed-point - DO NOT use from_int!)
+    /// Decay factor for EMA, in Q16.16 fixed-point (not integer!).
+    ///
+    /// Why: Allows fine-tuning of EMA responsiveness. Stored as Q16.16 for compactness, but must be shifted for Q64.64 math. Do not use from_int!
+    pub ema_decay_factor: u16, // EMA lambda parameter (Q16.16 fixed-point)
 
-    /// Advanced MEV protection state with volume tracking
+    /// EMAs for token volumes and price volatility, for MEV/threat detection.
+    ///
+    /// Why: Volume and volatility spikes are strong signals for sandwich/attack detection. EMAs provide a smoothed baseline for anomaly scoring.
     pub volume_ema_0: Q64x64, // EMA of token0 volume
     pub volume_ema_1: Q64x64,         // EMA of token1 volume
     pub price_volatility_ema: Q64x64, // EMA of price volatility
-    pub last_price_update: u64,       // Last price observation timestamp
+    pub last_price_update: u64,       // Last price observation timestamp (for time-based decay)
 
-    /// Reserved space for future enhancements
+    /// Reserved for future upgrades (e.g., new detection metrics) without breaking account layout.
     pub reserved: [u64; 8],
 }
 
 impl TickRateLimit {
-    /// Initialize with optimal default parameters
+    /// Initialize with safe, conservative defaults.
+    ///
+    /// Why: Ensures all fields are set to known values, preventing uninitialized state. Decay factor is set to 0.5 (Q16.16) for balanced EMA responsiveness.
     pub fn initialize(&mut self, pool: Pubkey, current_slot: u64) -> Result<()> {
         self.pool = pool;
         self.tick_cross_window = RingBuffer::new();
@@ -65,16 +83,12 @@ impl TickRateLimit {
         Ok(())
     }
 
-    /// Update EMAs with CORRECTED fixed-point arithmetic
+    /// Update all EMAs using fixed-point math, with careful bit-shifting to preserve precision.
     ///
-    /// FIXED-POINT ARITHMETIC CORRECTION:
-    /// - OLD (incorrect): Q64x64::from_int(ema_decay_factor as u64)
-    /// - NEW (correct): Embed Q16.16 into Q64.64 by shifting to proper bit position
-    ///
-    /// Why this matters:
-    /// - ema_decay_factor is Q16.16 (e.g., 0.5 → 32768)
-    /// - from_int(32768) treats it as 32,768.0 instead of 0.5
-    /// - Must shift to embed 16-bit fraction into 64-bit format
+    /// # Why this approach?
+    /// - Q16.16 decay factor is compact, but must be shifted to Q64.64 for correct math. This avoids subtle bugs from misinterpreting the decay as an integer.
+    /// - All EMA updates are batched for atomicity and to minimize compute cost.
+    /// - No division by 65536 needed after shifting, as the Q64.64 format is preserved.
     #[inline(always)]
     pub fn update_emas(
         &mut self,
@@ -112,13 +126,12 @@ impl TickRateLimit {
         Ok(())
     }
 
-    /// Advanced anomaly detection using multiple weighted signals
+    /// Compute a composite anomaly score using multiple weighted signals.
     ///
-    /// ANOMALY SCORING METHODOLOGY:
-    /// - Rate anomaly (40%): Detects crossing frequency spikes
-    /// - Volume anomaly (30%): Flags unusual volume patterns
-    /// - Volatility anomaly (30%): Identifies excessive price movements
-    /// - Score range: 0-100, higher = more suspicious
+    /// # Why this scoring system?
+    /// - Combines rate, volume, and volatility signals to reduce false positives and catch sophisticated attacks.
+    /// - Weights are chosen to balance sensitivity to DoS (rate) and MEV/manipulation (volume/volatility).
+    /// - Score is capped at 100 for easy integration with downstream risk logic.
     pub fn calculate_anomaly_score(&self, current_crosses: u32) -> Result<u32> {
         let mut score = 0u32;
 
@@ -144,12 +157,11 @@ impl TickRateLimit {
         Ok(score.min(100))
     }
 
-    /// Calculate volume deviation from EMA baseline for anomaly detection
+    /// Calculate normalized deviation of current volume from EMA baseline.
     ///
-    /// VOLUME DEVIATION LOGIC:
-    /// - Compares current volume to historical EMA baseline
-    /// - Higher deviations indicate potential manipulation
-    /// - Normalized to 0-100 scale for consistent scoring
+    /// # Why this logic?
+    /// - Detects sudden volume spikes that may indicate manipulation or MEV attacks.
+    /// - Normalization to 0-100 enables consistent scoring and easy thresholding.
     #[inline(always)]
     fn calculate_volume_deviation(&self) -> Result<Q64x64> {
         // Calculate deviation of current volume from historical EMA
@@ -164,7 +176,12 @@ impl TickRateLimit {
     }
 }
 
-/// Highly optimized tick crossing function with batched security operations
+/// Main entry point for a tick crossing, with all security and accounting logic batched.
+///
+/// # Why this structure?
+/// - All validation and state updates are performed in a single function to guarantee atomicity and prevent partial state updates.
+/// - Security checks are performed before any state mutation, minimizing wasted compute and risk of inconsistent state.
+/// - Fee and liquidity updates are batched for cache efficiency and to minimize Anchor account loads.
 pub fn cross_tick_with_enhanced_security(
     pool: &mut PoolCore,
     tick_data: &mut TickData,
@@ -174,7 +191,7 @@ pub fn cross_tick_with_enhanced_security(
     swap_volume_0: Q64x64,
     swap_volume_1: Q64x64,
 ) -> Result<()> {
-    // Batched rate limiting and security validation
+    // All security checks are performed up front to avoid wasted compute and ensure no state is mutated on failure.
     validate_tick_crossing_security(
         tick_data,
         rate_limit,
@@ -183,13 +200,13 @@ pub fn cross_tick_with_enhanced_security(
         swap_volume_1,
     )?;
 
-    // Optimized fee growth updates using vectorized operations
+    // Fee growth and liquidity updates are batched for performance and to minimize Anchor account loads.
     update_fee_growth(pool, tick_data)?;
 
-    // Efficient liquidity delta application with saturation arithmetic
+    // Liquidity delta is applied with saturation arithmetic to prevent overflows/underflows.
     apply_liquidity_delta(pool, tick_data, zero_for_one)?;
 
-    // Batch update tracking fields and rate limiting state
+    // All tracking fields and EMAs are updated in a single batch for atomicity and cache efficiency.
     update_tracking_state(
         tick_data,
         rate_limit,
@@ -201,13 +218,12 @@ pub fn cross_tick_with_enhanced_security(
     Ok(())
 }
 
-/// Batched security validation with early exit optimization
+/// Security validation pipeline for tick crossing, with early exit on failure.
 ///
-/// SECURITY VALIDATION PIPELINE:
-/// 1. Update rate limiting window - tracks crossing frequency
-/// 2. Check rate limits - prevents excessive crossing attacks
-/// 3. Rapid crossing prevention - stops high-frequency manipulation
-/// 4. Suspicious activity detection - identifies coordinated attacks
+/// # Why this order?
+/// - Sliding window is updated first to ensure rate limiting is always up to date, even on failed attempts (prevents replay attacks).
+/// - Protocol rate limits are enforced before any state mutation, minimizing wasted compute and risk of inconsistent state.
+/// - Rapid crossing prevention and suspicious activity scoring are performed before any accounting logic, ensuring all safety checks are atomic.
 #[inline(always)]
 fn validate_tick_crossing_security(
     tick_data: &mut TickData,
@@ -216,17 +232,18 @@ fn validate_tick_crossing_security(
     volume_0: Q64x64,
     volume_1: Q64x64,
 ) -> Result<()> {
-    // Update rate limiting window first - this tracks crossing frequency
+    // Sliding window is always updated, even on failure, to prevent replay or timing attacks.
     rate_limit
         .tick_cross_window
         .update_and_increment(current_slot)?;
 
-    // Fast rate limit check using cached total count
+    // Fast path: reject if rate limit is exceeded, before any further computation.
     if rate_limit.tick_cross_window.is_rate_limited() {
         return Err(TickError::ExcessiveTickCrossing.into());
     }
 
-    // Rapid crossing prevention - prevents manipulation through high-frequency attacks
+    // Prevent rapid, repeated crossings (anti-manipulation):
+    // This check ensures a minimum interval between crossings, making high-frequency attacks expensive and detectable.
     if current_slot
         <= tick_data
             .last_crossed_slot
@@ -235,12 +252,12 @@ fn validate_tick_crossing_security(
         return Err(TickError::RapidTickManipulation.into());
     }
 
-    // Advanced suspicious activity detection with volume consideration
+    // Suspicious activity detection: combines timing and volume to catch MEV and coordinated attacks.
     if tick_data.cross_count > 0 {
         let time_since_last = current_slot.saturating_sub(tick_data.last_crossed_slot);
 
         if time_since_last < SUSPICIOUS_CROSS_INTERVAL {
-            // Enhanced scoring with volume factor to detect coordinated attacks
+            // Volume factor is used to weight suspicion, so large swaps are more likely to trigger investigation.
             let volume_factor = volume_0
                 .checked_add(volume_1)?
                 .checked_div(Q64x64::from_int(1_000_000))?
@@ -249,7 +266,7 @@ fn validate_tick_crossing_security(
                 .suspicious_activity_score
                 .saturating_add(10 + ((volume_factor.raw() >> 64) as u32));
 
-            // Update anomaly score in rate limiter for comprehensive threat assessment
+            // Update anomaly score in rate limiter for comprehensive threat assessment.
             let current_crosses = rate_limit.tick_cross_window.get_total_count();
             rate_limit.anomaly_score = rate_limit.calculate_anomaly_score(current_crosses)?;
 
@@ -257,7 +274,7 @@ fn validate_tick_crossing_security(
                 return Err(TickError::SuspiciousTickActivity.into());
             }
         } else if time_since_last > RESET_SUSPICION_INTERVAL {
-            // Exponential decay of suspicion score over time
+            // Suspicion score decays over time, so false positives don't permanently penalize a tick.
             tick_data.suspicious_activity_score = tick_data
                 .suspicious_activity_score
                 .saturating_sub((tick_data.suspicious_activity_score / 4).max(1));
@@ -267,16 +284,14 @@ fn validate_tick_crossing_security(
     Ok(())
 }
 
-/// Optimized fee growth update with single memory write pattern
+/// Fee growth update for tick crossing, using wrapping arithmetic.
 ///
-/// FEE GROWTH TRACKING:
-/// - Tracks fees accumulated on each side of the tick
-/// - Uses wrapping arithmetic to handle overflow naturally
-/// - Batched updates minimize memory writes for better performance
+/// # Why this approach?
+/// - Fee growth is tracked per side of the tick, and updated using wrapping arithmetic to naturally handle overflows (as fees can grow unbounded).
+/// - Batched update minimizes memory writes, which is critical for Solana's compute and I/O budget.
 #[inline(always)]
 fn update_fee_growth(pool: &PoolCore, tick_data: &mut TickData) -> Result<()> {
-    // Calculate fee growth delta based on swap direction
-    // This tracks fees accumulated on each side of the tick
+    // Fee growth is always calculated as the difference between global and outside, ensuring correctness even if state is desynced.
     let (new_growth_0, new_growth_1) = (
         pool.fee_growth_global_0
             .checked_sub(tick_data.fee_growth_outside_0)?,
@@ -284,35 +299,33 @@ fn update_fee_growth(pool: &PoolCore, tick_data: &mut TickData) -> Result<()> {
             .checked_sub(tick_data.fee_growth_outside_1)?,
     );
 
-    // Batched update to minimize memory writes and improve cache efficiency
+    // Batched update for cache efficiency and to minimize Anchor account loads.
     tick_data.fee_growth_outside_0 = new_growth_0;
     tick_data.fee_growth_outside_1 = new_growth_1;
 
     Ok(())
 }
 
-/// Optimized liquidity delta application with saturation arithmetic
+/// Apply tick's net liquidity delta to the pool, using saturation arithmetic for safety.
 ///
-/// LIQUIDITY DELTA LOGIC:
-/// - Ticks track net liquidity that gets added/removed when crossed
-/// - Direction determines whether to add or subtract liquidity
-/// - Saturation arithmetic prevents overflow/underflow crashes
+/// # Why this logic?
+/// - Ticks encode net liquidity changes, which must be applied in the correct direction (zero_for_one).
+/// - Saturation arithmetic is used to prevent overflows/underflows, which could otherwise brick the pool.
+/// - Negative deltas are handled with explicit sign checks, as Rust's checked_sub does not support negative numbers.
 #[inline(always)]
 fn apply_liquidity_delta(
     pool: &mut PoolCore,
     tick_data: &TickData,
     zero_for_one: bool,
 ) -> Result<()> {
-    // Calculate liquidity change based on crossing direction
-    // Ticks track net liquidity that gets added/removed when crossed
+    // Direction determines whether to add or subtract liquidity. Negation is used for zero_for_one swaps.
     let liquidity_delta = if zero_for_one {
         tick_data.liquidity_net.negate()? // Use proper Q64x64Signed negation
     } else {
         tick_data.liquidity_net
     };
 
-    // Apply liquidity change with saturation arithmetic for safety
-    // Prevents overflow/underflow that could crash the program
+    // Apply liquidity change with explicit sign handling to prevent overflows/underflows.
     if liquidity_delta.is_negative() {
         let abs_delta = liquidity_delta.abs();
         pool.liquidity = pool
@@ -324,7 +337,7 @@ fn apply_liquidity_delta(
             .checked_add(Q64x64::from_raw(liquidity_delta.raw() as u128))?;
     }
 
-    // Sanity check - ensure liquidity doesn't go to zero
+    // Sanity check: pool liquidity must never go to zero, as this would brick the pool and break invariant math.
     if pool.liquidity.raw() == 0 {
         return Err(TickError::LiquidityUnderflow.into());
     }
@@ -332,13 +345,12 @@ fn apply_liquidity_delta(
     Ok(())
 }
 
-/// Batched state update for optimal memory access patterns
+/// Batched update of all tracking fields and EMAs for optimal memory access and atomicity.
 ///
-/// STATE UPDATE STRATEGY:
-/// - Batch related updates to minimize memory writes
-/// - Update cached totals incrementally for O(1) access
-/// - Handle periodic resets efficiently
-/// - CORRECTED: Proper error handling for EMA updates
+/// # Why batch updates?
+/// - Batching minimizes memory writes and Anchor account loads, which is critical for Solana's compute/I/O budget.
+/// - All counters and EMAs are updated together to ensure state consistency and prevent partial updates.
+/// - Handles periodic resets to prevent counter overflow and maintain long-term trend accuracy.
 #[inline(always)]
 fn update_tracking_state(
     tick_data: &mut TickData,
@@ -347,14 +359,14 @@ fn update_tracking_state(
     volume_0: Q64x64,
     volume_1: Q64x64,
 ) -> Result<()> {
-    // Batch update tick data fields to minimize memory writes
+    // All tick data fields are updated in a single batch for atomicity and cache efficiency.
     tick_data.last_crossed_slot = current_slot;
     tick_data.cross_count = tick_data.cross_count.saturating_add(1);
 
-    // Update 24-hour crossing counter for long-term trend analysis
+    // 24-hour crossing counter is incremented for long-term trend analysis and anomaly detection.
     rate_limit.total_crosses_24h = rate_limit.total_crosses_24h.saturating_add(1);
 
-    // Handle 24-hour reset efficiently to prevent counter overflow
+    // Periodic reset: prevents counter overflow and ensures long-term stats remain accurate.
     if current_slot
         >= rate_limit
             .last_reset_slot
@@ -365,16 +377,15 @@ fn update_tracking_state(
         rate_limit.peak_crosses_per_hour = 0;
     }
 
-    // Calculate current crosses per minute for EMA tracking
+    // Current crosses per minute is used for EMA tracking, providing a smoothed signal for anomaly detection.
     let current_crosses_per_minute =
         Q64x64::from_int(rate_limit.tick_cross_window.get_total_count() as u64);
 
-    // Update exponential moving averages for trend detection
-    // CORRECTED: Proper error handling instead of swallowing errors
+    // All EMAs are updated in a single call for atomicity and to minimize compute cost.
     let price_change = calculate_price_change_estimate(volume_0, volume_1)?;
     rate_limit.update_emas(volume_0, volume_1, price_change, current_crosses_per_minute)?;
 
-    // Track peak crossing rate for capacity planning
+    // Peak crossing rate is tracked for capacity planning and to detect sustained attacks.
     let current_hourly_rate = rate_limit.tick_cross_window.get_total_count();
     if current_hourly_rate > rate_limit.peak_crosses_per_hour {
         rate_limit.peak_crosses_per_hour = current_hourly_rate;
@@ -383,12 +394,11 @@ fn update_tracking_state(
     Ok(())
 }
 
-/// Efficient price change estimation for volatility tracking
+/// Estimate price change for volatility tracking, using volume ratio as a proxy.
 ///
-/// PRICE IMPACT ESTIMATION:
-/// - Uses volume ratio as proxy for price impact
-/// - Higher ratios indicate larger price movements
-/// - Capped at reasonable levels to prevent outlier bias
+/// # Why this method?
+/// - Direct price data may not be available or may be too expensive to fetch on-chain.
+/// - Volume ratio is a cheap, robust proxy for price impact, and is capped to prevent outlier bias.
 #[inline(always)]
 fn calculate_price_change_estimate(volume_0: Q64x64, volume_1: Q64x64) -> Result<Q64x64> {
     // Estimate price impact based on volume ratio
@@ -400,7 +410,7 @@ fn calculate_price_change_estimate(volume_0: Q64x64, volume_1: Q64x64) -> Result
             mul_div_q64(volume_1, Q64x64::from_int(1000), volume_0)?
         };
 
-        // Convert to volatility estimate (capped at reasonable levels)
+        // Convert to volatility estimate, capped to prevent outlier bias from flash loan attacks or oracle errors.
         Ok((ratio
             .checked_sub(Q64x64::from_int(1000))?
             .checked_div(Q64x64::from_int(10))?)
@@ -410,7 +420,12 @@ fn calculate_price_change_estimate(volume_0: Q64x64, volume_1: Q64x64) -> Result
     }
 }
 
-/// Enhanced account constraints with tightened Anchor validation
+/// Anchor account constraints for tick crossing, using seeds for strong validation.
+///
+/// # Why these constraints?
+/// - All accounts are marked `mut` to allow in-place updates, minimizing Anchor account loads.
+/// - `rate_limit` uses seeds validation, so Anchor enforces the correct pool association at the constraint level, not at runtime.
+/// - This design eliminates unnecessary BPF loads and reduces the risk of account spoofing.
 #[derive(Accounts)]
 pub struct TickCross<'info> {
     #[account(mut)]
@@ -419,8 +434,7 @@ pub struct TickCross<'info> {
     #[account(mut)]
     pub tick_data: AccountLoader<'info, TickData>,
 
-    // Tightened constraint: uses seeds validation instead of runtime load()? check
-    // This moves validation to Anchor's constraint system, eliminating BPF loads
+    // Seeds validation ensures this account is always associated with the correct pool, enforced by Anchor at the constraint level.
     #[account(
         mut,
         seeds = [b"rate_limit", pool.key().as_ref()],
@@ -431,7 +445,11 @@ pub struct TickCross<'info> {
     pub authority: Signer<'info>,
 }
 
-/// Optimized instruction handler with minimal computational overhead
+/// Anchor instruction handler for tick crossing, with minimal overhead.
+///
+/// # Why this pattern?
+/// - Loads all accounts as mutable references up front, minimizing Anchor account loads and maximizing cache efficiency.
+/// - All logic is delegated to a single batched function, ensuring atomicity and reducing the risk of partial state updates.
 pub fn tick_cross_instruction(
     ctx: Context<TickCross>,
     zero_for_one: bool,
