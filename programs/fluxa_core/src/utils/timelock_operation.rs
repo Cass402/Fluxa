@@ -1,128 +1,146 @@
 //! Timelock Operation Management with Individual PDA Accounts
 //!
-//! This module provides timelock functionality using separate PDA accounts
-//! for each operation, enabling efficient and scalable governance.
-//! Uses Anchor's built-in PDA validation for security.
+//! # Why
+//! This module implements timelock governance using a separate PDA account for each operation, rather than a monolithic queue or array.
+//! This design enables scalable, parallel, and auditable governance actions, avoids dynamic allocation, and leverages Anchor's PDA validation for security.
+//!
+//! # Design Rationale
+//! - Each operation is a zero-copy account, allowing for efficient, deterministic state management and easy auditability.
+//! - Using individual PDAs prevents state bloat, enables parallel processing, and avoids the risks of a single point of failure or contention.
+//! - All timing, confirmation, and execution logic is enforced on-chain, making governance actions transparent and tamper-resistant.
+//! - Bitmaps and fixed-size arrays are used for confirmation tracking, avoiding Vec and ensuring deterministic compute.
+//! - All status and type fields are encoded as enums or bitflags for clarity and efficient state transitions.
 use crate::error::PdaSecurityAuthorityError;
 use crate::utils::constants::{MAX_DELAY, MIN_DELAY};
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 
 /// Individual Timelock Operation Account
+///
+/// # Why
+/// Each timelock operation is stored in its own PDA account, enabling scalable, parallel, and auditable governance actions.
+/// This avoids the complexity and risk of a global queue, and allows for efficient zero-copy access and state transitions.
+///
+/// # Design Rationale
+/// - All fields are fixed-size and zero-copy for deterministic compute and auditability.
+/// - Confirmation tracking uses a bitmap for up to 64 signers, enabling atomic, efficient multi-sig without dynamic allocation.
+/// - Status and type fields are encoded as enums for clarity and protocol safety.
+/// - Reserved space is included for future upgrades without breaking account layout.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct TimelockOperation {
     /// Pool core and operation identification
-    /// 'pool_core' - The public key of the pool core associated with this operation.
-    /// 'operation_id' - Unique identifier for the operation.
-    /// 'operation_type' - Type of the operation (e.g., upgrade, parameter change).
+    ///
+    /// # Why
+    /// These fields uniquely identify the operation and its context, ensuring that each governance action is traceable and auditable.
     pub pool_core: Pubkey,
     pub operation_id: u64,
     pub operation_type: u8,
 
     /// Operation details
-    /// 'target_program' - The program to be invoked by this operation.
-    /// 'instruction_data_hash' - Hash of the instruction data for integrity checks.
-    /// 'instruction_data' - Actual instruction data to be executed.
-    /// 'instruction_data_len' - Length of the instruction data.
+    ///
+    /// # Why
+    /// These fields store the target program and instruction data for the operation, with a hash for integrity and a fixed-size array for deterministic compute.
+    /// The length field allows for variable-length instructions without dynamic allocation.
     pub target_program: Pubkey,
     pub instruction_data_hash: [u8; 32],
     pub instruction_data: [u8; 1024], // Store actual instruction data
     pub instruction_data_len: u16,
 
     /// Timing
-    /// 'scheduled_at' - Timestamp when the operation is scheduled.
-    /// 'execution_time' - Timestamp when the operation can be executed.
-    /// 'executed_at' - Timestamp when the operation was executed, if applicable.
+    ///
+    /// # Why
+    /// These fields enforce protocol-level timing guarantees, ensuring that operations cannot be executed before their delay or after expiration.
     pub scheduled_at: i64,
     pub execution_time: i64,
     pub executed_at: i64,
 
     /// Governance
-    /// 'proposer' - The public key of the proposer initiating the operation.
-    /// 'executor' - The public key of the executor who will execute the operation.
-    /// 'status' - Current status of the operation (Pending, Approved, Executed,
+    ///
+    /// # Why
+    /// These fields track who proposed and executed the operation, and its current status, for full auditability and accountability.
     pub proposer: Pubkey,
     pub executor: Pubkey,
     pub status: TimelockStatus,
 
     /// Confirmation tracking
-    /// 'confirmation_count' - Number of confirmations received for this operation.
-    /// 'required_confirmations' - Number of confirmations required to approve the operation.
-    /// 'confirmations_bitmap' - Bitmap to track which confirmers have confirmed (up to 64).
+    ///
+    /// # Why
+    /// Bitmap and counters enable efficient, atomic multi-sig confirmation without Vec, supporting up to 64 signers with a single u64.
     pub confirmation_count: u8,
     pub required_confirmations: u8,
     pub confirmations_bitmap: u64, // Support up to 64 confirmers
 
     /// Metadata
-    /// 'created_at' - Timestamp when the operation was created.
-    /// 'last_updated' - Timestamp when the operation was last updated.
+    ///
+    /// # Why
+    /// These fields provide a full audit trail for the operation's lifecycle, supporting compliance and forensic analysis.
     pub created_at: i64,
     pub last_updated: i64,
 
     /// Future expansion
+    ///
+    /// # Why
+    /// Reserved space allows for future upgrades or additional fields without breaking account layout, supporting protocol evolution.
     pub reserved: [u8; 128],
+}
+
+/// Arguments for initializing a TimelockOperation.
+pub struct InitArgs<'a> {
+    pub pool_core: Pubkey,
+    pub operation_id: u64,
+    pub operation_type: TimelockOperationType,
+    pub target_program: Pubkey,
+    pub instruction_data: &'a [u8],
+    pub execution_delay: i64,
+    pub proposer: Pubkey,
+    pub required_confirmations: u8,
 }
 
 /// Implementation of TimelockOperation methods
 impl TimelockOperation {
     /// Initialize a new timelock operation
-    /// This method sets up the operation with the provided parameters.
-    /// It validates the execution delay and instruction data size, initializes the
-    /// operation's metadata, and prepares it for confirmation and execution.
-    /// # Arguments
-    /// * `pool_core` - The public key of the pool core associated with this operation.
-    /// * `operation_id` - Unique identifier for the operation.
-    /// * `operation_type` - Type of the operation (e.g., upgrade, parameter change).
-    /// * `target_program` - The program to be invoked by this operation.
-    /// * `instruction_data` - Actual instruction data to be executed.
-    /// * `execution_delay` - Delay in seconds before the operation can be executed.
-    /// * `proposer` - The public key of the proposer initiating the operation.
-    /// * `required_confirmations` - Number of confirmations required to approve the operation.
-    /// # Returns
-    /// A `Result` indicating success or failure of the operation.
-    pub fn initialize(
-        &mut self,
-        pool_core: Pubkey,
-        operation_id: u64,
-        operation_type: TimelockOperationType,
-        target_program: Pubkey,
-        instruction_data: &[u8],
-        execution_delay: i64,
-        proposer: Pubkey,
-        required_confirmations: u8,
-    ) -> Result<()> {
+    ///
+    /// # Why
+    /// This method enforces all protocol invariants for timelock operations: delay bounds, instruction data size, and initial state.
+    /// It ensures that every operation is initialized in a valid, auditable state, ready for multi-sig confirmation and execution.
+    ///
+    /// # Design Rationale
+    /// - All validation is done up front to prevent invalid state or attacks.
+    /// - Instruction data is stored in a fixed-size array for deterministic compute and zero-copy compatibility.
+    /// - All timestamps are set from the on-chain clock for auditability.
+    pub fn initialize(&mut self, args: InitArgs) -> Result<()> {
         // Validate timing
-        if execution_delay < MIN_DELAY || execution_delay > MAX_DELAY {
+        if !(MIN_DELAY..=MAX_DELAY).contains(&args.execution_delay) {
             return Err(PdaSecurityAuthorityError::InvalidExecutionDelay.into());
         }
 
         // Validate instruction data size
-        if instruction_data.len() > 1024 {
+        if args.instruction_data.len() > 1024 {
             return Err(PdaSecurityAuthorityError::InvalidInstructionData.into());
         }
 
         // Pool core and operation identification
-        self.pool_core = pool_core;
-        self.operation_id = operation_id;
-        self.operation_type = operation_type as u8;
+        self.pool_core = args.pool_core;
+        self.operation_id = args.operation_id;
+        self.operation_type = args.operation_type as u8;
 
         // Operation details
-        self.target_program = target_program;
-        self.proposer = proposer;
-        self.required_confirmations = required_confirmations;
+        self.target_program = args.target_program;
+        self.proposer = args.proposer;
+        self.required_confirmations = args.required_confirmations;
         self.status = TimelockStatus::Pending;
         self.executed_at = 0;
         self.executor = Pubkey::default();
 
         // Store instruction data
-        self.instruction_data[..instruction_data.len()].copy_from_slice(instruction_data);
-        self.instruction_data_len = instruction_data.len() as u16;
-        self.instruction_data_hash = hashv(&[instruction_data]).to_bytes();
+        self.instruction_data[..args.instruction_data.len()].copy_from_slice(args.instruction_data);
+        self.instruction_data_len = args.instruction_data.len() as u16;
+        self.instruction_data_hash = hashv(&[args.instruction_data]).to_bytes();
 
         let clock = Clock::get()?;
         self.scheduled_at = clock.unix_timestamp;
-        self.execution_time = clock.unix_timestamp + execution_delay;
+        self.execution_time = clock.unix_timestamp + args.execution_delay;
         self.created_at = clock.unix_timestamp;
         self.last_updated = clock.unix_timestamp;
 
@@ -134,17 +152,14 @@ impl TimelockOperation {
     }
 
     /// Confirm the timelock operation
-    /// This method allows a confirmer to confirm the operation, updating the confirmation count
-    /// and bitmap. It checks if the operation is ready for execution based on the required confirmations
-    /// and updates the status accordingly.
-    /// # Arguments
-    /// * `confirmer_index` - The index of the confirmer (0-63)
-    /// # Returns
-    /// A `Result` indicating whether the confirmation was successful and if the operation is ready for execution.
-    /// If the operation is already confirmed by this confirmer, it returns the current confirmation status.
-    /// # Errors
-    /// * `TimelockNotReady` - If the operation is not in a pending state.
-    /// * `TimelockConfirmationLimitReached` - If the confirmer index is out of bounds (0-63).
+    ///
+    /// # Why
+    /// This method implements efficient, atomic multi-sig confirmation using a bitmap, supporting up to 64 signers with a single u64.
+    /// It ensures that each signer can only confirm once, and that the operation cannot be executed until the required threshold is met.
+    ///
+    /// # Design Rationale
+    /// - Bitmap avoids Vec and dynamic allocation, ensuring deterministic compute and zero-copy compatibility.
+    /// - All state transitions are atomic and auditable.
     pub fn confirm(&mut self, confirmer_index: u8) -> Result<bool> {
         // Ensure the operation is pending
         if self.status != TimelockStatus::Pending {
@@ -180,21 +195,18 @@ impl TimelockOperation {
     }
 
     /// Check if the operation is ready for execution
-    /// This method checks if the operation has been approved and if the current time
-    /// is past the execution time. It returns true if the operation can be executed.
-    /// # Returns
-    /// A boolean indicating whether the operation is ready for execution.
+    ///
+    /// # Why
+    /// This method enforces the protocol's timelock guarantees, ensuring that no operation can be executed before the required delay and confirmations.
     pub fn is_ready_for_execution(&self) -> bool {
         let clock = Clock::get().unwrap();
         self.status == TimelockStatus::Approved && clock.unix_timestamp >= self.execution_time
     }
 
     /// Check if the operation has expired
-    /// This method checks if the operation has not been executed within 30 days of its execution
-    /// time. If it has not been executed and the current time is past the expiration time,
-    /// it returns true indicating the operation has expired.
-    /// # Returns
-    /// A boolean indicating whether the operation has expired.
+    ///
+    /// # Why
+    /// This method ensures that stale or abandoned operations cannot be executed indefinitely, protecting protocol liveness and safety.
     pub fn is_expired(&self) -> bool {
         let clock = Clock::get().unwrap();
         // Operations expire after 30 days if not executed
@@ -202,18 +214,13 @@ impl TimelockOperation {
     }
 
     /// Execute the timelock operation
-    /// This method marks the operation as executed, updates the executor's public key,
-    /// and sets the executed timestamp. It checks if the operation is ready for execution
-    /// and if it has not expired. If the operation is not ready or has expired,
-    /// it returns an error.
-    /// # Arguments
-    /// * `executor` - The public key of the executor who will execute the operation.
-    /// # Returns
-    /// A `Result` indicating success or failure of the execution.
     ///
-    /// # Errors
-    /// * `TimelockNotReady` - If the operation is not approved or ready for execution.
-    /// * `TimelockOperationExpired` - If the operation has expired and
+    /// # Why
+    /// This method enforces all protocol invariants for execution: only approved, non-expired operations can be executed, and all state transitions are atomic and auditable.
+    ///
+    /// # Design Rationale
+    /// - Executor is recorded for full auditability.
+    /// - All timestamps are set from the on-chain clock for compliance and forensic analysis.
     pub fn execute(&mut self, executor: Pubkey) -> Result<()> {
         // Ensure the operation is approved and ready for execution
         if !self.is_ready_for_execution() {
@@ -237,13 +244,9 @@ impl TimelockOperation {
     }
 
     /// Cancel the timelock operation
-    /// This method allows the operation to be cancelled if it has not been executed.
-    /// It updates the status to Cancelled and sets the last updated timestamp.
-    /// # Returns
-    /// A `Result` indicating success or failure of the cancellation.
-    /// If the operation has already been executed, it returns an error.
-    /// # Errors
-    /// * `TimelockNotReady` - If the operation has already been executed.
+    ///
+    /// # Why
+    /// This method allows for safe cancellation of pending operations, ensuring that only non-executed operations can be cancelled and all state transitions are auditable.
     pub fn cancel(&mut self) -> Result<()> {
         // Ensure the operation is not already executed
         if self.status == TimelockStatus::Executed {
@@ -260,18 +263,18 @@ impl TimelockOperation {
     }
 
     /// Get the instruction data for execution
-    /// This method returns a slice of the instruction data stored in the operation.
-    /// It ensures that the data length is within the defined limits.
-    /// # Returns
-    /// A slice of the instruction data.
+    ///
+    /// # Why
+    /// This method provides safe, bounded access to the instruction data, ensuring that only the valid portion is used for execution and preventing buffer overreads.
     pub fn get_instruction_data(&self) -> &[u8] {
         &self.instruction_data[..self.instruction_data_len as usize]
     }
 }
 
 /// Status of timelock operations
-/// This enum represents the various states a timelock operation can be in,
-/// such as Pending, Approved, Executed, Cancelled, or Expired.
+///
+/// # Why
+/// Encodes the full lifecycle of a timelock operation, enabling clear, auditable state transitions and protocol safety.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum TimelockStatus {
@@ -283,9 +286,9 @@ pub enum TimelockStatus {
 }
 
 /// Timelock operation types
-/// This enum defines the different types of operations that can be performed
-/// within the timelock system, such as protocol upgrades, parameter changes,
-/// treasury operations, emergency actions, and governance changes.
+///
+/// # Why
+/// Enumerates all supported governance actions, enabling type-safe, auditable, and extensible protocol upgrades and changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum TimelockOperationType {
@@ -297,24 +300,20 @@ pub enum TimelockOperationType {
 }
 
 /// Timelock manager utility functions
-/// This struct provides utility functions for managing timelock operations,
-/// such as generating unique operation IDs, validating operation types and delays,
-/// and creating new timelock operation data.
+///
+/// # Why
+/// Provides protocol-level helpers for generating unique operation IDs, validating delays, and enforcing governance invariants.
 pub struct TimelockManager;
 
 /// Implementation of TimelockManager methods
 impl TimelockManager {
     /// Generate unique operation ID
-    /// This function generates a unique operation ID based on the pool core,
-    /// proposer, timestamp, and operation type. It uses a hash function to create
-    /// a unique identifier that can be used to track the operation.
-    /// # Arguments
-    /// * `pool_core` - The public key of the pool core associated with the operation.
-    /// * `proposer` - The public key of the proposer initiating the operation.
-    /// * `timestamp` - The Unix timestamp when the operation is created.
-    /// * `operation_type` - The type of the operation being performed.
-    /// # Returns
-    /// A unique operation ID as a `u64`.
+    ///
+    /// # Why
+    /// This function ensures that every operation is uniquely identifiable, preventing replay or collision attacks and enabling full auditability.
+    ///
+    /// # Design Rationale
+    /// - Uses a hash of all relevant fields for uniqueness and collision resistance.
     pub fn generate_operation_id(
         pool_core: &Pubkey,
         proposer: &Pubkey,
@@ -332,13 +331,9 @@ impl TimelockManager {
     }
 
     /// Get minimum delay for operation type
-    /// This function returns the minimum delay required for a specific
-    /// type of timelock operation. It ensures that operations have appropriate
-    /// delays based on their type to prevent immediate execution.
-    /// # Arguments
-    /// * `operation_type` - The type of the operation for which to get the minimum delay.
-    /// # Returns
-    /// The minimum delay in seconds for the specified operation type.
+    ///
+    /// # Why
+    /// This function enforces protocol-level safety by requiring longer delays for more sensitive operations, preventing instant upgrades or attacks.
     pub fn get_min_delay_for_type(operation_type: TimelockOperationType) -> i64 {
         match operation_type {
             TimelockOperationType::ProtocolUpgrade => 7 * 24 * 3600, // 7 days
@@ -350,17 +345,9 @@ impl TimelockManager {
     }
 
     /// Validate operation type and delay
-    /// This function checks if the provided operation type and delay
-    /// are valid. It ensures that the delay meets the minimum requirements
-    /// for the specified operation type and does not exceed the maximum allowed delay.
-    /// # Arguments
-    /// * `operation_type` - The type of the operation to validate.
-    /// * `delay` - The delay in seconds for the operation.
-    /// # Returns
-    /// A `Result` indicating success or failure of the validation.
-    /// # Errors
-    /// * `InvalidExecutionDelay` - If the delay is less than the minimum required or
-    ///   exceeds the maximum allowed delay.
+    ///
+    /// # Why
+    /// This function enforces all protocol invariants for operation timing, preventing governance attacks via short or excessive delays.
     pub fn validate_operation(operation_type: TimelockOperationType, delay: i64) -> Result<()> {
         let min_delay = Self::get_min_delay_for_type(operation_type);
 
@@ -377,9 +364,9 @@ impl TimelockManager {
 }
 
 /// Data structure for creating timelock operations
-/// This struct encapsulates the necessary information
-/// to create a new timelock operation, including the operation type,
-/// target program, instruction data, and execution delay.
+///
+/// # Why
+/// Encapsulates all required data for creating a new timelock operation, ensuring that all protocol invariants are enforced at creation time.
 #[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
 pub struct TimelockOperationData {
     pub operation_type: TimelockOperationType,
@@ -391,18 +378,9 @@ pub struct TimelockOperationData {
 /// Implementation of TimelockOperationData methods
 impl TimelockOperationData {
     /// Create a new TimelockOperationData instance
-    /// This method initializes a new instance of `TimelockOperationData` with the provided parameters.
-    /// It validates the instruction data size and the execution delay to ensure they meet the requirements
-    /// for a valid timelock operation.
-    /// # Arguments
-    /// * `operation_type` - The type of the operation.
-    /// * `target_program` - The target program for the operation.
-    /// * `instruction_data` - The instruction data for the operation.
-    /// * `execution_delay` - The execution delay for the operation.
-    /// # Returns
-    /// A `Result` containing the initialized `TimelockOperationData` instance or an error if validation fails.
-    /// # Errors
-    /// * `InvalidInstructionData` - If the instruction data exceeds the maximum allowed size.
+    ///
+    /// # Why
+    /// This method enforces all protocol invariants for operation creation: instruction data size, delay bounds, and type safety.
     pub fn new(
         operation_type: TimelockOperationType,
         target_program: Pubkey,
@@ -426,11 +404,9 @@ impl TimelockOperationData {
     }
 
     /// Compute the hash of the operation data
-    /// This method generates a hash of the operation data, including the operation type,
-    /// target program, instruction data, and execution delay.
-    /// This hash can be used for integrity checks or to uniquely identify the operation.
-    /// # Returns
-    /// A 32-byte array representing the hash of the operation data.
+    ///
+    /// # Why
+    /// This method provides a unique, tamper-evident identifier for the operation data, supporting integrity checks and replay protection.
     pub fn compute_hash(&self) -> [u8; 32] {
         hashv(&[
             &[self.operation_type as u8],
@@ -445,6 +421,10 @@ impl TimelockOperationData {
 // ============================================================================
 // ANCHOR ACCOUNT VALIDATION CONTEXTS
 // ============================================================================
+//
+// # Why
+// Each context is designed for a specific governance action, with strict account validation and PDA seeds to prevent spoofing or replay attacks.
+// All account layouts are deterministic and zero-copy for auditability and protocol safety.
 
 /// Create Timelock Operation Context
 #[derive(Accounts)]
@@ -531,6 +511,10 @@ pub struct CancelTimelockOperation<'info> {
 // ============================================================================
 // INSTRUCTION HANDLERS
 // ============================================================================
+//
+// # Why
+// Each handler enforces protocol invariants for its respective action, ensuring that all state transitions are atomic, auditable, and safe.
+// All validation is done up front, and all state changes are recorded for compliance and forensic analysis.
 
 /// Create Timelock Operation
 /// This function initializes a new timelock operation with the provided parameters.
@@ -550,18 +534,18 @@ pub fn create_timelock_operation(
     operation_data: TimelockOperationData,
     required_confirmations: u8,
 ) -> Result<()> {
-    let timelock_operation = &mut ctx.accounts.timelock_operation.load_init()?;
+    let timelock_operation = &mut ctx.accounts.timelock_operation.load_mut()?;
 
-    timelock_operation.initialize(
-        ctx.accounts.pool_core.key(),
+    timelock_operation.initialize(InitArgs {
+        pool_core: ctx.accounts.pool_core.key(),
         operation_id,
-        operation_data.operation_type,
-        operation_data.target_program,
-        &operation_data.instruction_data,
-        operation_data.execution_delay,
-        ctx.accounts.proposer.key(),
+        operation_type: operation_data.operation_type,
+        target_program: operation_data.target_program,
+        instruction_data: &operation_data.instruction_data,
+        execution_delay: operation_data.execution_delay,
+        proposer: ctx.accounts.proposer.key(),
         required_confirmations,
-    )?;
+    })?;
 
     Ok(())
 }
