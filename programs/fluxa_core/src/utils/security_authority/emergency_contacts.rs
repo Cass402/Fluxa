@@ -1,46 +1,59 @@
 use crate::error::PdaSecurityAuthorityError;
 use anchor_lang::prelude::*;
 
-/// EmergencyContacts account maintains a list of emergency contacts for the Fluxa protocol.
-/// It allows for up to 5 emergency contacts, each with a specific role and permissions.
-/// The account also includes metadata such as creation and last updated timestamps,
-/// and a pause authority that can pause emergency operations.
-/// The account is designed to be zero-copy for efficient access and manipulation.
+/// EmergencyContacts account: protocol-level registry of emergency responders and authorities.
+///
+/// # Why
+/// This account enables rapid, protocol-governed response to emergencies by maintaining a fixed, auditable list of trusted contacts and authorities.
+/// It supports up to 5 contacts, each with a role and permissions, and a designated pause authority for critical actions.
+///
+/// # Design Rationale
+/// - Zero-copy layout for deterministic, efficient access and auditability.
+/// - Fixed-size array (no Vec) for contacts, ensuring predictable compute and storage costs.
+/// - Roles and permissions are explicit, supporting fine-grained, protocol-enforced emergency response.
+/// - Metadata and reserved space support future upgrades and compliance.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct EmergencyContacts {
     /// Pool reference
+    ///
+    /// # Why
+    /// Binds this emergency contact registry to a specific pool, ensuring all actions are contextually bound and auditable.
     pub pool_core: Pubkey,
 
     /// Emergency contacts
+    ///
+    /// # Why
+    /// Fixed-size array (up to 5) for deterministic, zero-copy access and to prevent unbounded state growth.
     pub contact_count: u8,
     pub contacts: [EmergencyContact; 5], // Up to 5 contacts
 
     /// Emergency configuration
-    /// Pause authority is the main authority that can pause emergency operations
-    /// Emergency response level determines the severity of the emergency
+    ///
+    /// # Why
+    /// Pause authority is the only entity that can unilaterally pause the protocol; response level encodes severity for protocol logic.
     pub pause_authority: Pubkey,
     pub emergency_response_level: u8,
 
     /// Metadata
-    /// These timestamps track when the emergency contacts were created and last updated
+    ///
+    /// # Why
+    /// Tracks creation and last update for compliance, auditability, and protocol liveness.
     pub created_at: i64,
     pub last_updated: i64,
 
     /// Future expansion
+    ///
+    /// # Why
+    /// Reserved space for future upgrades or additional fields without breaking account layout.
     pub reserved: [u8; 32],
 }
 
 impl EmergencyContacts {
-    /// Initializes the EmergencyContacts account with the given pool core and pause authority.
-    /// This function sets the account discriminator, initializes the pool core and pause authority,
-    /// sets the contact count to zero, initializes the emergency response level, and sets the created
-    /// and last updated timestamps to the current time.
-    /// # Arguments
-    /// * `pool_core` - The public key of the pool core account.
-    /// * `pause_authority` - The public key of the authority that can pause emergency operations.
-    /// # Returns
-    /// A `Result` indicating success or failure of the initialization.
+    /// Initialize the EmergencyContacts account with protocol invariants enforced.
+    ///
+    /// # Why
+    /// Ensures all fields are set to safe, protocol-compliant values, and that the registry is ready for secure, auditable operation.
     pub fn initialize(&mut self, pool_core: Pubkey, pause_authority: Pubkey) -> Result<()> {
         // Initialize the pool core and pause authority
         self.pool_core = pool_core;
@@ -61,20 +74,10 @@ impl EmergencyContacts {
         Ok(())
     }
 
-    /// Adds a new emergency contact to the contacts array.
-    /// This function checks if the contact limit has been reached, verifies if the contact already exists
-    /// in the contacts array, and if not, initializes a new `EmergencyContact` with the provided
-    /// public key, role, and permissions. It then adds the contact to the contacts array,
-    /// increments the contact count, and updates the last updated timestamp.
-    /// # Arguments
-    /// * `contact` - The public key of the emergency contact to be added.
-    /// * `role` - The role of the emergency contact (e.g., Responder   , Coordinator, etc.).
-    /// * `permissions` - The permissions associated with the emergency contact.
-    /// # Returns
-    /// A `Result` indicating success or failure of the operation.
-    /// # Errors
-    /// * `EmergencyContactLimitReached` - If the maximum number of emergency contacts (5) has been reached.
-    /// * `EmergencyContactAlreadyExists` - If the contact already exists in the contacts array.
+    /// Add a new emergency contact, enforcing protocol safety and uniqueness.
+    ///
+    /// # Why
+    /// Ensures the registry cannot exceed its fixed size, and that each contact is unique. All actions are timestamped for auditability.
     pub fn add_contact(
         &mut self,
         contact: Pubkey,
@@ -109,13 +112,10 @@ impl EmergencyContacts {
         Ok(())
     }
 
-    /// Checks if a given public key is an emergency contact.
-    /// This function iterates through the contacts array and compares each contact's public key
-    /// with the provided public key. If a match is found, it returns true; otherwise, it returns false.
-    /// # Arguments
-    /// * `pubkey` - The public key to check against the emergency contacts.
-    /// # Returns
-    /// A boolean indicating whether the provided public key is an emergency contact.
+    /// Check if a given public key is an emergency contact.
+    ///
+    /// # Why
+    /// Enables protocol logic to verify responder status for privileged actions, supporting fine-grained access control.
     pub fn is_emergency_contact(&self, pubkey: &Pubkey) -> bool {
         for i in 0..self.contact_count {
             if self.contacts[i as usize].pubkey == *pubkey {
@@ -125,22 +125,19 @@ impl EmergencyContacts {
         false
     }
 
-    /// Checks if a given public key has emergency authority.
-    /// This function checks if the provided public key matches the pause authority or if it is listed
-    /// as an emergency contact. If either condition is true, it returns true; otherwise,
-    /// it returns false.
-    /// # Arguments
-    /// * `pubkey` - The public key to check for emergency authority.
-    /// # Returns
-    /// A boolean indicating whether the provided public key has emergency authority.
+    /// Check if a given public key has emergency authority (pause authority or responder).
+    ///
+    /// # Why
+    /// Enables protocol logic to enforce emergency controls, ensuring only trusted parties can trigger critical actions.
     pub fn has_emergency_authority(&self, pubkey: &Pubkey) -> bool {
         *pubkey == self.pause_authority || self.is_emergency_contact(pubkey)
     }
 }
 
-/// EmergencyContact represents an individual emergency contact within the EmergencyContacts account.
-/// It contains the public key of the contact, their role, timestamps for when they were added
-/// and last active, and their permissions.
+/// EmergencyContact: individual responder entry in the EmergencyContacts registry.
+///
+/// # Why
+/// Encodes all relevant metadata for a responder, supporting fine-grained, protocol-enforced emergency response and auditability.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct EmergencyContact {
@@ -151,7 +148,10 @@ pub struct EmergencyContact {
     pub permissions: u32,
 }
 
-//// Default implementation for EmergencyContact
+/// Default implementation for EmergencyContact
+///
+/// # Why
+/// Ensures all fields are initialized to safe, protocol-compliant values, supporting zero-copy and deterministic state.
 impl Default for EmergencyContact {
     fn default() -> Self {
         Self {
@@ -164,9 +164,10 @@ impl Default for EmergencyContact {
     }
 }
 
-/// EmergencyRole defines the roles that emergency contacts can have within the Fluxa protocol.
-/// Each role has a specific responsibility and level of authority during emergency situations.
-/// The roles include Responder, Coordinator, Technical Lead, Community Delegate, and Audit Partner.
+/// EmergencyRole: protocol-defined roles for emergency contacts.
+///
+/// # Why
+/// Encodes the responsibilities and authority levels for each responder, supporting fine-grained, protocol-enforced emergency response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum EmergencyRole {
@@ -177,10 +178,10 @@ pub enum EmergencyRole {
     AuditPartner = 4,
 }
 
-/// InitializeEmergencyContacts is the context for initializing the EmergencyContacts account.
-/// It includes the EmergencyContacts account to be initialized, the pool core account,
-/// the payer account responsible for the transaction fees, the authority account,
-/// and the system program account.
+/// Anchor context for initializing the EmergencyContacts account.
+///
+/// # Why
+/// Enforces protocol invariants for secure initialization: deterministic PDA seeds, payer, and authority assignment. Ensures the registry is created with the correct pool and system program, and that all state is zero-copy and auditable.
 #[derive(Accounts)]
 pub struct InitializeEmergencyContacts<'info> {
     /// The EmergencyContacts account to be initialized
@@ -207,14 +208,10 @@ pub struct InitializeEmergencyContacts<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Initialize Emergency Contacts
-/// This function initializes the EmergencyContacts account with the provided pool core and pause authority.
-/// It sets the account discriminator, initializes the pool core and pause authority,
-/// sets the contact count to zero, initializes the emergency response level, and sets the created
-/// and last updated timestamps to the current time.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for initialization.
-/// * `pause_authority` - The public key of the authority that can pause emergency operations
+/// Handler: Initialize Emergency Contacts with the provided pool core and pause authority.
+///
+/// # Why
+/// Enforces protocol invariants for secure initialization, ensuring all state is set up for safe, auditable operation.
 pub fn initialize_emergency_contacts(
     ctx: Context<InitializeEmergencyContacts>,
     pause_authority: Pubkey,

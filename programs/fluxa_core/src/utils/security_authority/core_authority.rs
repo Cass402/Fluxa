@@ -5,95 +5,151 @@ use crate::utils::security_authority::multisig_config::MultisigConfig;
 use crate::utils::security_authority::utils::AuditUtils;
 use anchor_lang::prelude::*;
 
-/// The Core Authority account is a critical component of the Fluxa Core security model.
-/// It manages the authority transitions for the pool core and maintains the operational status of the core.
+/// Core Authority account: the root of protocol security and governance for a pool.
+///
+/// # Why
+/// This account enforces all authority transitions, operational status, and emergency controls for a pool core.
+/// It is the single source of truth for who can control the pool, and how/when that control can change.
+///
+/// # Design Rationale
+/// - Zero-copy layout for deterministic, efficient access and auditability.
+/// - All fields are fixed-size and protocol-bounded for safety and upgradeability.
+/// - Authority transitions require explicit delay and multi-sig confirmation, deterring governance attacks and rug pulls.
+/// - Emergency pause and operational status are tracked on-chain for full transparency and liveness guarantees.
+/// - Audit trail hash and index provide a tamper-evident, append-only log of all critical actions.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct CoreAuthority {
-    /// The public key of the pool core associated with this authority.
+    /// Pool core reference
+    ///
+    /// # Why
+    /// Binds this authority to a specific pool, ensuring all actions are contextually bound and auditable.
     pub pool_core: Pubkey,
 
-    /// The public key of the current authority for the pool core.
+    /// Current authority
+    ///
+    /// # Why
+    /// The only entity allowed to propose or confirm authority changes, or perform privileged actions.
     pub current_authority: Pubkey,
 
-    /// The public key of the pending authority for the pool core, if any.
-    /// This is used for authority transitions and must be confirmed by the current authority.
+    /// Pending authority (if any)
+    ///
+    /// # Why
+    /// Used for secure, delayed authority transitions. Ensures that new authorities are not granted control instantly, deterring attacks.
     pub pending_authority: Pubkey,
-    /// Indicates whether there is a pending authority change.
+    /// Pending authority change flag
+    ///
+    /// # Why
+    /// Prevents overlapping or conflicting authority transitions, ensuring only one change can be in progress at a time.
     pub has_pending_authority: bool,
-    /// The timestamp when the authority change was requested.
+    /// Authority change request timestamp
+    ///
+    /// # Why
+    /// Used to enforce protocol-mandated delay before authority can be changed, giving users time to react.
     pub authority_change_requested_at: i64,
-    /// The delay period for the authority change
+    /// Authority change delay (seconds)
+    ///
+    /// # Why
+    /// Protocol-mandated minimum delay for authority changes, deterring instant takeovers.
     pub authority_change_delay: i64,
-    /// The number of confirmations received for the authority change.
+    /// Number of confirmations received for authority change
+    ///
+    /// # Why
+    /// Multi-sig: ensures that no single entity can unilaterally change authority.
     pub authority_change_confirmations: u8,
-    /// The number of confirmations required for the authority change.
+    /// Number of confirmations required for authority change
+    ///
+    /// # Why
+    /// Protocol safety: ensures that a threshold of trusted parties must approve any authority change.
     pub required_confirmations: u8,
 
-    /// The hash of the audit trail
+    /// Audit trail hash
+    ///
+    /// # Why
+    /// Tamper-evident, append-only log of all critical actions, supporting compliance and forensic analysis.
     pub audit_trail_hash: [u8; 32],
-    /// The index of the audit entry in the audit trail.
-    /// This is used to track the order of audit entries and ensure consistency.
+    /// Audit entry index
+    ///
+    /// # Why
+    /// Tracks the order of audit entries, supporting chain-of-trust verification and efficient lookups.
     pub audit_index: u64,
 
-    /// The operational status of the Core Authority.
+    /// Operational status
+    ///
+    /// # Why
+    /// Tracks the current state of the pool (Normal, Maintenance, EmergencyPause, etc.), supporting liveness and safety guarantees.
     pub operational_status: OperationalStatus,
-    /// Indicates whether the emergency pause is currently active.
+    /// Emergency pause active flag
+    ///
+    /// # Why
+    /// Protocol safety: allows for rapid response to critical issues, pausing all privileged actions.
     pub emergency_pause_active: bool,
-    /// The timestamp when the emergency pause was initiated.
+    /// Emergency pause initiation timestamp
+    ///
+    /// # Why
+    /// Used to enforce protocol-mandated pause duration and for auditability.
     pub emergency_pause_initiated_at: i64,
-    /// The timeout duration for the emergency pause.
+    /// Emergency pause timeout (seconds)
+    ///
+    /// # Why
+    /// Protocol-mandated maximum duration for emergency pause, ensuring liveness.
     pub emergency_pause_timeout: i64,
 
-    /// Metadata for the Core Authority
-    /// The timestamp when the Core Authority was created.
+    /// Metadata: creation timestamp
+    ///
+    /// # Why
+    /// Full audit trail for the authority account itself, supporting compliance and forensic analysis.
     pub created_at: i64,
-    /// The timestamp when the Core Authority was last updated.
+    /// Metadata: last updated timestamp
+    ///
+    /// # Why
+    /// Tracks the last time any privileged action or state change occurred.
     pub last_updated: i64,
-    /// The security version of the Core Authority.
+    /// Security version
+    ///
+    /// # Why
+    /// Enables protocol upgrades and migration logic, supporting future-proofing.
     pub security_version: u16,
 
-    /// Reserved space for future use or alignment.
+    /// Reserved space for future use or alignment
+    ///
+    /// # Why
+    /// Allows for future upgrades or additional fields without breaking account layout.
     pub reserved: [u8; 64],
 }
 
 impl CoreAuthority {
+    /// Initialize the Core Authority account with all protocol invariants enforced.
+    ///
+    /// # Why
+    /// This method ensures that all fields are set to safe, protocol-compliant values, and that the audit trail is initialized for tamper-evident logging.
+    ///
+    /// # Design Rationale
+    /// - All state is initialized up front to prevent uninitialized or invalid state.
+    /// - Audit trail hash is seeded with the initial authority and timestamp for full traceability.
     pub fn initialize(
         &mut self,
         pool_core: Pubkey,
         initial_authority: Pubkey,
         required_confirmations: u8,
     ) -> Result<()> {
-        // Initialize the pool core
         self.pool_core = pool_core;
-
-        // Initialize the current authority
         self.current_authority = initial_authority;
-
-        // Initialize the pending authority and related fields
-        self.pending_authority = Pubkey::default(); // No pending authority initially
-        self.has_pending_authority = false; // No pending authority change initially
-        self.authority_change_requested_at = 0; // No authority change requested initially
+        self.pending_authority = Pubkey::default();
+        self.has_pending_authority = false;
+        self.authority_change_requested_at = 0;
         self.authority_change_delay = AUTHORITY_CHANGE_DELAY;
-        self.authority_change_confirmations = 0; // No confirmations yet
+        self.authority_change_confirmations = 0;
         self.required_confirmations = required_confirmations;
-
-        // Initialize the operational status and emergency pause fields
         self.operational_status = OperationalStatus::Normal;
         self.emergency_pause_active = false;
         self.emergency_pause_initiated_at = 0;
         self.emergency_pause_timeout = 0;
-
-        // Initialize the audit index
         self.audit_index = 0;
-
-        // Initialize the Metadata fields
         let clock = Clock::get()?;
         self.created_at = clock.unix_timestamp;
         self.last_updated = clock.unix_timestamp;
         self.security_version = 1;
-
-        // Initialize the audit trail
         self.audit_trail_hash = AuditUtils::create_audit_hash(
             &[0u8; 32],
             b"authority_initialized",
@@ -101,22 +157,14 @@ impl CoreAuthority {
             clock.unix_timestamp,
             0,
         );
-
         Ok(())
     }
 
-    /// Proposes a change of authority for the Core Authority.
-    /// This function allows the current authority to propose a new authority.
-    /// It checks if the proposer is the current authority and if there is no pending authority change.
-    /// If successful, it updates the pending authority and records the time of the proposal.
-    /// # Arguments
-    /// * `new_authority` - The public key of the new authority to be proposed.
-    /// * `proposer` - The public key of the current authority proposing the change.
-    /// # Returns
-    /// A `Result` indicating success or failure of the operation.
-    /// # Errors
-    /// * `Unauthorized` - If the proposer is not the current authority.
-    /// * `AuthorityChangeInProgress` - If there is already a pending authority change.
+    /// Propose a new authority for the pool, enforcing protocol safety and multi-sig requirements.
+    ///
+    /// # Why
+    /// This method ensures that only the current authority can propose a change, and that only one change can be in progress at a time.
+    /// It records the proposal in the audit trail for full traceability.
     pub fn propose_authority_change(
         &mut self,
         new_authority: Pubkey,
@@ -138,7 +186,7 @@ impl CoreAuthority {
         self.authority_change_confirmations = 1; // Start with one confirmation from the proposer
 
         // Update the audit trail
-        self.update_audit_trail(b"authority_change_proposed", &new_authority.as_ref())?;
+        self.update_audit_trail(b"authority_change_proposed", new_authority.as_ref())?;
 
         Ok(())
     }
@@ -168,16 +216,11 @@ impl CoreAuthority {
         Ok(())
     }
 
-    /// Initiates an emergency pause for the Core Authority.
-    /// This function allows the Core Authority to enter an emergency pause state,
-    /// which can be triggered by the current authority in response to critical issues.
-    /// It sets the operational status to EmergencyPause, records the time of initiation,
-    /// and sets the timeout based on the emergency level.
-    /// # Arguments
-    /// * `reason_hash` - A hash representing the reason for the emergency pause.
-    /// * `emergency_level` - The level of emergency being declared (Low, Medium, High, Critical).
-    /// # Returns
-    /// A `Result` indicating success or failure of the operation.
+    /// Initiate an emergency pause, enforcing protocol safety and liveness guarantees.
+    ///
+    /// # Why
+    /// This method allows the protocol to rapidly pause privileged actions in response to critical issues, with a timeout based on severity.
+    /// All actions are recorded in the audit trail for compliance and forensic analysis.
     pub fn emergency_pause(
         &mut self,
         reason_hash: [u8; 32],
@@ -204,15 +247,10 @@ impl CoreAuthority {
         Ok(())
     }
 
-    /// Executes the authority change for the Core Authority.
-    /// This function is called when the required number of confirmations has been reached
-    /// and the authority change delay has passed.
-    /// It updates the current authority to the pending authority, clears the pending authority,
-    /// and resets the authority change requested timestamp and confirmation count.
-    /// # Returns
-    /// A `Result` indicating success or failure of the operation.
-    /// # Errors
-    /// * `NoAuthorityChangeRequested` - If there is no pending authority change to execute
+    /// Execute the authority change, enforcing all protocol invariants and auditability.
+    ///
+    /// # Why
+    /// This method is only called after all confirmations and delays have been satisfied, ensuring protocol safety and traceability.
     fn execute_authority_change(&mut self) -> Result<()> {
         let pending = self.pending_authority;
         // Execute the authority change
@@ -223,19 +261,15 @@ impl CoreAuthority {
         self.authority_change_confirmations = 0; // Reset the confirmation count
 
         // Update the audit trail for the authority change
-        self.update_audit_trail(b"authority_changed", &pending.as_ref())?;
+        self.update_audit_trail(b"authority_changed", pending.as_ref())?;
 
         Ok(())
     }
 
-    /// Updates the audit trail for the Core Authority.
-    /// This function creates a new audit hash based on the current state of the Core Authority,
-    /// the action performed, and the associated data.
-    /// # Arguments
-    /// * `action` - A byte slice representing the action taken (e.g., "create", "update", "delete").
-    /// * `data` - A byte slice containing the data associated with the action.
-    /// # Returns
-    /// A `Result` indicating success or failure of the operation.
+    /// Update the audit trail for the Core Authority, creating a tamper-evident log of all critical actions.
+    ///
+    /// # Why
+    /// This method ensures that every privileged action is recorded in a cryptographically linked audit trail, supporting compliance and forensic analysis.
     fn update_audit_trail(&mut self, action: &[u8], data: &[u8]) -> Result<()> {
         // Get the current clock time
         let clock = Clock::get()?;
@@ -258,8 +292,10 @@ impl CoreAuthority {
     }
 }
 
-/// The operational status of the Core Authority.
-/// This enum represents the different operational states of the Core Authority.
+/// Operational status of the Core Authority.
+///
+/// # Why
+/// Encodes the current state of the pool, supporting liveness, maintenance, and emergency controls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum OperationalStatus {
@@ -270,8 +306,10 @@ pub enum OperationalStatus {
     Upgrading = 4,
 }
 
-/// The emergency level for the Core Authority.
-/// This enum represents the different levels of emergency that can be declared by the Core Authority.
+/// Emergency level for the Core Authority.
+///
+/// # Why
+/// Encodes the severity of an emergency, determining the allowed pause duration and response requirements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum EmergencyLevel {
@@ -281,9 +319,11 @@ pub enum EmergencyLevel {
     Critical = 3,
 }
 
-/// Initialize the Core Authority.
-/// This instruction initializes the Core Authority account with the provided pool core and initial authority.
-/// It sets the initial authority, required confirmations, and initializes the operational status.
+/// Anchor context for initializing the Core Authority account.
+///
+/// # Why
+/// This context enforces all protocol invariants for secure initialization: deterministic PDA seeds, payer, and authority assignment.
+/// Ensures the account is created with the correct pool, authority, and system program, and that all state is zero-copy and auditable.
 #[derive(Accounts)]
 pub struct InitializeCoreAuthority<'info> {
     /// Initializes the Core Authority account
@@ -310,8 +350,10 @@ pub struct InitializeCoreAuthority<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Propose a change of authority for the Core Authority.
-/// This instruction allows the current authority to propose a new authority.
+/// Anchor context for proposing a new authority for the Core Authority.
+///
+/// # Why
+/// This context enforces protocol safety for authority transitions: only the current authority (and a multisig member) can propose a change, and all accounts are validated with deterministic seeds.
 #[derive(Accounts)]
 pub struct ProposeAuthorityChange<'info> {
     /// The Core Authority account
@@ -343,9 +385,10 @@ pub struct ProposeAuthorityChange<'info> {
     pub new_authority: UncheckedAccount<'info>,
 }
 
-/// Confirm a proposed change of authority for the Core Authority.
-/// This instruction allows a multisig member to confirm a proposed authority change.
-/// It checks if the confirmer is a member of the multisig and confirms the proposal.
+/// Anchor context for confirming a proposed authority change.
+///
+/// # Why
+/// This context enforces protocol safety for multi-sig confirmation: only a multisig member can confirm, and all accounts are validated with deterministic seeds.
 #[derive(Accounts)]
 pub struct ConfirmAuthorityChange<'info> {
     /// The Core Authority account
@@ -371,11 +414,10 @@ pub struct ConfirmAuthorityChange<'info> {
     pub confirmer: Signer<'info>,
 }
 
-/// Emergency Pause Context
-/// This context is used to execute an emergency pause for the Core Authority.
-/// It requires the Core Authority account, Emergency Contacts account, pool core,
-/// and the emergency responder account.
-/// The emergency responder must have emergency authority to execute the pause.
+/// Anchor context for executing an emergency pause on the Core Authority.
+///
+/// # Why
+/// This context enforces protocol safety for emergency controls: only an authorized emergency responder can trigger a pause, and all accounts are validated with deterministic seeds.
 #[derive(Accounts)]
 pub struct EmergencyPause<'info> {
     /// The Core Authority account
@@ -400,7 +442,10 @@ pub struct EmergencyPause<'info> {
     pub emergency_responder: Signer<'info>,
 }
 
-/// Initialize the Core Authority with the provided parameters.
+/// Handler: Initialize the Core Authority with the provided parameters.
+///
+/// # Why
+/// This handler enforces protocol invariants for secure initialization, ensuring all state is set up for safe, auditable operation.
 pub fn initialize_core_authority(
     ctx: Context<InitializeCoreAuthority>,
     required_confirmations: u8,
@@ -418,16 +463,10 @@ pub fn initialize_core_authority(
     Ok(())
 }
 
-/// Propose a change of authority for the Core Authority.
-/// This function allows the current authority to propose a new authority.
-/// It checks if the proposer is the current authority and if there is no pending authority change.
-/// If successful, it updates the pending authority and records the time of the proposal.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for proposing the authority change.
-/// * `new_authority` - The public key of the new authority to be proposed.
-/// * `proposer` - The public key of the current authority proposing the change.
-/// # Returns
-/// A `Result` indicating success or failure of the operation.
+/// Handler: Propose a new authority for the Core Authority.
+///
+/// # Why
+/// This handler enforces protocol safety for authority transitions: only a multisig member can propose, and only if no change is in progress. All actions are recorded for auditability.
 pub fn propose_authority_change(ctx: Context<ProposeAuthorityChange>) -> Result<()> {
     // Load the Core Authority and Multisig Config accounts
     let core_authority = &mut ctx.accounts.core_authority.load_mut()?;
@@ -447,14 +486,10 @@ pub fn propose_authority_change(ctx: Context<ProposeAuthorityChange>) -> Result<
     Ok(())
 }
 
-/// Confirm a proposed change of authority for the Core Authority.
-/// This function allows a multisig member to confirm a proposed authority change.
-/// It checks if the confirmer is a member of the multisig and confirms the proposal.
-/// If the required number of confirmations is reached, it executes the authority change.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for confirming the authority change.
-/// # Returns
-/// A `Result` indicating success or failure of the operation.
+/// Handler: Confirm a proposed authority change for the Core Authority.
+///
+/// # Why
+/// This handler enforces protocol safety for multi-sig confirmation: only a multisig member can confirm, and the change only executes after threshold and delay. All actions are recorded for auditability.
 pub fn confirm_authority_change(ctx: Context<ConfirmAuthorityChange>) -> Result<()> {
     // Load the Core Authority and Multisig Config accounts
     let core_authority = &mut ctx.accounts.core_authority.load_mut()?;
@@ -486,17 +521,10 @@ pub fn confirm_authority_change(ctx: Context<ConfirmAuthorityChange>) -> Result<
     Ok(())
 }
 
-/// Emergency Pause
-/// This function allows the Core Authority to enter an emergency pause state,
-/// which can be triggered by the current authority in response to critical issues.
-/// It sets the operational status to EmergencyPause, records the time of initiation,
-/// and sets the timeout based on the emergency level.
-/// # Arguments
-/// * `ctx` - The context containing the accounts required for the emergency pause.
-/// * `reason_hash` - A hash representing the reason for the emergency pause.
-/// * `emergency_level` - The level of emergency being declared (Low, Medium, High, Critical).
-/// # Returns
-/// A `Result` indicating success or failure of the operation.
+/// Handler: Emergency Pause for the Core Authority.
+///
+/// # Why
+/// This handler enforces protocol safety for emergency controls: only an authorized responder can pause, and all actions are recorded for compliance and forensic analysis.
 pub fn emergency_pause(
     ctx: Context<EmergencyPause>,
     reason_hash: [u8; 32],

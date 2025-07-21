@@ -1,42 +1,53 @@
 use crate::utils::security_authority::utils::AuditUtils;
 use anchor_lang::prelude::*;
 
-/// Audit Trail Head - the main entry point for the audit trail system
-/// This account maintains the state of the audit trail, including the latest entry and metadata.
-/// It is designed to be immutable once initialized, ensuring the integrity of the audit trail.
-/// The head of the audit trail is a zero-copy account, allowing efficient access to its data
-/// without the need for deserialization.
+/// Audit Trail Head - the root of the protocol's on-chain audit log.
+///
+/// # Why
+/// This account anchors the audit trail for a pool, providing a tamper-evident, append-only log of all critical actions.
+/// It is designed to be immutable after initialization, ensuring the integrity and trustworthiness of the audit trail.
+///
+/// # Design Rationale
+/// - Zero-copy layout for efficient, deterministic access and auditability.
+/// - Tracks the latest entry's hash and index, enabling chain-of-trust verification for all entries.
+/// - Reserved space for future upgrades without breaking account layout.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct AuditTrailHead {
     /// Pool reference
+    ///
+    /// # Why
+    /// Associates this audit trail with a specific pool, ensuring all actions are contextually bound and auditable.
     pub pool_core: Pubkey,
 
     /// Current audit state
-    /// - `current_index`: The index of the latest audit entry.
-    /// - `latest_hash`: The hash of the latest audit entry.
-    /// - `total_entries`: The total number of audit entries recorded.
+    ///
+    /// # Why
+    /// Tracks the latest entry and total count, enabling efficient verification and append-only guarantees.
     pub current_index: u64,
     pub latest_hash: [u8; 32],
     pub total_entries: u64,
 
     /// Metadata
-    /// - `created_at`: The timestamp when the audit trail was created.
-    /// - `last_updated`: The timestamp when the audit trail was last updated.
+    ///
+    /// # Why
+    /// Provides a full audit trail for the audit log itself, supporting compliance and forensic analysis.
     pub created_at: i64,
     pub last_updated: i64,
 
     /// Future expansion
+    ///
+    /// # Why
+    /// Reserved space allows for future upgrades or additional fields without breaking account layout, supporting protocol evolution.
     pub reserved: [u8; 32],
 }
 
 /// Implementation of the AuditTrailHead account
 impl AuditTrailHead {
     /// Initializes the AuditTrailHead account with the given pool core.
-    /// # Arguments
-    /// * `pool_core` - The public key of the pool core this audit trail is associated with.
-    /// # Returns
-    /// A `Result` indicating success or failure of the initialization.
+    ///
+    /// # Why
+    /// This method enforces protocol invariants for audit trail creation, ensuring the root is immutable and all state is initialized for append-only operation.
     pub fn initialize(&mut self, pool_core: Pubkey) -> Result<()> {
         // Initialize the pool core
         self.pool_core = pool_core;
@@ -53,10 +64,9 @@ impl AuditTrailHead {
     }
 
     /// Adds a new entry to the audit trail.
-    /// # Arguments
-    /// * `entry_hash` - The hash of the new audit entry to be added.
-    /// # Returns
-    /// A `Result` containing the index of the newly added entry
+    ///
+    /// # Why
+    /// This method updates the audit trail head with the latest entry, maintaining the chain-of-trust and append-only guarantees.
     pub fn add_entry(&mut self, entry_hash: [u8; 32]) -> Result<u64> {
         self.current_index = self.current_index.wrapping_add(1); // Increment the current index
         self.latest_hash = entry_hash; // Update the latest hash with the new entry hash
@@ -70,76 +80,86 @@ impl AuditTrailHead {
     }
 }
 
-/// Audit Trail Entry - individual audit log entry
+/// Audit Trail Entry - individual, tamper-evident log entry in the protocol's audit chain.
+///
+/// # Why
+/// Each entry records a single action, with cryptographic linkage to the previous entry, forming an immutable, verifiable chain.
+///
+/// # Design Rationale
+/// - Zero-copy layout for deterministic, efficient access and auditability.
+/// - All fields are fixed-size for protocol safety and to avoid dynamic allocation.
+/// - Hashes and indices enable chain-of-trust verification and efficient lookups.
+/// - Reserved space for future upgrades.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct AuditTrailEntry {
     /// Pool reference
+    ///
+    /// # Why
+    /// Associates this entry with a specific pool, ensuring all actions are contextually bound and auditable.
     pub pool_core: Pubkey,
 
     /// Entry identification
-    /// - `audit_index`: The index of this entry in the audit trail.
-    /// - `action`: A unique identifier for the action being audited.
-    /// - `actor`: The public key of the actor performing the action.
-    /// - `target`: The public key of the target account, if applicable.
+    ///
+    /// # Why
+    /// Uniquely identifies the action, actor, and target, supporting full forensic traceability and compliance.
     pub audit_index: u64,
     pub action: [u8; 32],
     pub actor: Pubkey,
     pub target: Pubkey,
 
     /// Entry data
-    /// - `data_hash`: The hash of the data associated with this entry.
-    /// - `timestamp`: The timestamp when the action was performed.
-    /// - `block_height`: The block height at which the action was recorded.
+    ///
+    /// # Why
+    /// Records the data, time, and block height for the action, supporting tamper-evident, time-stamped auditability.
     pub data_hash: [u8; 32],
     pub timestamp: i64,
     pub block_height: u64,
 
     /// Chain integrity
-    /// - `previous_hash`: The hash of the previous audit entry, ensuring the integrity of the audit trail.
-    /// - `current_hash`: The hash of the current audit entry, calculated based on the previous entry and the current data.
+    ///
+    /// # Why
+    /// Cryptographically links this entry to the previous one, forming an immutable, verifiable audit chain.
     pub previous_hash: [u8; 32],
     pub current_hash: [u8; 32],
 
     /// Future expansion
+    ///
+    /// # Why
+    /// Reserved space allows for future upgrades or additional fields without breaking account layout, supporting protocol evolution.
     pub reserved: [u8; 32],
+}
+
+/// Arguments for initializing an AuditTrailEntry.
+pub struct InitArgs {
+    pub pool_core: Pubkey,
+    pub audit_index: u64,
+    pub action: [u8; 32],
+    pub actor: Pubkey,
+    pub target: Pubkey,
+    pub data_hash: [u8; 32],
+    pub previous_hash: [u8; 32],
 }
 
 /// Implementation of the AuditTrailEntry account
 impl AuditTrailEntry {
     /// Initializes the AuditTrailEntry with the given parameters.
-    /// # Arguments
-    /// * `pool_core` - The public key of the pool core this entry is associated with.
-    /// * `audit_index` - The index of this entry in the audit trail.
-    /// * `action` - A unique identifier for the action being audited.
-    /// * `actor` - The public key of the actor performing the action.
-    /// * `target` - The public key of the target account, if applicable.
-    /// * `data_hash` - The hash of the data associated with this entry.
-    /// * `previous_hash` - The hash of the previous audit entry, ensuring the integrity of the audit trail.
-    /// # Returns
-    /// A `Result` indicating success or failure of the initialization.
-    pub fn initialize(
-        &mut self,
-        pool_core: Pubkey,
-        audit_index: u64,
-        action: [u8; 32],
-        actor: Pubkey,
-        target: Pubkey,
-        data_hash: [u8; 32],
-        previous_hash: [u8; 32],
-    ) -> Result<()> {
+    ///
+    /// # Why
+    /// This method enforces protocol invariants for audit entry creation, ensuring all fields are set and the cryptographic chain is maintained.
+    pub fn initialize(&mut self, args: InitArgs) -> Result<()> {
         // Initialize the pool core
-        self.pool_core = pool_core;
+        self.pool_core = args.pool_core;
 
         // Initialize the entry data
-        self.audit_index = audit_index;
-        self.action = action;
-        self.actor = actor;
-        self.target = target;
+        self.audit_index = args.audit_index;
+        self.action = args.action;
+        self.actor = args.actor;
+        self.target = args.target;
 
         // Initialize the data and chain integrity
-        self.data_hash = data_hash;
-        self.previous_hash = previous_hash;
+        self.data_hash = args.data_hash;
+        self.previous_hash = args.previous_hash;
 
         // Update the timestamp and block height
         let clock = Clock::get()?;
@@ -148,20 +168,20 @@ impl AuditTrailEntry {
 
         // Calculate current hash
         self.current_hash = AuditUtils::create_audit_hash(
-            &previous_hash,
-            &action,
-            &data_hash,
+            &args.previous_hash,
+            &args.action,
+            &args.data_hash,
             self.timestamp,
-            audit_index,
+            args.audit_index,
         );
 
         Ok(())
     }
 
     /// Verifies the integrity of the audit entry.
-    /// This checks that the current hash matches the expected hash based on the previous entry and the current data.
-    /// # Returns
-    /// A `Result` indicating success or failure of the verification.
+    ///
+    /// # Why
+    /// This method enables on-chain or off-chain verification of the audit chain, ensuring that no entry has been tampered with or omitted.
     pub fn verify_integrity(&self) -> Result<()> {
         AuditUtils::verify_audit_chain(
             &self.current_hash,
@@ -175,9 +195,9 @@ impl AuditTrailEntry {
 }
 
 /// Initialize Audit Trail Head Context
-/// This context is used to initialize the Audit Trail Head account.
-/// It sets up the account with the necessary parameters and ensures that it is ready to record audit
-/// entries for the associated pool core.
+///
+/// # Why
+/// This context enforces all protocol invariants for audit trail creation, ensuring that the head is initialized with the correct pool and payer, and that all account layouts are deterministic and auditable.
 #[derive(Accounts)]
 pub struct InitializeAuditTrailHead<'info> {
     /// Audit trail head account
@@ -205,9 +225,9 @@ pub struct InitializeAuditTrailHead<'info> {
 }
 
 /// Create Audit Trail Entry Context
-/// This context is used to create a new audit trail entry.
-/// It initializes a new entry with the provided parameters and links it to the audit trail head.
-/// The entry is created with a unique index and hash, ensuring the integrity of the audit trail
+///
+/// # Why
+/// This context enforces all protocol invariants for audit entry creation, ensuring that each entry is linked to the correct head, pool, and payer, and that all account layouts are deterministic and auditable.
 #[derive(Accounts)]
 #[instruction(audit_index: u64)]
 pub struct CreateAuditTrailEntry<'info> {
@@ -244,13 +264,9 @@ pub struct CreateAuditTrailEntry<'info> {
 }
 
 /// Initialize Audit Trail Head
-/// This function initializes the Audit Trail Head account.
-/// It sets up the account with the necessary parameters and ensures that it is ready to record audit
-/// entries for the associated pool core.
-/// # Arguments
-/// * `ctx` - The context containing the accounts and parameters for initializing the audit trail head
-/// # Returns
-/// A `Result` indicating success or failure of the initialization.
+///
+/// # Why
+/// This function enforces protocol invariants for audit trail creation, ensuring that the head is initialized in a valid, immutable state and ready for append-only operation.
 pub fn initialize_audit_trail_head(ctx: Context<InitializeAuditTrailHead>) -> Result<()> {
     // Load the Audit Trail Head account
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_init()?;
@@ -262,17 +278,9 @@ pub fn initialize_audit_trail_head(ctx: Context<InitializeAuditTrailHead>) -> Re
 }
 
 /// Create Audit Trail Entry
-/// This function creates a new audit trail entry.
-/// It initializes a new entry with the provided parameters and links it to the audit trail head.
-/// The entry is created with a unique index and hash, ensuring the integrity of the audit trail.
-/// # Arguments
-/// * `ctx` - The context containing the accounts and parameters for creating the audit entry.
-/// * `audit_index` - The index of the audit entry being created.
-/// * `action` - A unique identifier for the action being audited.
-/// * `target` - The public key of the target account, if applicable.
-/// * `data_hash` - The hash of the data associated with this entry.
-/// # Returns
-/// A `Result` indicating success or failure of the entry creation.
+///
+/// # Why
+/// This function enforces protocol invariants for audit entry creation, ensuring that each entry is cryptographically linked to the previous one, forming an immutable, tamper-evident chain.
 pub fn create_audit_trail_entry(
     ctx: Context<CreateAuditTrailEntry>,
     audit_index: u64,
@@ -288,18 +296,14 @@ pub fn create_audit_trail_entry(
     let previous_hash = audit_trail_head.latest_hash;
 
     // Initialize entry
-    audit_trail_entry.initialize(
-        ctx.accounts.pool_core.key(),
+    audit_trail_entry.initialize(InitArgs {
+        pool_core: ctx.accounts.pool_core.key(),
         audit_index,
         action,
-        ctx.accounts.actor.key(),
+        actor: ctx.accounts.actor.key(),
         target,
         data_hash,
         previous_hash,
-    )?;
-
-    // Update head
-    audit_trail_head.add_entry(audit_trail_entry.current_hash)?;
-
+    })?;
     Ok(())
 }

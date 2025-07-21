@@ -1,26 +1,38 @@
-//! Utility functions for the Core Authority module.
-//! This module provides helper functions for managing the Security Authority
+//! Utility functions supporting the Security Authority module.
+//!
+//! # Rationale
+//! This module provides deterministic, stateless helpers for cryptographic audit trails within the Security Authority.
+//! The design ensures that all audit operations are verifiable, tamper-evident, and do not rely on mutable or external state.
+//! By using hash chaining and explicit parameterization, we guarantee that every audit entry is uniquely and reproducibly identified, supporting robust protocol auditability and forensic analysis.
 
-/// Utility struct for the Audit functionality in the Security Authority module.
+/// Utility struct for stateless audit operations in the Security Authority module.
+///
+/// # Design Intent
+/// This struct is a namespace for pure functions that facilitate cryptographic audit trails.
+/// It is intentionally non-instantiable and stateless, enforcing that all audit logic is deterministic and side-effect free.
 use crate::error::PdaSecurityAuthorityError;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 
 pub struct AuditUtils;
 
-/// Implementation of utility functions for the Audit functionality in the Security Authority module.
 impl AuditUtils {
-    /// Creates a unique audit hash based on the previous hash, action, data, timestamp, and audit index.
-    /// This hash serves as a unique identifier for each audit entry, ensuring integrity and traceability.
+    /// Computes a deterministic, collision-resistant hash for an audit entry.
+    ///
+    /// # Why this approach?
+    /// - **Chain Integrity:** By including the previous hash, we create a cryptographically linked chain of audit entries, making tampering with history computationally infeasible.
+    /// - **Explicit Provenance:** All relevant context (action, data, timestamp, index) is included, so the hash uniquely identifies the entry and its position in the audit trail.
+    /// - **No Dynamic Allocation:** All inputs are fixed-size or slices, avoiding heap allocation and ensuring predictable, on-chain-safe behavior.
+    ///
     /// # Arguments
-    /// * `previous_hash` - A reference to the previous audit hash (32 bytes).
-    /// * `action` - A byte slice representing the action taken (e.g., "create", "update", "delete").
-    /// * `data` - A byte slice containing the data associated with the action.
-    /// * `timestamp` - The timestamp of the action in seconds since the Unix epoch.
-    /// * `audit_index` - The index of the audit entry, used to maintain the order of audit entries.
+    /// * `previous_hash` - The hash of the previous audit entry, enforcing chain continuity.
+    /// * `action` - Encodes the semantic intent (e.g., "create", "update").
+    /// * `data` - The payload being audited; must be deterministic and canonicalized by the caller.
+    /// * `timestamp` - Protocol time of the action; must be monotonic to prevent replay attacks.
+    /// * `audit_index` - Enforces strict ordering and guards against reordering attacks.
     ///
     /// # Returns
-    /// A 32-byte array representing the unique audit hash.
+    /// A 32-byte hash uniquely representing this audit entry in the chain.
     pub fn create_audit_hash(
         previous_hash: &[u8; 32],
         action: &[u8],
@@ -28,6 +40,8 @@ impl AuditUtils {
         timestamp: i64,
         audit_index: u64,
     ) -> [u8; 32] {
+        // Hash all fields together to ensure that any change in the audit trail is detectable.
+        // This design prevents undetectable insertion, deletion, or modification of audit entries.
         hashv(&[
             previous_hash,
             action,
@@ -38,19 +52,15 @@ impl AuditUtils {
         .to_bytes()
     }
 
-    /// Verifies the integrity of an audit chain by comparing the current hash with the expected hash.
-    /// This function ensures that the audit trail has not been tampered with by checking if the
-    /// current hash matches the expected hash derived from the previous hash, action, data, timestamp,
-    /// and audit index.
-    /// # Arguments
-    /// * `current_hash` - A reference to the current audit hash (32 bytes).
-    /// * `previous_hash` - A reference to the previous audit hash (32 bytes).
-    /// * `action` - A byte slice representing the action taken (e.g., "create", "update", "delete").
-    /// * `data` - A byte slice containing the  data associated with the action.
-    /// * `timestamp` - The timestamp of the action in seconds since the Unix epoch.
-    /// * `audit_index` - The index of the audit entry, used to maintain the order of audit entries.
+    /// Verifies that an audit entry is valid and untampered by recomputing its expected hash.
+    ///
+    /// # Why this approach?
+    /// - **Tamper Evidence:** By requiring all original parameters, this function ensures that the audit chain is cryptographically sound and that no entry has been altered or replaced.
+    /// - **Protocol Safety:** Returns a custom error if verification fails, supporting robust error handling and on-chain auditability.
+    /// - **No Side Effects:** Pure function, so it is safe to call in any context (including simulation and off-chain verification).
+    ///
     /// # Returns
-    /// A `Result` indicating success or failure of the verification.
+    /// Ok(()) if the audit entry is valid; otherwise, returns a protocol error for audit trail compromise.
     pub fn verify_audit_chain(
         current_hash: &[u8; 32],
         previous_hash: &[u8; 32],
@@ -59,11 +69,10 @@ impl AuditUtils {
         timestamp: i64,
         audit_index: u64,
     ) -> Result<()> {
-        // Calculate the expected hash based on the provided parameters
+        // Recompute the expected hash for this entry using the same deterministic logic as creation.
         let expected_hash =
             Self::create_audit_hash(previous_hash, action, data, timestamp, audit_index);
-        // Compare the expected hash with the current hash
-        // This ensures that the audit trail has not been tampered with.
+        // If the hashes do not match, the audit trail has been tampered with or corrupted.
         if *current_hash != expected_hash {
             return Err(PdaSecurityAuthorityError::AuditTrailVerificationFailed.into());
         }
