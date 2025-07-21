@@ -1,53 +1,76 @@
-pub const MIN_TICK: i32 = -443_636; // Minimum tick value for the Fluxa protocol
-pub const MAX_TICK: i32 = 443_636; // Maximum tick value for the Fluxa protocol
-pub const MIN_SQRT_X64: u128 = 4295128739; // Minimum square root value in Q64.64 format ()
-pub const MAX_SQRT_X64: u128 = 79226673521066979257578248091u128; // Maximum square root value in Q64.64 format
-pub const FRAC_BITS: u32 = 64; // Q64.64 fractional bits
-pub const ONE_X64: u128 = 1u128 << FRAC_BITS; // Represents 1 in Q64.64 format
-pub const MAX_SAFE: u128 = u128::MAX; // Maximum safe value for Q64.64 (to avoid overflow in calculations)
-pub const MAX_TOKEN_AMOUNT: u64 = 1_000_000_000_000_000_000; // 1 billion tokens with 18 decimals
+/// Core protocol bounds for tick and price math.
+///
+/// # Why
+/// These constants define the minimum and maximum tick and sqrt price values allowed by the protocol.
+/// They are chosen to ensure all math remains within safe, deterministic, and auditable bounds, and to prevent overflows or underflows in Q64.64 math.
+pub const MIN_TICK: i32 = -443_636;
+pub const MAX_TICK: i32 = 443_636;
+pub const MIN_SQRT_X64: u128 = 4295128739;
+pub const MAX_SQRT_X64: u128 = 79226673521066979257578248091u128;
+pub const FRAC_BITS: u32 = 64; // Q64.64: 64 fractional bits for fixed-point math, maximizing precision and range.
+pub const ONE_X64: u128 = 1u128 << FRAC_BITS; // Canonical representation of 1.0 in Q64.64, used for normalization and protocol invariants.
+pub const MAX_SAFE: u128 = u128::MAX; // Used for overflow checks in Q64.64 math; ensures all calculations remain safe.
+pub const MAX_TOKEN_AMOUNT: u64 = 1_000_000_000_000_000_000; // Protocol-imposed cap to prevent overflow and DoS via excessive token amounts.
 
-/// Security Authority constants
-pub const AUTHORITY_CHANGE_DELAY: i64 = 48 * 3600; // 48 hours in seconds
-pub const EMERGENCY_PAUSE_TIMEOUT: i64 = 24 * 7 * 3600; // 7 days in seconds
+/// Security authority and timelock parameters.
+///
+/// # Why
+/// These delays are designed to balance protocol safety (time to react to governance or admin changes) with usability.
+/// They prevent instant privilege escalation or rug pulls, and give users/auditors time to respond to changes.
+pub const AUTHORITY_CHANGE_DELAY: i64 = 48 * 3600; // 48h: Minimum notice for authority changes, deterring governance attacks.
+pub const EMERGENCY_PAUSE_TIMEOUT: i64 = 24 * 7 * 3600; // 7d: Maximum duration for emergency pause, ensuring protocol liveness.
+pub const MIN_DELAY: i64 = 24 * 3600; // 24h: Minimum timelock for sensitive operations, enforcing transparency.
+pub const MAX_DELAY: i64 = 30 * 24 * 3600; // 30d: Maximum timelock, preventing indefinite lockup of protocol actions.
 
-/// Timelock operation constants
-pub const MIN_DELAY: i64 = 24 * 3600; // 24 hours
-pub const MAX_DELAY: i64 = 30 * 24 * 3600; // 30 days
+/// Factory-level protocol configuration.
+///
+/// # Why
+/// These constants define the maximums and defaults for pool creation, fee tiers, and protocol status.
+/// They are chosen to ensure scalability, prevent resource exhaustion, and enable efficient bitwise status management.
+pub const MAX_FEE_TIERS: usize = 8; // Limits fee tier array size for zero-copy and deterministic account layouts.
+pub const MAX_POOLS_PER_SHARD: usize = 256; // Prevents a single shard from exhausting compute/memory.
+pub const DEFAULT_PROTOCOL_FEE: u32 = 100; // 1% default, balancing protocol revenue and user cost.
+pub const POOL_CREATION_FEE: u64 = 1_000_000; // Small fee to deter spam and cover storage costs.
+pub const DEFAULT_FEE_TIERS: [u32; MAX_FEE_TIERS] = [100, 500, 3000, 10000, 0, 0, 0, 0]; // Preallocated for zero-copy, unused slots are zeroed.
+                                                                                         // Status flags use bitwise encoding for efficient, atomic updates and multi-flag support.
+pub const STATUS_NORMAL: u8 = 0x00;
+pub const STATUS_PAUSED: u8 = 0x01;
+pub const STATUS_EMERGENCY: u8 = 0x02;
+pub const STATUS_MAINTENANCE: u8 = 0x04;
+pub const STATUS_DEPRECATED: u8 = 0x08;
 
-/// Factory constants
-pub const MAX_FEE_TIERS: usize = 8; // Maximum number of supported fee tiers in the factory
-pub const MAX_POOLS_PER_SHARD: usize = 256; // Maximum number of pools per shard in the factory
-pub const DEFAULT_PROTOCOL_FEE: u32 = 100; // Default protocol fee rate in basis points (1%)
-pub const POOL_CREATION_FEE: u64 = 1_000_000; // Creation fee for new pools in lamports (0.001 SOL)
-pub const DEFAULT_FEE_TIERS: [u32; MAX_FEE_TIERS] = [100, 500, 3000, 10000, 0, 0, 0, 0];
-pub const STATUS_NORMAL: u8 = 0x00; // Normal status flag for factory
-pub const STATUS_PAUSED: u8 = 0x01; // Paused status flag for factory
-pub const STATUS_EMERGENCY: u8 = 0x02; // Emergency status flag for factory
-pub const STATUS_MAINTENANCE: u8 = 0x04; // Maintenance status flag for factory
-pub const STATUS_DEPRECATED: u8 = 0x08; // Deprecated status flag for factory
+/// Pool-level risk and analytics parameters.
+///
+/// # Why
+/// These values are used for volatility and risk calculations, e.g., EWMA volatility tracking.
+/// Chosen to match industry standards (RiskMetrics) and to ensure protocol safety under stress.
+pub const STANDARD_LAMBDA: u32 = 61604; // Q16.16 fixed-point encoding of 0.94, for volatility decay.
 
-/// Pool constants
-pub const STANDARD_LAMBDA: u32 = 61604; // Standard RiskMetrics lambda value (0.94) in fixed point (Q16.16)
+/// Tick-level protocol and security parameters.
+///
+/// # Why
+/// These constants are used for anomaly detection, tick bitmap management, and efficient status flagging.
+/// Bitwise flags enable atomic, multi-flag status updates with minimal compute.
+pub const DEFAULT_SUSPICIOUS_THRESHOLD: u32 = 1000; // Threshold for flagging suspicious tick activity, deterring manipulation.
+pub const FLAG_ACTIVE: u16 = 0x01; // Bitwise: enables efficient status checks and updates.
+pub const FLAG_EMERGENCY_PAUSE: u16 = 0x02;
+pub const FLAG_REQUIRES_AUDIT: u16 = 0x04;
+pub const FLAG_HIGH_VOLUME: u16 = 0x08;
+pub const MAX_TICK_SPACING: u16 = 1000; // Prevents excessive tick fragmentation, improving AMM efficiency.
+pub const MAX_BITMAP_CAPACITY: i32 = 65536; // 2^16: Chosen for efficient bitmap storage and lookup.
+pub const SLOTS_PER_MINUTE: u64 = 150; // Solana-specific: used for time-based rate limiting and analytics.
+pub const MAX_TICK_CROSSES_PER_HOUR: u32 = 10000; // Prevents DoS via excessive tick crossing.
+pub const MIN_TICK_CROSS_INTERVAL: u64 = 2; // Enforces minimum time between tick crosses, deterring bots.
+pub const SUSPICIOUS_CROSS_INTERVAL: u64 = 10; // Used for anomaly detection in tick crossing patterns.
+pub const RESET_SUSPICION_INTERVAL: u64 = 1000; // Resets suspicion score after inactivity, preventing permanent flagging.
+pub const MAX_SUSPICION_SCORE: u32 = 100; // Caps suspicion score to prevent overflow and ensure bounded state.
 
-/// Tick constants
-pub const DEFAULT_SUSPICIOUS_THRESHOLD: u32 = 1000; // Default threshold for suspicious activity detection
-                                                    // Status flag bit positions for efficient operations
-pub const FLAG_ACTIVE: u16 = 0x01; // 0000 0001
-pub const FLAG_EMERGENCY_PAUSE: u16 = 0x02; // 0000 0010
-pub const FLAG_REQUIRES_AUDIT: u16 = 0x04; // 0000 0100
-pub const FLAG_HIGH_VOLUME: u16 = 0x08; // 0000 1000
-pub const MAX_TICK_SPACING: u16 = 1000; // Maximum tick spacing for the Fluxa protocol
-pub const MAX_BITMAP_CAPACITY: i32 = 65536; // Maximum capacity for tick bitmap (2^16)
-pub const SLOTS_PER_MINUTE: u64 = 150; // Number of slots per minute
-pub const MAX_TICK_CROSSES_PER_HOUR: u32 = 10000; // Maximum tick crosses allowed per hour
-pub const MIN_TICK_CROSS_INTERVAL: u64 = 2; // Minimum interval between tick crosses
-pub const SUSPICIOUS_CROSS_INTERVAL: u64 = 10; // Interval for suspicious tick crosses
-pub const RESET_SUSPICION_INTERVAL: u64 = 1000; // Interval to reset suspicion
-pub const MAX_SUSPICION_SCORE: u32 = 100; // Maximum suspicion score
-
-/// Position constants
-pub const MAX_POSITIONS_PER_BATCH: usize = 200; // Maximum number of positions that can be processed in a single batch
-pub const POSITION_HASH_SIZE: usize = 32; // Size of the position hash in bytes
-pub const MERKLE_TREE_DEPTH: usize = 20; // Depth of the Merkle tree for position storage
-pub const ACCOUNT_SIZE_LIMIT: usize = 10_240; // 10 KiB limit
+/// Position and storage constraints.
+///
+/// # Why
+/// These constants are chosen to ensure efficient, zero-copy account layouts and to prevent resource exhaustion.
+/// They also enable Merkle proofs and batch operations for scalability and auditability.
+pub const MAX_POSITIONS_PER_BATCH: usize = 200; // Bounded for compute/memory safety in batch ops.
+pub const POSITION_HASH_SIZE: usize = 32; // 32 bytes = 256 bits, matches cryptographic hash output.
+pub const MERKLE_TREE_DEPTH: usize = 20; // Chosen for balance between proof size and storage efficiency.
+pub const ACCOUNT_SIZE_LIMIT: usize = 10_240; // 10 KiB: fits within Solana account size limits, prevents overuse.
