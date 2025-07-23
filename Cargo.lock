@@ -1814,6 +1814,7 @@ dependencies = [
  "prusti-contracts",
  "rand 0.9.1",
  "solana-bpf-loader-program",
+ "solana-compute-budget-interface",
  "solana-program",
  "solana-program-test",
  "solana-sdk",
