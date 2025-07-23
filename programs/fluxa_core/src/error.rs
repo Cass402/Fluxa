@@ -284,3 +284,17 @@ pub enum PositionError {
     #[msg("Duplicate position nonce")]
     DuplicatePositionNonce,
 }
+
+#[error_code]
+pub enum AdvancedAccountOptimizationError {
+    #[msg("Account size exceeds 10KB limit")]
+    AccountSizeExceedsLimit,
+    #[msg("Invalid account size for migration")]
+    InvalidAccountSize,
+    #[msg("Arithmetic overflow in calculation")]
+    ArithmeticOverflow,
+    #[msg("Invalid PDA address for migration")]
+    InvalidPDAAddress,
+    #[msg("Invalid account owner")]
+    InvalidAccountOwner,
+}
