@@ -74,3 +74,15 @@ pub const MAX_POSITIONS_PER_BATCH: usize = 200; // Bounded for compute/memory sa
 pub const POSITION_HASH_SIZE: usize = 32; // 32 bytes = 256 bits, matches cryptographic hash output.
 pub const MERKLE_TREE_DEPTH: usize = 20; // Chosen for balance between proof size and storage efficiency.
 pub const ACCOUNT_SIZE_LIMIT: usize = 10_240; // 10 KiB: fits within Solana account size limits, prevents overuse.
+
+/// Account Optimization constants
+/// Maximum Solana account size limit (10 KiB)
+pub const MAX_ACCOUNT_SIZE: usize = 10 * 1024;
+
+/// Account overhead bytes (discriminator + metadata + padding)
+/// This reserves space for account discriminator, rent exemption data, and alignment
+pub const ACCOUNT_OVERHEAD_BYTES: usize = 128;
+
+/// Rent safety buffer as bit-shift amount (1/32 = ~3.125% buffer)
+/// Using bit-shift for gas-efficient division: amount >> 5 ≈ amount / 32
+pub const RENT_BUFFER_SHIFT: u32 = 5;
