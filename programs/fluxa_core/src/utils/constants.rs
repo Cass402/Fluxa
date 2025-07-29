@@ -64,6 +64,15 @@ pub const MIN_TICK_CROSS_INTERVAL: u64 = 2; // Enforces minimum time between tic
 pub const SUSPICIOUS_CROSS_INTERVAL: u64 = 10; // Used for anomaly detection in tick crossing patterns.
 pub const RESET_SUSPICION_INTERVAL: u64 = 1000; // Resets suspicion score after inactivity, preventing permanent flagging.
 pub const MAX_SUSPICION_SCORE: u32 = 100; // Caps suspicion score to prevent overflow and ensure bounded state.
+pub const TICKS_PER_PAGE: usize = 150; // ~7.2KB per page account
+pub const MAX_STORAGE_PAGES: usize = 20; // Support up to 3000 total ticks
+pub const INLINE_TICK_CAPACITY: usize = 50; // Ticks stored in main account
+pub const MAX_LOSS_PCT: u8 = 5; // Precision guard
+pub const VIRTUAL_TICK_OFFSET: i32 = 262_144; // 2^18 for wider range coverage
+pub const MAX_CACHE_ENTRIES: usize = 256; // Cache size (stack allocated)
+pub const HOT_TICK_THRESHOLD: u16 = 3; // Minimum access count to be "hot"
+pub const MAIN_BITMAP_WORDS: usize = 64; // 4096 bits in main account
+pub const PAGE_BITMAP_WORDS: usize = 8; // 512 bits per page
 
 /// Position and storage constraints.
 ///
