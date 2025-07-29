@@ -238,6 +238,28 @@ pub enum TickError {
     /// Why: Prevents silent underflows that could corrupt tick or pool state.
     #[msg("Liquidity Underflow in calculation")]
     LiquidityUnderflow,
+    #[msg("Storage capacity exceeded")]
+    StorageCapacityExceeded,
+    #[msg("Excessive compression loss")]
+    ExcessiveCompressionLoss,
+    #[msg("Tick not found")]
+    TickNotFound,
+    #[msg("Tick index out of valid range")]
+    TickIndexOutOfRange,
+    #[msg("Page not found")]
+    PageNotFound,
+    #[msg("Invalid page index")]
+    InvalidPageIndex,
+    #[msg("Slot overflow detected")]
+    SlotOverflow,
+    #[msg("Invalid slot value")]
+    InvalidSlot,
+    #[msg("Compression overflow")]
+    CompressionOverflow,
+    #[msg("Zero-copy layout mismatch")]
+    LayoutMismatch,
+    #[msg("Alignment error")]
+    AlignmentError,
 }
 
 /// Errors for position management, batch operations, and Merkle proof validation.
