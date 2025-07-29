@@ -72,7 +72,7 @@ jobs:
           solana_version: ${{ env.SOLANA_VERSION }}
 
       - name: Download program artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: program-artifacts
           path: target/deploy/
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download performance results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: performance-results
           path: performance-report/
@@ -186,7 +186,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download performance summary
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: performance-summary
           path: ./

@@ -82,7 +82,7 @@ jobs:
         uses: ./.github/actions/setup-integration-test
 
       - name: Download program artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: program-artifacts
           path: target/deploy/
@@ -160,7 +160,7 @@ jobs:
 
       # Download program artifacts
       - name: Download program artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: program-artifacts
           path: target/deploy/
