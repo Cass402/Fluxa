@@ -30,7 +30,7 @@ bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
 
 [dev-dependencies]
 anchor-client = "0.31.1"
-tokio = { version = "1.45.1", features = ["full"] }
+tokio = { version = "1.47.0", features = ["full"] }
 solana-program-test = "2.3.2"
 solana-bpf-loader-program = "2.3.2"
 solana-sdk = "2.3.1"
