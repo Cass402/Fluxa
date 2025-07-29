@@ -160,7 +160,7 @@ impl Q64x64 {
 ///
 /// The value is interpreted as `value / 2^64`.
 #[repr(transparent)]
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Pod, Zeroable)]
 pub struct Q64x64Signed(i128);
 
 /// Implements core arithmetic for Q64x64Signed, always checked for overflow/underflow.
