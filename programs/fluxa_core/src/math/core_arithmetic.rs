@@ -54,7 +54,20 @@ const SQRT_LUT: [u128; 16] = [
 // ---------- Core Fixed-Point Wrapper ---------------------------------------
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Pod, Zeroable)]
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Pod,
+    Zeroable,
+    AnchorSerialize,
+    AnchorDeserialize,
+)]
 /// Q64.64 fixed-point numeric type (u128-backed, 64 integer bits, 64 fractional bits).
 ///
 /// # Why this type?
@@ -65,6 +78,10 @@ const SQRT_LUT: [u128; 16] = [
 ///
 /// The value is interpreted as `value / 2^64`.
 pub struct Q64x64(u128);
+
+impl anchor_lang::Space for Q64x64 {
+    const INIT_SPACE: usize = 16; // 128 bits = 16 bytes
+}
 
 /// Implements core arithmetic for Q64x64, always checked for overflow/underflow.
 ///
