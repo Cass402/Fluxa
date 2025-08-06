@@ -12,8 +12,9 @@ use anchor_lang::prelude::*;
 /// ## Usage
 /// This struct is the canonical configuration and risk control state for a pool, referenced by all admin, fee, and limit logic.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
-pub struct OptimizedPoolConfig {
+pub struct PoolConfig {
     /// Reference to the associated PoolCore account.
     ///
     /// Why: Ensures this config is always bound to a specific pool, preventing misconfiguration or spoofing. Used for Anchor constraint validation.
@@ -47,6 +48,9 @@ pub struct OptimizedPoolConfig {
     ///
     /// Why: Only this authority can make critical changes, ensuring protocol safety and upgradability. Storing as Pubkey allows for multisig or DAO integration.
     pub core_authority: Pubkey,
+
+    pub bump_config: u8,   // Cache bump for efficiency
+    pub _padding: [u8; 7], // Align to 8-byte boundary
 
     /// Reserved for future upgrades (e.g., new risk controls, fee models) without breaking account layout.
     ///

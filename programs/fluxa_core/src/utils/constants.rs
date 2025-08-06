@@ -45,6 +45,8 @@ pub const STATUS_DEPRECATED: u8 = 0x08;
 /// These values are used for volatility and risk calculations, e.g., EWMA volatility tracking.
 /// Chosen to match industry standards (RiskMetrics) and to ensure protocol safety under stress.
 pub const STANDARD_LAMBDA: u32 = 61604; // Q16.16 fixed-point encoding of 0.94, for volatility decay.
+pub const TICK_SPACING_PER_FEE: [(u32, u16); 4] = [(100, 1), (500, 10), (3000, 60), (10000, 200)];
+pub const SECURITY_FLAG_DEFAULT: u32 = 0x01; // Default security flag for new pools, indicating normal operation.
 
 /// Tick-level protocol and security parameters.
 ///
