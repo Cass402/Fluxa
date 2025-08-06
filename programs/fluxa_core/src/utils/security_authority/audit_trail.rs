@@ -12,6 +12,7 @@ use anchor_lang::prelude::*;
 /// - Tracks the latest entry's hash and index, enabling chain-of-trust verification for all entries.
 /// - Reserved space for future upgrades without breaking account layout.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct AuditTrailHead {
     /// Pool reference
@@ -67,14 +68,13 @@ impl AuditTrailHead {
     ///
     /// # Why
     /// This method updates the audit trail head with the latest entry, maintaining the chain-of-trust and append-only guarantees.
-    pub fn add_entry(&mut self, entry_hash: [u8; 32]) -> Result<u64> {
-        self.current_index = self.current_index.wrapping_add(1); // Increment the current index
-        self.latest_hash = entry_hash; // Update the latest hash with the new entry hash
+    pub fn add_entry(&mut self, entry: &AuditTrailEntry) -> Result<u64> {
+        self.current_index = entry.audit_index; // Increment the current index
+        self.latest_hash = entry.current_hash; // Update the latest hash with the new entry hash
         self.total_entries += 1; // Increment the total entries count
 
         // Update the last updated timestamp
-        let clock = Clock::get()?; // Get the current clock time
-        self.last_updated = clock.unix_timestamp;
+        self.last_updated = entry.timestamp;
 
         Ok(self.current_index)
     }
@@ -91,6 +91,7 @@ impl AuditTrailHead {
 /// - Hashes and indices enable chain-of-trust verification and efficient lookups.
 /// - Reserved space for future upgrades.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct AuditTrailEntry {
     /// Pool reference
@@ -139,6 +140,8 @@ pub struct InitArgs {
     pub target: Pubkey,
     pub data_hash: [u8; 32],
     pub previous_hash: [u8; 32],
+    pub timestamp: i64,
+    pub block_height: u64,
 }
 
 /// Implementation of the AuditTrailEntry account
@@ -162,9 +165,8 @@ impl AuditTrailEntry {
         self.previous_hash = args.previous_hash;
 
         // Update the timestamp and block height
-        let clock = Clock::get()?;
-        self.timestamp = clock.unix_timestamp;
-        self.block_height = clock.slot;
+        self.timestamp = args.timestamp;
+        self.block_height = args.block_height;
 
         // Calculate current hash
         self.current_hash = AuditUtils::create_audit_hash(
@@ -294,7 +296,8 @@ pub fn create_audit_trail_entry(
 
     // Get previous hash from head
     let previous_hash = audit_trail_head.latest_hash;
-
+    // Get current clock time
+    let clock = Clock::get()?;
     // Initialize entry
     audit_trail_entry.initialize(InitArgs {
         pool_core: ctx.accounts.pool_core.key(),
@@ -304,6 +307,11 @@ pub fn create_audit_trail_entry(
         target,
         data_hash,
         previous_hash,
+        timestamp: clock.unix_timestamp,
+        block_height: clock.slot,
     })?;
+
+    audit_trail_head.add_entry(audit_trail_entry)?;
+
     Ok(())
 }

@@ -18,6 +18,7 @@ use anchor_lang::prelude::*;
 /// - Emergency pause and operational status are tracked on-chain for full transparency and liveness guarantees.
 /// - Audit trail hash and index provide a tamper-evident, append-only log of all critical actions.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct CoreAuthority {
     /// Pool core reference
@@ -37,11 +38,6 @@ pub struct CoreAuthority {
     /// # Why
     /// Used for secure, delayed authority transitions. Ensures that new authorities are not granted control instantly, deterring attacks.
     pub pending_authority: Pubkey,
-    /// Pending authority change flag
-    ///
-    /// # Why
-    /// Prevents overlapping or conflicting authority transitions, ensuring only one change can be in progress at a time.
-    pub has_pending_authority: bool,
     /// Authority change request timestamp
     ///
     /// # Why
@@ -52,6 +48,11 @@ pub struct CoreAuthority {
     /// # Why
     /// Protocol-mandated minimum delay for authority changes, deterring instant takeovers.
     pub authority_change_delay: i64,
+    /// Pending authority change flag
+    ///
+    /// # Why
+    /// Prevents overlapping or conflicting authority transitions, ensuring only one change can be in progress at a time.
+    pub has_pending_authority: bool,
     /// Number of confirmations received for authority change
     ///
     /// # Why
@@ -296,7 +297,7 @@ impl CoreAuthority {
 ///
 /// # Why
 /// Encodes the current state of the pool, supporting liveness, maintenance, and emergency controls.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize, InitSpace)]
 #[repr(u8)]
 pub enum OperationalStatus {
     Normal = 0,

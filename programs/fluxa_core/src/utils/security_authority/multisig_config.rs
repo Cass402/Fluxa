@@ -12,6 +12,7 @@ use anchor_lang::prelude::*;
 /// - Bitfield confirmation tracking for atomic, efficient multi-sig logic.
 /// - All state transitions are timestamped for compliance and forensic analysis.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct MultisigConfig {
     /// Pool core reference
@@ -60,7 +61,7 @@ impl MultisigConfig {
         &mut self,
         pool_core: Pubkey,
         threshold: u8,
-        members: Vec<Pubkey>,
+        members: [Pubkey; 7],
     ) -> Result<()> {
         // Validate the number of members and threshold
         if threshold == 0 || threshold > members.len() as u8 || members.len() > 7 {
@@ -73,11 +74,7 @@ impl MultisigConfig {
         self.member_count = members.len() as u8;
 
         // Initialize members array
-        self.members = [Pubkey::default(); 7];
-        for (i, member) in members.iter().enumerate() {
-            self.members[i] = *member;
-        }
-
+        self.members = members;
         // Initialize metadata
         let clock = Clock::get()?;
         self.created_at = clock.unix_timestamp;
@@ -206,7 +203,7 @@ pub struct InitializeMultisigConfig<'info> {
 pub fn initialize_multisig_config(
     ctx: Context<InitializeMultisigConfig>,
     threshold: u8,
-    members: Vec<Pubkey>,
+    members: [Pubkey; 7],
 ) -> Result<()> {
     let multisig_config = &mut ctx.accounts.multisig_config.load_init()?;
 
