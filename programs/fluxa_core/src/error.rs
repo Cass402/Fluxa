@@ -108,6 +108,8 @@ pub enum PdaSecurityAuthorityError {
     /// Timelock operation expired; ensures stale operations cannot be executed.
     #[msg("Timelock operation expired")]
     TimelockOperationExpired,
+    #[msg("Invalid audit index")]
+    InvalidAuditIndex,
 }
 
 /// Errors for factory-level operations, sharding, and protocol configuration.
@@ -153,6 +155,30 @@ pub enum PoolError {
     /// Why: Prevents DoS and ensures protocol can rate-limit expensive operations.
     #[msg("Volatility update too frequent")]
     VolatilityUpdateTooFrequent,
+    /// Fee tier is not valid.
+    /// Why: Ensures only valid fee tiers are used, preventing protocol bricking or user confusion.
+    #[msg("Invalid Fee tier")]
+    InvalidFeeTier,
+    /// Token order is invalid (token_0 must be < token_1).
+    /// Why: Ensures consistent token ordering for protocol logic and prevents confusion.
+    #[msg("Invalid token order - token_0 must be < token_1")]
+    InvalidTokenOrder,
+    /// Fee tier is not supported.
+    /// Why: Prevents protocol bricking or user confusion from unsupported fee tiers.
+    #[msg("Unsupported fee tier")]
+    UnsupportedFeeTier,
+    /// Initial tick is not aligned with the fee tier's tick spacing.
+    /// Why: Ensures all ticks are created at valid, protocol-aligned indices.
+    #[msg("Invalid tick spacing for fee tier")]
+    InvalidTickSpacingForFeeTier,
+    /// Invalid initial price for the pool.
+    /// Why: Ensures all pools start with valid, protocol-compliant prices.
+    #[msg("Initial price out of bounds")]
+    InvalidInitialPrice,
+    /// Initial tick not aligned with spacing.
+    /// Why: Ensures all ticks are created at valid, protocol-aligned indices.
+    #[msg("Initial tick not aligned with spacing")]
+    InitialTickSpacingMismatch,
 }
 
 /// Errors for tick-level operations, rate limiting, and anomaly detection.
