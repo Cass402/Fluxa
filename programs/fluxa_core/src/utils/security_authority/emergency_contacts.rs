@@ -13,6 +13,7 @@ use anchor_lang::prelude::*;
 /// - Roles and permissions are explicit, supporting fine-grained, protocol-enforced emergency response.
 /// - Metadata and reserved space support future upgrades and compliance.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct EmergencyContacts {
     /// Pool reference
@@ -139,13 +140,14 @@ impl EmergencyContacts {
 /// # Why
 /// Encodes all relevant metadata for a responder, supporting fine-grained, protocol-enforced emergency response and auditability.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct EmergencyContact {
     pub pubkey: Pubkey,
-    pub role: EmergencyRole,
     pub added_at: i64,
     pub last_active: i64,
     pub permissions: u32,
+    pub role: EmergencyRole,
 }
 
 /// Default implementation for EmergencyContact
@@ -168,7 +170,7 @@ impl Default for EmergencyContact {
 ///
 /// # Why
 /// Encodes the responsibilities and authority levels for each responder, supporting fine-grained, protocol-enforced emergency response.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize, InitSpace)]
 #[repr(u8)]
 pub enum EmergencyRole {
     Responder = 0,
