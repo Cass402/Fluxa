@@ -12,7 +12,7 @@ use anchor_lang::prelude::*;
 ///
 /// ## Usage
 /// This struct is used for dynamic fee adjustment, risk controls, and monitoring, referenced by pool config and security logic.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace)]
 #[repr(C)]
 pub struct EwmaVolatilityTracker {
     /// EWMA parameters and state.
@@ -22,7 +22,7 @@ pub struct EwmaVolatilityTracker {
     /// - `previous_price`: Last observed price, in Q64.64. Why: Needed for log-return calculation; Q64.64 ensures precision and overflow safety.
     pub lambda: u32, // Decay factor in fixed point (e.g., 0.94 * 2^16)
     pub current_volatility: u32, // Current volatility estimate (basis points)
-    pub previous_price: u128,    // Previous price for return calculation
+    pub previous_price: Q64x64,  // Previous price for return calculation
 
     /// Rate limiting and update tracking.
     ///
@@ -30,8 +30,8 @@ pub struct EwmaVolatilityTracker {
     /// - `min_update_interval`: Minimum slots between updates. Why: Ensures updates are not spammed, protecting against DoS and wasted compute.
     /// - `update_count`: Total number of updates. Why: Useful for monitoring and debugging, and for adaptive logic if needed.
     pub last_update_slot: u64,
-    pub min_update_interval: u16, // Minimum slots between updates
     pub update_count: u32,        // Total number of updates
+    pub min_update_interval: u16, // Minimum slots between updates
 
     /// Configuration and safety controls.
     ///
@@ -40,7 +40,7 @@ pub struct EwmaVolatilityTracker {
     /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
     pub enabled: bool,
     pub volatility_cap: u32, // Maximum volatility in basis points
-    pub _padding: [u8; 6],   // Align to 8-byte boundary
+    pub _padding: [u8; 8],   // Align to 8-byte boundary
 }
 
 /// EWMA Volatility Tracker implementation.
@@ -64,13 +64,13 @@ impl EwmaVolatilityTracker {
         Self {
             lambda: STANDARD_LAMBDA,
             current_volatility: 0,
-            previous_price: 0,
+            previous_price: Q64x64::zero(),
             last_update_slot: 0,
             min_update_interval,
             update_count: 0,
             enabled: true,
             volatility_cap: 10000, // 100% volatility cap
-            _padding: [0; 6],
+            _padding: [0; 8],
         }
     }
 
@@ -100,17 +100,17 @@ impl EwmaVolatilityTracker {
         }
 
         // Skip first update (no previous price)
-        if self.previous_price == 0 {
-            self.previous_price = current_price.raw();
+        if self.previous_price == Q64x64::zero() {
+            self.previous_price = current_price;
             self.last_update_slot = current_slot;
             return Ok(());
         }
 
-        let prev_price = Q64x64::from_raw(self.previous_price);
+        let prev_price = self.previous_price;
 
         // Log return approximation using integer arithmetic.
         // Why: For small changes, ln(p1/p0) ≈ (p1-p0)/p0, which is cheap and robust on-chain.
-        let price_change = if current_price.raw() >= self.previous_price {
+        let price_change = if current_price >= self.previous_price {
             mul_div_q64(
                 current_price.checked_sub(prev_price)?,
                 Q64x64::from_int(10000),
@@ -160,7 +160,7 @@ impl EwmaVolatilityTracker {
         }
 
         // Update state for next round.
-        self.previous_price = current_price.raw();
+        self.previous_price = current_price;
         self.last_update_slot = current_slot;
         self.update_count += 1;
 
