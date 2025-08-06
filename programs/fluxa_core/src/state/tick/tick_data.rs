@@ -169,7 +169,7 @@ impl TickData {
         self.last_update_timestamp = timestamp;
 
         // Efficient suspicious activity detection with safe overflow protection
-        let delta_abs = (delta.raw() >> 64) as u64; // Convert to absolute value in Q64.64 fixed point
+        let delta_abs = (delta.abs().raw() >> 64) as u64; // Convert to absolute value in Q64.64 fixed point
         if delta_abs > self.cross_count * 100 {
             self.suspicious_activity_score = self.suspicious_activity_score.saturating_add(1);
 
