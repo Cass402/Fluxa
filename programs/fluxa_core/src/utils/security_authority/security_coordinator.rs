@@ -141,10 +141,29 @@ pub struct EmergencyPauseArgs {
     pub emergency_level: EmergencyLevel,
 }
 
+/// Arguments for emergency contact management operations with proper authorization validation.
+///
+/// Emergency contacts form a critical trust boundary in the protocol's security model,
+/// as they have the power to halt operations during crises. This structure ensures all
+/// necessary context is provided for proper validation and audit trail generation.
+///
+/// ## Security Implications
+/// Emergency contact management is highly sensitive because:
+/// - Emergency contacts can trigger protocol-wide shutdowns
+/// - Improper contact management could enable insider attacks
+/// - Contact permissions determine the scope of emergency response capabilities
 pub struct AddEmergencyContactArgs {
+    /// The new emergency contact being added to the registry
+    /// Must be a valid Pubkey that can sign emergency pause transactions
     pub contact: Pubkey,
+    /// The specific emergency role defining the contact's capabilities and limitations
+    /// Different roles have varying authorization levels for emergency responses
     pub role: EmergencyRole,
+    /// Bitfield permissions defining granular emergency response capabilities
+    /// Allows fine-tuned control over what emergency actions each contact can perform
     pub permissions: u32,
+    /// The current protocol authority authorizing the emergency contact addition
+    /// Must match the core authority to prevent unauthorized contact management
     pub authority: Pubkey,
 }
 
@@ -503,6 +522,30 @@ impl SecurityCoordinator {
         Ok(())
     }
 
+    /// Coordinates the addition of emergency contacts with proper authorization and audit logging.
+    ///
+    /// Emergency contacts represent a critical security boundary, as they have the authority
+    /// to halt protocol operations during crisis situations. This function implements strict
+    /// authorization validation to prevent unauthorized modification of the emergency contact
+    /// registry, which could enable insider attacks or compromise incident response capabilities.
+    ///
+    /// ## Authorization Security Model
+    /// Only the current protocol authority can add emergency contacts, ensuring that emergency
+    /// response capabilities remain under the control of the legitimate protocol governance.
+    /// This prevents rogue actors from installing their own emergency contacts that could be
+    /// used to disrupt operations or extract value during manufactured crises.
+    ///
+    /// ## Emergency Contact Trust Model
+    /// Emergency contacts operate in a different trust domain from normal multisig operations:
+    /// - They can act unilaterally during genuine emergencies for rapid response
+    /// - Their actions are heavily audited and logged for post-incident analysis
+    /// - Contact permissions are granular to limit potential for abuse
+    /// - Contact additions are permanently recorded in the audit trail
+    ///
+    /// ## Audit Trail Integrity
+    /// All emergency contact modifications are logged with comprehensive metadata including
+    /// the contact's role, permissions, and authorizing authority. This ensures full
+    /// transparency and accountability for changes to the emergency response structure.
     pub fn coordinate_add_emergency_contact(
         &mut self,
         core_authority: &CoreAuthority,
@@ -511,11 +554,15 @@ impl SecurityCoordinator {
         audit_trail_entry: &mut AuditTrailEntry,
         args: AddEmergencyContactArgs,
     ) -> Result<()> {
+        // Verify that only the current protocol authority can modify emergency contacts
+        // This prevents unauthorized parties from installing malicious emergency responders
         require!(
             args.authority == core_authority.current_authority,
             PdaSecurityAuthorityError::Unauthorized
         );
 
+        // Delegate the actual contact addition to the emergency contacts module
+        // Separation of concerns - coordinator handles authorization, module handles storage
         let _ = EmergencyContacts::add_contact(
             emergency_contacts,
             args.contact,
@@ -523,19 +570,22 @@ impl SecurityCoordinator {
             args.permissions,
         );
 
+        // Create comprehensive audit hash combining all relevant contact parameters
+        // This enables forensic analysis of emergency contact management decisions
         let data_hash = hashv(&[
-            args.contact.as_ref(),
-            &(args.role as u8).to_le_bytes(),
-            &args.permissions.to_le_bytes(),
+            args.contact.as_ref(),            // Who was added
+            &(args.role as u8).to_le_bytes(), // What role they were assigned
+            &args.permissions.to_le_bytes(),  // What permissions they were granted
         ])
         .to_bytes();
 
-        // Log the addition of the emergency contact for audit purposes
+        // Log the addition of the emergency contact for complete audit trail coverage
+        // This creates an immutable record of all emergency contact modifications
         self.log_security_event(
             audit_trail_head,
             audit_trail_entry,
-            args.authority,
-            args.contact,
+            args.authority, // Who authorized the addition
+            args.contact,   // Who was added as emergency contact
             b"emergency_contact_added",
             data_hash,
         )?;
@@ -625,9 +675,27 @@ pub struct InitializeSecurityCoordinator<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/// Account validation context for authority change proposals with comprehensive audit infrastructure.
+///
+/// This context implements the first phase of the two-phase authority change protocol,
+/// ensuring that all necessary security checks and audit trail components are properly
+/// validated and initialized before any authority modifications can proceed.
+///
+/// ## Audit Index Security
+/// The `next_audit_index` instruction parameter serves as a nonce to prevent audit trail
+/// manipulation attacks. By requiring callers to specify the expected audit index,
+/// we ensure that audit entries are created in strict sequential order and prevent
+/// race conditions that could allow audit trail gaps or duplicates.
+///
+/// ## Account Relationship Validation
+/// All accounts must reference the same pool_core to ensure operation scope integrity
+/// and prevent cross-pool authority manipulation attacks. The PDA derivation constraints
+/// cryptographically enforce these relationships at the protocol level.
 #[derive(Accounts)]
 #[instruction(next_audit_index: u64)]
 pub struct AuthorityChangeProposal<'info> {
+    /// Security coordinator account requiring mutation for state updates during proposal process
+    /// The coordinator tracks proposal state and manages audit trail integration
     #[account(
         mut,
         seeds = [b"security_coordinator", pool_core.key().as_ref()],
@@ -635,6 +703,8 @@ pub struct AuthorityChangeProposal<'info> {
     )]
     pub security_coordinator: AccountLoader<'info, SecurityCoordinator>,
 
+    /// Core authority account requiring mutation to store the pending authority proposal
+    /// This account maintains the two-phase commit state for authority changes
     #[account(
         mut,
         seeds = [b"core_authority", pool_core.key().as_ref()],
@@ -642,12 +712,16 @@ pub struct AuthorityChangeProposal<'info> {
     )]
     pub core_authority: AccountLoader<'info, CoreAuthority>,
 
+    /// Multisig configuration for validating proposer authorization and threshold requirements
+    /// Read-only access since we only validate membership, not modify configuration
     #[account(
         seeds = [b"multisig_config", pool_core.key().as_ref()],
         bump
     )]
     pub multisig_config: AccountLoader<'info, MultisigConfig>,
 
+    /// Audit trail head requiring mutation to link the new audit entry to the trail
+    /// Maintains the cryptographic chain of audit events for integrity verification
     #[account(
         mut,
         seeds = [b"audit_trail_head", pool_core.key().as_ref()],
@@ -655,6 +729,8 @@ pub struct AuthorityChangeProposal<'info> {
     )]
     pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
 
+    /// New audit trail entry initialized to record the authority change proposal
+    /// Uses deterministic PDA derivation based on audit index for sequential ordering
     #[account(
         init,
         payer = proposer,
@@ -664,19 +740,44 @@ pub struct AuthorityChangeProposal<'info> {
     )]
     pub audit_trail_entry: AccountLoader<'info, AuditTrailEntry>,
 
+    /// Pool core account serving as the scope delimiter for this authority change operation
+    /// UncheckedAccount since we only need its public key for PDA seed validation
     pub pool_core: UncheckedAccount<'info>,
 
+    /// The multisig member proposing the authority change, who pays for audit entry creation
+    /// Must be validated as an authorized multisig member before proposal acceptance
     #[account(mut)]
     pub proposer: Signer<'info>,
 
+    /// The proposed new authority that would replace the current authority if confirmed
+    /// UncheckedAccount since we only store its public key, not validate its structure
     pub new_authority: UncheckedAccount<'info>,
 
+    /// Solana system program required for creating the new audit trail entry account
     pub system_program: Program<'info, System>,
 }
 
+/// Account validation context for multisig confirmation operations in the authority change protocol.
+///
+/// This context implements the confirmation phase of the two-phase authority change protocol,
+/// where authorized multisig members provide their confirmations for a pending authority change.
+/// The design ensures that only valid multisig members can participate and that all confirmations
+/// are properly recorded in the audit trail for transparency and verification.
+///
+/// ## Sequential Confirmation Security
+/// Each confirmation creates a new audit trail entry, maintaining a complete record of who
+/// confirmed what and when. The audit index serves as a nonce to prevent confirmation replay
+/// attacks and ensures strict ordering of confirmation events.
+///
+/// ## Atomic State Management
+/// The context provides mutable access to both the coordinator and multisig configuration
+/// to enable atomic updates of confirmation state and threshold checking, preventing race
+/// conditions that could allow partial confirmations or threshold bypassing.
 #[derive(Accounts)]
 #[instruction(next_audit_index: u64)]
 pub struct MultisigConfirmation<'info> {
+    /// Security coordinator requiring mutation to update confirmation state and security status
+    /// Tracks the overall state of the authority change process across multiple confirmations
     #[account(
         mut,
         seeds = [b"security_coordinator", pool_core.key().as_ref()],
@@ -684,6 +785,8 @@ pub struct MultisigConfirmation<'info> {
     )]
     pub security_coordinator: AccountLoader<'info, SecurityCoordinator>,
 
+    /// Core authority account requiring mutation to process confirmation and potentially execute authority change
+    /// Maintains the pending authority state and executes the change when threshold is reached
     #[account(
         mut,
         seeds = [b"core_authority", pool_core.key().as_ref()],
@@ -691,6 +794,8 @@ pub struct MultisigConfirmation<'info> {
     )]
     pub core_authority: AccountLoader<'info, CoreAuthority>,
 
+    /// Multisig configuration requiring mutation to record confirmations and check threshold
+    /// Tracks which members have confirmed and whether the required threshold has been met
     #[account(
         mut,
         seeds = [b"multisig_config", pool_core.key().as_ref()],
@@ -698,6 +803,8 @@ pub struct MultisigConfirmation<'info> {
     )]
     pub multisig_config: AccountLoader<'info, MultisigConfig>,
 
+    /// Audit trail head requiring mutation to append the confirmation audit entry
+    /// Maintains the chronological chain of all security events including confirmations
     #[account(
         mut,
         seeds = [b"audit_trail_head", pool_core.key().as_ref()],
@@ -705,6 +812,8 @@ pub struct MultisigConfirmation<'info> {
     )]
     pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
 
+    /// New audit trail entry to record this specific confirmation event
+    /// Creates an immutable record of who confirmed the authority change and when
     #[account(
         init,
         payer = confirmer,
@@ -714,17 +823,40 @@ pub struct MultisigConfirmation<'info> {
     )]
     pub audit_trail_entry: AccountLoader<'info, AuditTrailEntry>,
 
+    /// Pool core account defining the operational scope for this confirmation
+    /// Ensures confirmations are properly scoped to the correct pool instance
     pub pool_core: UncheckedAccount<'info>,
 
+    /// The multisig member providing confirmation, who pays for audit entry creation
+    /// Must be validated as an authorized multisig member with confirmation rights
     #[account(mut)]
     pub confirmer: Signer<'info>,
 
+    /// Solana system program required for audit trail entry account creation
     pub system_program: Program<'info, System>,
 }
 
+/// Account validation context for emergency pause operations with specialized authorization.
+///
+/// Emergency pauses represent one of the most critical security operations in the protocol,
+/// designed to rapidly halt potentially dangerous operations when threats are detected.
+/// This context enforces a separate authorization model from normal multisig operations
+/// to enable faster response times during genuine emergencies.
+///
+/// ## Emergency Authorization Model
+/// Unlike normal operations that require multisig consensus, emergency pauses can be
+/// triggered by individual emergency contacts to enable rapid response. This trades
+/// some security for speed when immediate action is needed to protect user funds.
+///
+/// ## Audit Trail Criticality
+/// Emergency pause operations must be extensively logged since they represent extraordinary
+/// circumstances that require post-incident analysis and accountability. The audit trail
+/// captures not just who triggered the pause, but the justification and severity level.
 #[derive(Accounts)]
 #[instruction(next_audit_index: u64)]
 pub struct EmergencyPause<'info> {
+    /// Security coordinator requiring mutation to transition to emergency pause state
+    /// Updates security status and flags to reflect the emergency condition
     #[account(
         mut,
         seeds = [b"security_coordinator", pool_core.key().as_ref()],
@@ -732,6 +864,8 @@ pub struct EmergencyPause<'info> {
     )]
     pub security_coordinator: AccountLoader<'info, SecurityCoordinator>,
 
+    /// Core authority requiring mutation to execute the emergency pause mechanics
+    /// Handles the actual implementation of operational restrictions during pause
     #[account(
         mut,
         seeds = [b"core_authority", pool_core.key().as_ref()],
@@ -739,12 +873,16 @@ pub struct EmergencyPause<'info> {
     )]
     pub core_authority: AccountLoader<'info, CoreAuthority>,
 
+    /// Emergency contacts registry for validating responder authorization
+    /// Read-only access since we only verify emergency response permissions
     #[account(
         seeds = [b"emergency_contacts", pool_core.key().as_ref()],
         bump
     )]
     pub emergency_contacts: AccountLoader<'info, EmergencyContacts>,
 
+    /// Audit trail head requiring mutation to record the emergency pause event
+    /// Critical for post-incident analysis and regulatory compliance
     #[account(
         mut,
         seeds = [b"audit_trail_head", pool_core.key().as_ref()],
@@ -752,6 +890,8 @@ pub struct EmergencyPause<'info> {
     )]
     pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
 
+    /// New audit trail entry to document the emergency pause activation
+    /// Captures the responder, justification hash, and severity level for investigation
     #[account(
         init,
         payer = emergency_responder,
@@ -761,17 +901,41 @@ pub struct EmergencyPause<'info> {
     )]
     pub audit_trail_entry: AccountLoader<'info, AuditTrailEntry>,
 
+    /// Pool core account defining the scope of the emergency pause operation
+    /// Ensures emergency actions are properly isolated to the affected pool
     pub pool_core: UncheckedAccount<'info>,
 
+    /// The authorized emergency responder triggering the pause, who pays for audit entry
+    /// Must be validated against the emergency contacts registry before execution
     #[account(mut)]
     pub emergency_responder: Signer<'info>,
 
+    /// Solana system program required for audit trail entry account creation
     pub system_program: Program<'info, System>,
 }
 
+/// Account validation context for emergency contact management operations.
+///
+/// This context governs the addition of new emergency contacts to the protocol's
+/// emergency response registry. Emergency contact management is highly sensitive
+/// because these contacts have unilateral authority to halt protocol operations
+/// during crisis situations, making proper authorization validation critical.
+///
+/// ## Authority-Only Operations
+/// Only the current protocol authority can modify emergency contacts, ensuring
+/// that emergency response capabilities remain under legitimate governance control.
+/// This prevents insider attacks where rogue actors could install malicious
+/// emergency contacts to disrupt operations or extract value.
+///
+/// ## Trust Boundary Management
+/// Emergency contacts operate in a different trust domain from multisig members,
+/// with the ability to act unilaterally during emergencies. This makes their
+/// management even more critical than normal authorization changes.
 #[derive(Accounts)]
 #[instruction(next_audit_index: u64)]
 pub struct AddEmergencyContact<'info> {
+    /// Security coordinator requiring mutation to log the emergency contact addition
+    /// Coordinates the audit trail integration for this sensitive operation
     #[account(
         mut,
         seeds = [b"security_coordinator", pool_core.key().as_ref()],
@@ -779,12 +943,16 @@ pub struct AddEmergencyContact<'info> {
     )]
     pub security_coordinator: AccountLoader<'info, SecurityCoordinator>,
 
+    /// Core authority account for authorization validation
+    /// Read-only access since we only verify the current authority, not modify it
     #[account(
         seeds = [b"core_authority", pool_core.key().as_ref()],
         bump
     )]
     pub core_authority: AccountLoader<'info, CoreAuthority>,
 
+    /// Emergency contacts registry requiring mutation to add the new contact
+    /// This is where the actual emergency contact data is stored and managed
     #[account(
         mut,
         seeds = [b"emergency_contacts", pool_core.key().as_ref()],
@@ -792,6 +960,8 @@ pub struct AddEmergencyContact<'info> {
     )]
     pub emergency_contacts: AccountLoader<'info, EmergencyContacts>,
 
+    /// Audit trail head requiring mutation to record the contact addition event
+    /// Ensures complete transparency and accountability for emergency contact changes
     #[account(
         mut,
         seeds = [b"audit_trail_head", pool_core.key().as_ref()],
@@ -799,6 +969,8 @@ pub struct AddEmergencyContact<'info> {
     )]
     pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
 
+    /// New audit trail entry to document the emergency contact addition
+    /// Captures who was added, their role, permissions, and authorizing authority
     #[account(
         init,
         payer = authority,
@@ -808,13 +980,20 @@ pub struct AddEmergencyContact<'info> {
     )]
     pub audit_trail_entry: AccountLoader<'info, AuditTrailEntry>,
 
+    /// Pool core account defining the scope of the emergency contact addition
+    /// Ensures contact management is properly isolated to the correct pool
     pub pool_core: UncheckedAccount<'info>,
 
+    /// The new emergency contact being added to the registry
+    /// UncheckedAccount since we only store its public key in the emergency contacts registry
     pub new_emergency_contact: UncheckedAccount<'info>,
 
+    /// The protocol authority authorizing the emergency contact addition, who pays for audit entry
+    /// Must match the current authority in core_authority for the operation to succeed
     #[account(mut)]
     pub authority: Signer<'info>,
 
+    /// Solana system program required for audit trail entry account creation
     pub system_program: Program<'info, System>,
 }
 
@@ -852,20 +1031,46 @@ pub fn initialize_security_coordinator(ctx: Context<InitializeSecurityCoordinato
     Ok(())
 }
 
+/// Initiates the authority change proposal phase with comprehensive validation and audit logging.
+///
+/// This function implements the first phase of the secure two-phase authority change protocol,
+/// establishing a pending authority change that requires subsequent multisig confirmations.
+/// The design prevents atomic authority takeover attacks by separating proposal from execution.
+///
+/// ## Audit Index Validation
+/// The `next_audit_index` parameter serves as a critical security nonce that prevents audit
+/// trail manipulation. By requiring callers to specify the expected next audit index, we
+/// ensure strict sequential ordering and prevent race conditions or audit gaps.
+///
+/// ## Proposal State Management
+/// The function immediately transitions the security coordinator to AuthorityTransition status,
+/// acting as a distributed lock that prevents concurrent authority change attempts and signals
+/// to other protocol components that sensitive operations should be restricted.
+///
+/// ## Error Handling
+/// All validation failures result in transaction rollback with no state changes, ensuring
+/// the protocol cannot be left in an inconsistent state due to partial execution.
 pub fn propose_authority_change(
     ctx: Context<AuthorityChangeProposal>,
     next_audit_index: u64,
 ) -> Result<()> {
+    // Validate audit index to prevent audit trail manipulation attacks
+    // This ensures strict sequential ordering of all security events
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_mut()?;
     require!(
         next_audit_index == audit_trail_head.current_index + 1,
         PdaSecurityAuthorityError::InvalidAuditIndex
     );
+
+    // Load all required accounts with appropriate mutability levels
+    // Coordinator and core authority need mutation, others are read-only for this operation
     let security_coordinator = &mut ctx.accounts.security_coordinator.load_mut()?;
     let core_authority = &mut ctx.accounts.core_authority.load_mut()?;
     let multisig_config = &ctx.accounts.multisig_config.load()?;
     let audit_trail_entry = &mut ctx.accounts.audit_trail_entry.load_init()?;
 
+    // Delegate to coordinator's orchestration logic with all necessary context
+    // This maintains separation of concerns between instruction handlers and business logic
     security_coordinator.coordinate_authority_change_proposal(
         core_authority,
         multisig_config,
@@ -878,20 +1083,44 @@ pub fn propose_authority_change(
     Ok(())
 }
 
+/// Processes multisig confirmations for pending authority changes with threshold enforcement.
+///
+/// This function implements the confirmation and potential execution phase of the two-phase
+/// authority change protocol. It collects confirmations from authorized multisig members
+/// and automatically executes the authority change when the required threshold is reached.
+///
+/// ## Atomic Confirmation Processing
+/// The function performs confirmation recording and threshold checking atomically to prevent
+/// race conditions where multiple confirmations could be processed simultaneously, potentially
+/// leading to inconsistent state or threshold bypassing.
+///
+/// ## Return Value Semantics
+/// Returns true if the confirmation caused the threshold to be reached and authority change
+/// executed, false if more confirmations are still needed. This allows callers to take
+/// appropriate follow-up actions without additional state queries.
+///
+/// ## Audit Trail Completeness
+/// Every confirmation is logged regardless of whether it triggers execution, ensuring
+/// complete transparency and accountability for all participants in the authority change process.
 pub fn confirm_authority_change(
     ctx: Context<MultisigConfirmation>,
     next_audit_index: u64,
 ) -> Result<bool> {
+    // Validate audit index to maintain audit trail integrity and prevent manipulation
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_mut()?;
     require!(
         next_audit_index == audit_trail_head.current_index + 1,
         PdaSecurityAuthorityError::InvalidAuditIndex
     );
+
+    // Load all required accounts with appropriate access levels for confirmation processing
     let security_coordinator = &mut ctx.accounts.security_coordinator.load_mut()?;
     let core_authority = &mut ctx.accounts.core_authority.load_mut()?;
     let multisig_config = &mut ctx.accounts.multisig_config.load_mut()?;
     let audit_trail_entry = &mut ctx.accounts.audit_trail_entry.load_init()?;
 
+    // Process confirmation and determine if threshold reached for execution
+    // Returns boolean indicating whether authority change was executed
     let threshold_reached = security_coordinator.coordinate_multisig_confirmation(
         core_authority,
         multisig_config,
@@ -903,22 +1132,50 @@ pub fn confirm_authority_change(
     Ok(threshold_reached)
 }
 
+/// Executes emergency pause operations with rapid response capabilities and comprehensive logging.
+///
+/// This function implements the protocol's emergency circuit breaker mechanism, designed to
+/// rapidly halt potentially dangerous operations when threats are detected. Unlike normal
+/// multisig operations, emergency pauses can be triggered by individual emergency contacts
+/// to enable faster response during genuine crises.
+///
+/// ## Emergency Response Trade-offs
+/// The emergency pause mechanism trades some security for speed, allowing individual emergency
+/// contacts to halt operations unilaterally. This is justified because:
+/// - Genuine emergencies require immediate response to protect user funds
+/// - Emergency actions are heavily audited and logged for post-incident analysis
+/// - The cost of false positives (temporary service disruption) is less than false negatives (fund loss)
+///
+/// ## Justification and Accountability
+/// The `reason_hash` parameter ensures that emergency responders must provide justification
+/// for their actions, even if the specific details are hashed for privacy. This enables
+/// post-incident review and accountability while maintaining operational security.
+///
+/// ## Severity-Based Response
+/// The `emergency_level` parameter allows for graduated responses where higher severity
+/// emergencies may trigger more restrictive pause modes, enabling proportional response
+/// to different types of threats.
 pub fn emergency_pause(
     ctx: Context<EmergencyPause>,
     next_audit_index: u64,
     reason_hash: [u8; 32],
     emergency_level: EmergencyLevel,
 ) -> Result<()> {
+    // Validate audit index to ensure emergency actions are properly sequenced in audit trail
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_mut()?;
     require!(
         next_audit_index == audit_trail_head.current_index + 1,
         PdaSecurityAuthorityError::InvalidAuditIndex
     );
+
+    // Load required accounts for emergency pause execution
     let security_coordinator = &mut ctx.accounts.security_coordinator.load_mut()?;
     let core_authority = &mut ctx.accounts.core_authority.load_mut()?;
     let emergency_contacts = &ctx.accounts.emergency_contacts.load()?;
     let audit_trail_entry = &mut ctx.accounts.audit_trail_entry.load_init()?;
 
+    // Execute emergency pause through coordinator's orchestration logic
+    // This ensures consistent state management and audit trail integration
     security_coordinator.coordinate_emergency_pause(
         core_authority,
         emergency_contacts,
@@ -934,22 +1191,54 @@ pub fn emergency_pause(
     Ok(())
 }
 
+/// Adds new emergency contacts to the protocol's emergency response registry with strict authorization.
+///
+/// This function manages the addition of emergency contacts who have the authority to trigger
+/// protocol-wide emergency pauses. Emergency contact management is highly sensitive because
+/// these contacts operate in a separate trust domain from normal multisig operations and can
+/// act unilaterally during crisis situations.
+///
+/// ## Authority-Only Authorization
+/// Only the current protocol authority can add emergency contacts, ensuring that emergency
+/// response capabilities remain under legitimate governance control. This prevents scenarios
+/// where compromised multisig members could install malicious emergency contacts to later
+/// disrupt operations or extract value during manufactured crises.
+///
+/// ## Role and Permission Granularity
+/// The function supports granular role and permission assignment, allowing different emergency
+/// contacts to have varying levels of authority. This enables a tiered emergency response
+/// system where different types of emergencies can be handled by appropriately authorized contacts.
+///
+/// ## Comprehensive Audit Logging
+/// All emergency contact additions are permanently recorded in the audit trail with complete
+/// metadata including the contact's role, permissions, and authorizing authority. This ensures
+/// full transparency and accountability for changes to the emergency response structure.
+///
+/// ## Trust Boundary Implications
+/// Adding emergency contacts effectively expands the trust boundary of the protocol, as these
+/// contacts gain unilateral pause authority. The audit trail provides the necessary transparency
+/// to monitor and review these sensitive trust modifications.
 pub fn add_emergency_contact(
     ctx: Context<AddEmergencyContact>,
     next_audit_index: u64,
     role: EmergencyRole,
     permissions: u32,
 ) -> Result<()> {
+    // Validate audit index to ensure emergency contact changes are properly sequenced
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_mut()?;
     require!(
         next_audit_index == audit_trail_head.current_index + 1,
         PdaSecurityAuthorityError::InvalidAuditIndex
     );
+
+    // Load all required accounts for emergency contact addition
     let security_coordinator = &mut ctx.accounts.security_coordinator.load_mut()?;
     let core_authority = &ctx.accounts.core_authority.load()?;
     let emergency_contacts = &mut ctx.accounts.emergency_contacts.load_mut()?;
     let audit_trail_entry = &mut ctx.accounts.audit_trail_entry.load_init()?;
 
+    // Execute emergency contact addition through coordinator's orchestration logic
+    // This ensures proper authorization validation and consistent audit trail integration
     security_coordinator.coordinate_add_emergency_contact(
         core_authority,
         emergency_contacts,

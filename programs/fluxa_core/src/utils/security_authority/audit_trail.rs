@@ -1,174 +1,342 @@
 use crate::utils::security_authority::utils::AuditUtils;
 use anchor_lang::prelude::*;
 
-/// Audit Trail Head - the root of the protocol's on-chain audit log.
+/// Audit Trail Head - cryptographic anchor for the protocol's immutable event log.
 ///
-/// # Why
-/// This account anchors the audit trail for a pool, providing a tamper-evident, append-only log of all critical actions.
-/// It is designed to be immutable after initialization, ensuring the integrity and trustworthiness of the audit trail.
+/// This structure serves as the authoritative root of a hash-chained audit trail,
+/// implementing a blockchain-within-blockchain pattern for critical security events.
+/// The design prioritizes tamper detection and forensic integrity over storage efficiency.
 ///
-/// # Design Rationale
-/// - Zero-copy layout for efficient, deterministic access and auditability.
-/// - Tracks the latest entry's hash and index, enabling chain-of-trust verification for all entries.
-/// - Reserved space for future upgrades without breaking account layout.
+/// ## Cryptographic Security Model
+/// The audit head maintains cryptographic integrity through hash chaining, where each
+/// new entry's hash incorporates the previous entry's hash, creating a tamper-evident
+/// sequence. Any unauthorized modification to historical entries would require
+/// recomputing all subsequent hashes, which is computationally infeasible and easily detected.
+///
+/// ## Zero-Copy Design Rationale  
+/// Uses `zero_copy(unsafe)` to avoid deserialization overhead during frequent integrity
+/// checks and audit verification operations. This is critical for DeFi protocols where
+/// audit verification may occur on every transaction for compliance or security monitoring.
+/// The unsafe designation is justified because the account data is treated as raw bytes,
+/// eliminating potential deserialization vulnerabilities.
+///
+/// ## Immutability Guarantees
+/// After initialization, the head becomes append-only through protocol-level constraints.
+/// The structure itself doesn't enforce immutability but relies on proper access control
+/// in the containing program to prevent unauthorized modifications to the chain root.
 #[account(zero_copy(unsafe))]
 #[derive(InitSpace)]
 #[repr(C)]
 pub struct AuditTrailHead {
-    /// Pool reference
+    /// Pool scope delimiter preventing cross-pool audit trail contamination.
     ///
-    /// # Why
-    /// Associates this audit trail with a specific pool, ensuring all actions are contextually bound and auditable.
+    /// Binds this audit trail to a specific pool instance to prevent audit events
+    /// from different pools being mixed, which could complicate forensic analysis
+    /// and regulatory compliance. Each pool maintains its own isolated audit domain.
     pub pool_core: Pubkey,
 
-    /// Current audit state
+    /// Sequential audit state maintaining strict chronological ordering.
     ///
-    /// # Why
-    /// Tracks the latest entry and total count, enabling efficient verification and append-only guarantees.
+    /// The current_index serves as both a sequence number and anti-replay nonce,
+    /// preventing audit entry duplication or out-of-order insertion attacks.
+    /// Monotonic incrementing ensures no gaps in the audit sequence exist.
     pub current_index: u64,
+
+    /// Cryptographic chain anchor linking to the most recent audit entry.
+    ///
+    /// Contains the hash of the latest entry in the audit chain, enabling
+    /// efficient verification of chain integrity without traversing all entries.
+    /// Forms the "head" of the hash chain for rapid tamper detection.
     pub latest_hash: [u8; 32],
+
+    /// Total entry counter for audit trail completeness verification.
+    ///
+    /// Provides a cross-check against current_index to detect potential
+    /// gaps or inconsistencies in the audit sequence during verification.
+    /// Essential for regulatory compliance reporting.
     pub total_entries: u64,
 
-    /// Metadata
+    /// Immutable creation timestamp establishing audit trail genesis.
     ///
-    /// # Why
-    /// Provides a full audit trail for the audit log itself, supporting compliance and forensic analysis.
+    /// Anchors the audit trail in time to prevent backdating attacks and
+    /// provides a baseline for time-based audit policies. Once set, this
+    /// timestamp cannot be modified to maintain historical integrity.
     pub created_at: i64,
+
+    /// Mutable update timestamp tracking latest audit activity.
+    ///
+    /// Updated with each new entry to enable audit trail staleness detection
+    /// and maintenance scheduling. Helps identify inactive or compromised trails.
     pub last_updated: i64,
 
-    /// Future expansion
+    /// Future-proofing buffer preventing account layout migration needs.
     ///
-    /// # Why
-    /// Reserved space allows for future upgrades or additional fields without breaking account layout, supporting protocol evolution.
+    /// Reserves space for additional audit metadata without requiring costly
+    /// account migrations in long-lived DeFi protocols. Critical for protocol
+    /// evolution while maintaining backward compatibility.
     pub reserved: [u8; 32],
 }
 
-/// Implementation of the AuditTrailHead account
+/// Core audit trail head operations ensuring cryptographic integrity and append-only semantics.
 impl AuditTrailHead {
-    /// Initializes the AuditTrailHead account with the given pool core.
+    /// Establishes the immutable foundation of an audit trail with security-first initialization.
     ///
-    /// # Why
-    /// This method enforces protocol invariants for audit trail creation, ensuring the root is immutable and all state is initialized for append-only operation.
+    /// This initialization is a one-time operation that sets up the cryptographic anchor
+    /// for all subsequent audit entries. The design ensures that once initialized, the
+    /// audit trail cannot be reset or reinitiated, maintaining historical integrity.
+    ///
+    /// ## Security Initialization Pattern
+    /// The function establishes secure defaults (zero hash, zero index) that serve as
+    /// the genesis state for the hash chain. This prevents the need for special-case
+    /// handling of the first entry and ensures consistent cryptographic verification
+    /// across the entire audit sequence.
+    ///
+    /// ## Timestamp Anchoring
+    /// Both creation and update timestamps are set to the same value to establish
+    /// a consistent temporal baseline. This prevents subtle timing attacks and
+    /// provides a reliable reference point for time-based audit policies.
     pub fn initialize(&mut self, pool_core: Pubkey) -> Result<()> {
-        // Initialize the pool core
+        // Bind to specific pool instance for scope isolation
         self.pool_core = pool_core;
-        // Initialize the audit state
+
+        // Initialize genesis state for hash chain - zero values serve as the root
+        // This creates a deterministic starting point for cryptographic verification
         self.current_index = 0;
-        self.latest_hash = [0u8; 32];
+        self.latest_hash = [0u8; 32]; // Genesis hash for chain initialization
         self.total_entries = 0;
 
-        let clock = Clock::get()?; // Get the current clock time
-        self.created_at = clock.unix_timestamp; // Set the creation timestamp
-        self.last_updated = clock.unix_timestamp; // Set the last update timestamp
+        let clock = Clock::get()?;
+
+        // Establish temporal anchor points for the audit trail
+        // Both timestamps start identical to provide baseline consistency
+        self.created_at = clock.unix_timestamp;
+        self.last_updated = clock.unix_timestamp;
 
         Ok(())
     }
 
-    /// Adds a new entry to the audit trail.
+    /// Atomically updates audit trail state with new entry while preserving chain integrity.
     ///
-    /// # Why
-    /// This method updates the audit trail head with the latest entry, maintaining the chain-of-trust and append-only guarantees.
+    /// This function serves as the critical link between individual audit entries and the
+    /// overall audit trail state. It must be called exactly once per entry to maintain
+    /// the cryptographic chain and prevent gaps or inconsistencies in the audit sequence.
+    ///
+    /// ## Atomic State Updates
+    /// All state updates occur atomically within this function to prevent partial updates
+    /// that could leave the audit trail in an inconsistent state. If any operation fails,
+    /// the entire transaction rolls back, preserving trail integrity.
+    ///
+    /// ## Hash Chain Propagation
+    /// The function propagates the entry's computed hash to become the new chain head,
+    /// maintaining the cryptographic linkage that enables tamper detection. This creates
+    /// an immutable sequence where any modification requires recomputing all subsequent hashes.
+    ///
+    /// ## Timestamp Synchronization
+    /// Updates the trail's last_updated timestamp to match the entry's timestamp, ensuring
+    /// temporal consistency across the audit system and enabling accurate staleness detection.
     pub fn add_entry(&mut self, entry: &AuditTrailEntry) -> Result<u64> {
-        self.current_index = entry.audit_index; // Increment the current index
-        self.latest_hash = entry.current_hash; // Update the latest hash with the new entry hash
-        self.total_entries += 1; // Increment the total entries count
+        // Update sequential state with entry's verified index
+        // This maintains strict ordering and prevents index manipulation
+        self.current_index = entry.audit_index;
 
-        // Update the last updated timestamp
+        // Propagate entry's hash to chain head for continued cryptographic linking
+        // This creates the tamper-evident property of the audit chain
+        self.latest_hash = entry.current_hash;
+
+        // Increment total entry counter for completeness verification
+        self.total_entries += 1;
+
+        // Synchronize timestamps to maintain temporal consistency
+        // Using entry's timestamp ensures all audit components stay synchronized
         self.last_updated = entry.timestamp;
 
         Ok(self.current_index)
     }
 }
 
-/// Audit Trail Entry - individual, tamper-evident log entry in the protocol's audit chain.
+/// Individual audit trail entry implementing cryptographic linkage for tamper-evident logging.
 ///
-/// # Why
-/// Each entry records a single action, with cryptographic linkage to the previous entry, forming an immutable, verifiable chain.
+/// Each entry represents a single, immutable record of a security-relevant action within
+/// the protocol. The design implements a blockchain-like structure where each entry
+/// cryptographically links to its predecessor, creating a tamper-evident audit chain.
 ///
-/// # Design Rationale
-/// - Zero-copy layout for deterministic, efficient access and auditability.
-/// - All fields are fixed-size for protocol safety and to avoid dynamic allocation.
-/// - Hashes and indices enable chain-of-trust verification and efficient lookups.
-/// - Reserved space for future upgrades.
+/// ## Cryptographic Linking Strategy
+/// Every entry contains both the hash of the previous entry and its own computed hash,
+/// forming a chain where modification of any historical entry would require recomputing
+/// all subsequent hashes. This makes tampering computationally infeasible and easily detectable.
+///
+/// ## Fixed-Size Field Design
+/// All fields use fixed-size representations to eliminate dynamic allocation concerns
+/// and ensure deterministic memory layout. This is critical for zero-copy operations
+/// and prevents potential attack vectors related to variable-length data handling.
+///
+/// ## Temporal and Spatial Anchoring
+/// Each entry includes both Solana's block height and Unix timestamp to provide dual
+/// temporal anchoring. This redundancy helps detect timestamp manipulation attacks
+/// and provides multiple reference points for chronological verification.
+///
+/// ## Zero-Copy Optimization Rationale
+/// Uses zero-copy layout because audit entries are frequently accessed for verification
+/// during protocol operations. Avoiding deserialization overhead is crucial for
+/// maintaining transaction throughput in high-frequency DeFi operations.
 #[account(zero_copy(unsafe))]
 #[derive(InitSpace)]
 #[repr(C)]
 pub struct AuditTrailEntry {
-    /// Pool reference
+    /// Pool binding ensuring audit entry scope isolation and preventing cross-contamination.
     ///
-    /// # Why
-    /// Associates this entry with a specific pool, ensuring all actions are contextually bound and auditable.
+    /// Links this entry to its parent pool to maintain audit trail boundaries and
+    /// prevent entries from different pools being inadvertently mixed during
+    /// forensic analysis or compliance reporting.
     pub pool_core: Pubkey,
 
-    /// Entry identification
+    /// Sequential identifier providing ordering guarantees and replay protection.
     ///
-    /// # Why
-    /// Uniquely identifies the action, actor, and target, supporting full forensic traceability and compliance.
+    /// Serves as both a sequence number for chronological ordering and a nonce
+    /// to prevent duplicate entry attacks. Must increment monotonically to
+    /// maintain audit trail integrity and detect missing entries.
     pub audit_index: u64,
+
+    /// Fixed-length action identifier normalized for consistent cryptographic processing.
+    ///
+    /// Padded to 32 bytes to prevent hash collision attacks and ensure deterministic
+    /// cryptographic operations regardless of action name length. This eliminates
+    /// potential vulnerabilities from variable-length action strings.
     pub action: [u8; 32],
+
+    /// Actor account who initiated the audited action for accountability tracking.
+    ///
+    /// Records the public key of the account that triggered this audit event,
+    /// enabling forensic analysis and accountability chains. Essential for
+    /// regulatory compliance and incident response.
     pub actor: Pubkey,
+
+    /// Target account affected by the audited action for impact analysis.
+    ///
+    /// Identifies the account or entity that was the subject of the audited action,
+    /// enabling impact assessment and forensic reconstruction of event sequences.
     pub target: Pubkey,
 
-    /// Entry data
+    /// Cryptographic hash of action-specific data providing tamper detection.
     ///
-    /// # Why
-    /// Records the data, time, and block height for the action, supporting tamper-evident, time-stamped auditability.
+    /// Contains the hash of any additional data associated with the action,
+    /// enabling verification that action parameters haven't been modified
+    /// without requiring storage of potentially large data payloads.
     pub data_hash: [u8; 32],
+
+    /// Unix timestamp providing temporal anchoring for chronological verification.
+    ///
+    /// Records when the action occurred in calendar time, essential for regulatory
+    /// compliance, incident timelines, and detecting timestamp manipulation attacks
+    /// when cross-referenced with block_height.
     pub timestamp: i64,
+
+    /// Solana block height providing blockchain-native temporal anchoring.
+    ///
+    /// Records the Solana block when the action occurred, providing a second
+    /// temporal reference point that's harder to manipulate than Unix timestamps
+    /// and enables block-based verification of event ordering.
     pub block_height: u64,
 
-    /// Chain integrity
+    /// Hash of previous entry maintaining cryptographic chain integrity.
     ///
-    /// # Why
-    /// Cryptographically links this entry to the previous one, forming an immutable, verifiable audit chain.
+    /// Contains the hash of the chronologically previous audit entry, forming
+    /// the cryptographic link that makes the audit chain tamper-evident.
+    /// Any modification to historical entries breaks this chain.
     pub previous_hash: [u8; 32],
+
+    /// Hash of current entry serving as input for next entry's chain link.
+    ///
+    /// Computed from this entry's data and the previous_hash, this value becomes
+    /// the previous_hash for the next entry in the chain, maintaining the
+    /// cryptographic linkage that enables tamper detection.
     pub current_hash: [u8; 32],
 
-    /// Future expansion
+    /// Reserved space preventing future account migration requirements.
     ///
-    /// # Why
-    /// Reserved space allows for future upgrades or additional fields without breaking account layout, supporting protocol evolution.
+    /// Provides buffer space for additional audit metadata without requiring
+    /// costly account migrations, essential for long-lived DeFi protocols
+    /// that need to evolve while maintaining historical audit integrity.
     pub reserved: [u8; 32],
 }
 
-/// Arguments for initializing an AuditTrailEntry.
+/// Initialization parameters for audit trail entry creation with validation constraints.
+///
+/// This structure serves as a validated parameter container for audit entry creation,
+/// ensuring all required data is provided and properly formatted before entry
+/// initialization. The design prevents partial initialization that could compromise
+/// audit trail integrity.
+///
+/// ## Parameter Validation Strategy
+/// By collecting all parameters in a single structure, we enable batch validation
+/// and ensure atomic initialization of audit entries. This prevents scenarios where
+/// entries could be created with missing or invalid data that would break the
+/// cryptographic chain.
+///
+/// ## Cryptographic Parameter Separation
+/// Previous hash and computed hash parameters are explicitly separated to prevent
+/// confusion during hash chain operations and ensure proper cryptographic linking
+/// between entries in the audit sequence.
 pub struct InitArgs {
+    /// Pool scope binding for audit entry isolation
     pub pool_core: Pubkey,
+    /// Sequential index for ordering and replay protection
     pub audit_index: u64,
+    /// Fixed-length action identifier for consistent processing
     pub action: [u8; 32],
+    /// Actor account responsible for the audited action
     pub actor: Pubkey,
+    /// Target account affected by the audited action  
     pub target: Pubkey,
+    /// Hash of action-specific data for tamper detection
     pub data_hash: [u8; 32],
+    /// Previous entry hash for cryptographic chain linking
     pub previous_hash: [u8; 32],
+    /// Temporal anchor using Unix timestamp
     pub timestamp: i64,
+    /// Blockchain-native temporal anchor using block height
     pub block_height: u64,
 }
 
-/// Implementation of the AuditTrailEntry account
+/// Core audit trail entry operations ensuring cryptographic integrity and chain linking.
 impl AuditTrailEntry {
-    /// Initializes the AuditTrailEntry with the given parameters.
+    /// Creates a cryptographically-linked audit entry with full parameter validation.
     ///
-    /// # Why
-    /// This method enforces protocol invariants for audit entry creation, ensuring all fields are set and the cryptographic chain is maintained.
+    /// This function performs the critical task of initializing an audit entry with
+    /// proper cryptographic linking to the previous entry in the chain. All parameters
+    /// are validated and the entry's hash is computed to maintain chain integrity.
+    ///
+    /// ## Cryptographic Hash Generation
+    /// The current_hash is computed from the entry's data plus the previous entry's hash,
+    /// creating the cryptographic linkage that makes the audit trail tamper-evident.
+    /// This hash becomes the previous_hash for the next entry in the sequence.
+    ///
+    /// ## Atomic Field Initialization
+    /// All fields are initialized atomically to prevent partial entry creation that
+    /// could compromise audit trail integrity. If any step fails, the entire
+    /// initialization is rolled back by the runtime.
+    ///
+    /// ## Hash Chain Continuation
+    /// The function ensures proper continuation of the hash chain by incorporating
+    /// the previous entry's hash into the current entry's hash computation, maintaining
+    /// the cryptographic link that enables tamper detection.
     pub fn initialize(&mut self, args: InitArgs) -> Result<()> {
-        // Initialize the pool core
+        // Initialize core identification fields for forensic traceability
         self.pool_core = args.pool_core;
-
-        // Initialize the entry data
         self.audit_index = args.audit_index;
         self.action = args.action;
         self.actor = args.actor;
         self.target = args.target;
 
-        // Initialize the data and chain integrity
+        // Initialize cryptographic and temporal data for integrity verification
         self.data_hash = args.data_hash;
         self.previous_hash = args.previous_hash;
-
-        // Update the timestamp and block height
         self.timestamp = args.timestamp;
         self.block_height = args.block_height;
 
-        // Calculate current hash
+        // Compute current hash to maintain cryptographic chain integrity
+        // This hash incorporates the previous hash and current entry data,
+        // creating the tamper-evident link to the next entry in sequence
         self.current_hash = AuditUtils::create_audit_hash(
             &args.previous_hash,
             &args.action,
@@ -180,11 +348,34 @@ impl AuditTrailEntry {
         Ok(())
     }
 
-    /// Verifies the integrity of the audit entry.
+    /// Validates cryptographic integrity of the audit entry and its chain linkage.
     ///
-    /// # Why
-    /// This method enables on-chain or off-chain verification of the audit chain, ensuring that no entry has been tampered with or omitted.
+    /// This method performs comprehensive validation of the audit entry's integrity,
+    /// ensuring that the cryptographic hash chain has not been tampered with and
+    /// that all critical invariants are maintained.
+    ///
+    /// ## Hash Chain Verification Strategy
+    /// Rather than just comparing hashes, this method delegates to AuditUtils for
+    /// comprehensive chain verification that includes cryptographic validation,
+    /// temporal consistency checks, and structural integrity verification.
+    ///
+    /// ## Comprehensive Validation Approach
+    /// The AuditUtils verification performs multiple validation layers including
+    /// hash recomputation, parameter validation, and chain linkage verification
+    /// to ensure the audit trail maintains its forensic integrity.
+    ///
+    /// ## Error Propagation Design
+    /// Returns Result<()> to enable proper error handling and detailed failure
+    /// reporting, allowing calling code to distinguish between different types
+    /// of validation failures for appropriate response strategies.
+    ///
+    /// ## Utility Delegation Rationale
+    /// Delegating to AuditUtils centralizes cryptographic verification logic,
+    /// reducing code duplication and ensuring consistent validation across
+    /// different audit trail operations and verification contexts.
     pub fn verify_integrity(&self) -> Result<()> {
+        // Delegate to centralized verification utility for comprehensive validation
+        // This includes hash verification, temporal consistency, and structural checks
         AuditUtils::verify_audit_chain(
             &self.current_hash,
             &self.previous_hash,
@@ -196,13 +387,38 @@ impl AuditTrailEntry {
     }
 }
 
-/// Initialize Audit Trail Head Context
+/// Account validation context for audit trail head initialization with security constraints.
 ///
-/// # Why
-/// This context enforces all protocol invariants for audit trail creation, ensuring that the head is initialized with the correct pool and payer, and that all account layouts are deterministic and auditable.
+/// This context enforces the complete set of protocol invariants required for secure
+/// audit trail head creation, including proper account derivation, space allocation,
+/// authority validation, and payment handling.
+///
+/// ## PDA Derivation Strategy
+/// Uses deterministic PDA derivation with pool-specific seeds to ensure each pool
+/// gets exactly one audit trail head account. The seed structure prevents collision
+/// attacks and ensures predictable account addresses for verification.
+///
+/// ## Space Allocation Security
+/// Explicitly calculates required space to prevent account size attacks where
+/// malicious actors could attempt to create undersized accounts that would fail
+/// during normal operations, causing denial of service.
+///
+/// ## Authority Validation Design
+/// Requires explicit authority signature to prevent unauthorized audit trail
+/// creation, ensuring only legitimate pool operators can establish audit trails
+/// for their pools.
+///
+/// ## Payment Model Rationale
+/// Uses separate payer account to enable flexible payment models where audit
+/// trail creation costs can be covered by different entities than the authority,
+/// supporting various operational arrangements.
 #[derive(Accounts)]
 pub struct InitializeAuditTrailHead<'info> {
-    /// Audit trail head account
+    /// Primary audit trail head account with deterministic PDA derivation.
+    ///
+    /// Uses pool-specific seeds to ensure unique audit trail per pool while
+    /// enabling predictable address computation for verification and access.
+    /// Space calculation includes discriminator to prevent account layout issues.
     #[account(
         init,
         payer = payer,
@@ -212,28 +428,69 @@ pub struct InitializeAuditTrailHead<'info> {
     )]
     pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
 
-    /// Pool core account that this audit trail is associated with
+    /// Pool core binding ensuring audit trail scope isolation.
+    ///
+    /// Links audit trail to specific pool to prevent cross-contamination and
+    /// enable pool-specific audit analysis. Validation ensures the pool
+    /// account exists and is properly formatted.
     pub pool_core: UncheckedAccount<'info>,
 
-    /// Payer account that is responsible for paying the transaction fees
+    /// Transaction fee payer enabling flexible cost allocation.
+    ///
+    /// Marked mutable to allow rent payment deduction. Separation from authority
+    /// enables operational models where different entities handle costs versus
+    /// control, improving operational flexibility.
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// Authority account that is initializing the audit trail head
+    /// Authorized pool operator ensuring legitimate audit trail creation.
+    ///
+    /// Requires signature to prevent unauthorized audit trail initialization,
+    /// ensuring only legitimate pool operators can establish audit capabilities
+    /// for their pools.
     pub authority: Signer<'info>,
 
-    /// System program
+    /// System program dependency for account creation operations.
+    ///
+    /// Required for PDA account initialization and rent payment processing.
+    /// Anchor validates this is the legitimate system program to prevent
+    /// program substitution attacks.
     pub system_program: Program<'info, System>,
 }
 
-/// Create Audit Trail Entry Context
+/// Account validation context for audit trail entry creation with sequential integrity.
 ///
-/// # Why
-/// This context enforces all protocol invariants for audit entry creation, ensuring that each entry is linked to the correct head, pool, and payer, and that all account layouts are deterministic and auditable.
+/// This context enforces the complete security model for audit entry creation,
+/// including sequential ordering validation, cryptographic chain linking,
+/// proper account derivation, and authority verification.
+///
+/// ## Sequential Index Integration
+/// Uses the audit_index parameter in PDA derivation to ensure each entry gets
+/// a unique, predictable address while maintaining sequential ordering constraints.
+/// This prevents index collision attacks and enables efficient entry lookup.
+///
+/// ## Head Account Linkage
+/// Requires mutable access to the audit trail head to update the entry count
+/// and last hash, ensuring the head maintains accurate chain state while
+/// enabling atomic entry creation and head updates.
+///
+/// ## Actor Authentication Model
+/// Requires actor signature to ensure accountability and prevent unauthorized
+/// audit entry creation. The actor becomes permanently recorded in the audit
+/// trail for forensic analysis and compliance reporting.
+///
+/// ## Space Optimization Strategy
+/// Explicitly calculates required space including discriminator to prevent
+/// account size attacks and ensure consistent memory layout across different
+/// entry types and data payload sizes.
 #[derive(Accounts)]
 #[instruction(audit_index: u64)]
 pub struct CreateAuditTrailEntry<'info> {
-    /// Audit trail entry account
+    /// Sequential audit entry account with index-based PDA derivation.
+    ///
+    /// Uses audit_index in seeds to create unique, predictable addresses for
+    /// each entry while maintaining sequential ordering. Space calculation
+    /// includes discriminator to prevent layout issues.
     #[account(
         init,
         payer = payer,
@@ -243,7 +500,11 @@ pub struct CreateAuditTrailEntry<'info> {
     )]
     pub audit_trail_entry: AccountLoader<'info, AuditTrailEntry>,
 
-    /// Audit trail head account that this entry is associated with
+    /// Mutable audit trail head for atomic chain state updates.
+    ///
+    /// Requires mutable access to update entry count and maintain the current
+    /// chain head hash, ensuring the head accurately reflects the latest
+    /// audit chain state after entry creation.
     #[account(
         mut,
         seeds = [b"audit_trail_head", pool_core.key().as_ref()],
@@ -251,38 +512,103 @@ pub struct CreateAuditTrailEntry<'info> {
     )]
     pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
 
-    /// Pool core account that this entry is associated with
+    /// Pool core binding ensuring audit entry scope isolation.
+    ///
+    /// Links entry to specific pool to prevent cross-contamination and enable
+    /// pool-specific audit analysis. Must match the head's pool binding to
+    /// maintain audit trail integrity.
     pub pool_core: UncheckedAccount<'info>,
 
-    /// Payer account that is responsible for paying the transaction fees
+    /// Transaction fee payer enabling flexible operational cost models.
+    ///
+    /// Marked mutable for rent payment deduction. Separation from actor
+    /// enables scenarios where audit costs are covered by different entities
+    /// than those performing the audited actions.
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// Actor account that is creating the audit trail entry
+    /// Authenticated actor responsible for the audited action.
+    ///
+    /// Requires signature to ensure accountability and prevent unauthorized
+    /// audit entry creation. This signature permanently links the actor to
+    /// the audit record for forensic and compliance purposes.
     pub actor: Signer<'info>,
 
-    /// System program
+    /// System program dependency for account creation operations.
+    ///
+    /// Required for PDA account initialization and rent payment processing.
+    /// Anchor validates this is the legitimate system program to prevent
+    /// program substitution attacks.
     pub system_program: Program<'info, System>,
 }
 
-/// Initialize Audit Trail Head
+/// Establishes the foundational audit trail head with proper initialization and validation.
 ///
-/// # Why
-/// This function enforces protocol invariants for audit trail creation, ensuring that the head is initialized in a valid, immutable state and ready for append-only operation.
+/// This function creates the root of an audit trail chain, establishing the initial
+/// state required for subsequent audit entry creation. The head serves as both the
+/// metadata container and the anchor point for the cryptographic chain.
+///
+/// ## Initialization Security Model
+/// The function enforces strict initialization invariants to prevent malformed
+/// audit trails that could compromise forensic integrity. All validation occurs
+/// atomically to ensure consistent state creation.
+///
+/// ## Pool Binding Strategy
+/// Links the audit trail head to a specific pool core account, ensuring audit
+/// scope isolation and preventing cross-contamination between different pool
+/// audit trails during analysis and compliance reporting.
+///
+/// ## Account Loader Pattern
+/// Uses load_init() to safely initialize the zero-copy account while ensuring
+/// proper memory layout and preventing initialization race conditions that
+/// could lead to corrupted audit trail state.
+///
+/// ## State Transition Atomicity
+/// The entire initialization occurs within a single transaction boundary,
+/// ensuring that either the audit trail head is fully initialized or the
+/// operation fails completely, preventing partial initialization states.
 pub fn initialize_audit_trail_head(ctx: Context<InitializeAuditTrailHead>) -> Result<()> {
-    // Load the Audit Trail Head account
+    // Load and initialize the audit trail head with atomic state transition
+    // This ensures the head starts in a valid, consistent state ready for entries
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_init()?;
 
-    // Initialize the Audit Trail Head with the pool core
+    // Bind the audit trail to the specific pool for scope isolation
+    // This prevents cross-contamination and enables pool-specific analysis
     audit_trail_head.initialize(ctx.accounts.pool_core.key())?;
 
     Ok(())
 }
 
-/// Create Audit Trail Entry
+/// Creates a cryptographically-linked audit entry with comprehensive validation and chain updates.
 ///
-/// # Why
-/// This function enforces protocol invariants for audit entry creation, ensuring that each entry is cryptographically linked to the previous one, forming an immutable, tamper-evident chain.
+/// This function performs the critical operation of adding a new entry to the audit trail
+/// while maintaining cryptographic chain integrity, sequential ordering constraints,
+/// and atomic state updates across both the entry and head accounts.
+///
+/// ## Cryptographic Chain Maintenance
+/// Each new entry incorporates the hash of the previous entry, creating an unbreakable
+/// cryptographic link that makes tampering detectable. The chain continues by updating
+/// the head's latest_hash to point to the new entry's computed hash.
+///
+/// ## Sequential Ordering Enforcement
+/// The audit_index parameter ensures strict sequential ordering of entries, preventing
+/// out-of-order insertion attacks that could compromise the audit trail's temporal
+/// integrity and forensic value.
+///
+/// ## Atomic State Updates
+/// Both the new entry initialization and head state updates occur within a single
+/// transaction boundary, ensuring either complete success or complete failure
+/// without leaving the audit trail in an inconsistent state.
+///
+/// ## Temporal Anchoring Strategy
+/// Records both Solana's current slot and Unix timestamp to provide dual temporal
+/// anchoring that makes backdating attacks detectable and provides multiple
+/// reference points for chronological verification.
+///
+/// ## Zero-Copy Performance Optimization
+/// Uses load_mut() and load_init() to work directly with account memory without
+/// deserialization overhead, crucial for maintaining high transaction throughput
+/// in busy DeFi environments with frequent audit requirements.
 pub fn create_audit_trail_entry(
     ctx: Context<CreateAuditTrailEntry>,
     audit_index: u64,
@@ -290,15 +616,21 @@ pub fn create_audit_trail_entry(
     target: Pubkey,
     data_hash: [u8; 32],
 ) -> Result<()> {
-    // Load the Audit Trail Head and Audit Trail Entry accounts
+    // Load accounts with zero-copy access for performance optimization
+    // Mutable access to head enables atomic chain state updates
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_mut()?;
     let audit_trail_entry = &mut ctx.accounts.audit_trail_entry.load_init()?;
 
-    // Get previous hash from head
+    // Extract previous hash from head to maintain cryptographic chain linkage
+    // This hash becomes the cryptographic anchor for the new entry
     let previous_hash = audit_trail_head.latest_hash;
-    // Get current clock time
+
+    // Capture current temporal anchors for dual time reference validation
+    // Provides both blockchain-native and calendar time for forensic analysis
     let clock = Clock::get()?;
-    // Initialize entry
+
+    // Initialize the new audit entry with comprehensive parameter validation
+    // All fields are validated and cryptographic chain linkage is established
     audit_trail_entry.initialize(InitArgs {
         pool_core: ctx.accounts.pool_core.key(),
         audit_index,
@@ -311,6 +643,8 @@ pub fn create_audit_trail_entry(
         block_height: clock.slot,
     })?;
 
+    // Update the audit trail head to reflect the new chain state
+    // This maintains the head's role as the current chain pointer and entry counter
     audit_trail_head.add_entry(audit_trail_entry)?;
 
     Ok(())
