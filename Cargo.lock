@@ -1675,18 +1675,6 @@ name = "ethnum"
 version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
-dependencies = [
- "ethnum-intrinsics",
-]
-
-[[package]]
-name = "ethnum-intrinsics"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "093e866439f8ca112192b462f1a275362d6333092074f3e9b565daba470e6be3"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "event-listener"
