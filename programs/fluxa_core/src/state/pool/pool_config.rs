@@ -1,5 +1,6 @@
 use crate::math::core_arithmetic::Q64x64;
 use crate::state::pool::volatility_tracker::EwmaVolatilityTracker;
+use crate::utils::constants::DEFAULT_PROTOCOL_FEE;
 use anchor_lang::prelude::*;
 
 /// Pool configuration and risk controls for a concentrated liquidity pool.
@@ -12,7 +13,7 @@ use anchor_lang::prelude::*;
 /// ## Usage
 /// This struct is the canonical configuration and risk control state for a pool, referenced by all admin, fee, and limit logic.
 #[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(InitSpace)] // Expecting 260 bytes
 #[repr(C)]
 pub struct PoolConfig {
     /// Reference to the associated PoolCore account.
@@ -56,4 +57,24 @@ pub struct PoolConfig {
     ///
     /// Why: Pre-allocating space allows for seamless upgrades and avoids costly migrations or rent increases.
     pub reserved: [u64; 8],
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self {
+            pool_core: Pubkey::default(),
+            protocol_fee_0: DEFAULT_PROTOCOL_FEE,
+            protocol_fee_1: DEFAULT_PROTOCOL_FEE,
+            protocol_fees_token_0: Q64x64::zero(),
+            protocol_fees_token_1: Q64x64::zero(),
+            volatility_tracker: EwmaVolatilityTracker::new(60),
+            max_swap_limit: 0,
+            daily_volume_limit: 0,
+            last_volume_reset: 0,
+            core_authority: Pubkey::default(),
+            bump_config: 0,
+            _padding: [0; 7],
+            reserved: [0; 8],
+        }
+    }
 }
