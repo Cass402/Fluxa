@@ -1,4 +1,4 @@
-use crate::math::core_arithmetic::Q64x64;
+use crate::{math::core_arithmetic::Q64x64, utils::constants::SECURITY_FLAG_DEFAULT};
 use anchor_lang::prelude::*;
 
 /// Security and risk management state for a concentrated liquidity pool.
@@ -12,7 +12,7 @@ use anchor_lang::prelude::*;
 /// ## Usage
 /// This struct is the canonical security and risk control state for a pool, referenced by all swap, admin, and monitoring logic.
 #[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(InitSpace)] // Expecting 208 bytes
 #[repr(C)]
 pub struct PoolSecurity {
     /// Reference to the associated PoolCore account.
@@ -61,6 +61,30 @@ pub struct PoolSecurity {
     /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
     /// - `reserved`: Pre-allocated space for future upgrades (e.g., new risk controls, monitoring fields) without breaking account layout.
     pub bump_security: u8, // Cache bump for efficiency
-    pub _padding: [u8; 3],
+    pub enterprise_mode: bool, // Whether this pool is in enterprise mode with enhanced security/compliance
+    pub _padding: [u8; 2],
     pub reserved: [u64; 4],
+}
+
+impl Default for PoolSecurity {
+    fn default() -> Self {
+        Self {
+            pool_core: Pubkey::default(),
+            security_flags: SECURITY_FLAG_DEFAULT,
+            active_positions_count: 0,
+            total_swap_volume_0: Q64x64::zero(),
+            total_swap_volume_1: Q64x64::zero(),
+            last_security_check: 0,
+            suspicious_activity_score: 0,
+            mev_protection_enabled: true,
+            emergency_contacts: Pubkey::default(),
+            security_coordinator: Pubkey::default(),
+            circuit_breaker_triggered_at: 0,
+            circuit_breaker_threshold: 0,
+            bump_security: 0,
+            enterprise_mode: false,
+            _padding: [0; 2],
+            reserved: [0; 4],
+        }
+    }
 }
