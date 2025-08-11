@@ -25,7 +25,7 @@ use anchor_lang::prelude::*;
 /// The structure itself doesn't enforce immutability but relies on proper access control
 /// in the containing program to prevent unauthorized modifications to the chain root.
 #[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(InitSpace)] // Expecting 136 bytes
 #[repr(C)]
 pub struct AuditTrailHead {
     /// Pool scope delimiter preventing cross-pool audit trail contamination.
@@ -95,7 +95,7 @@ impl AuditTrailHead {
     /// Both creation and update timestamps are set to the same value to establish
     /// a consistent temporal baseline. This prevents subtle timing attacks and
     /// provides a reliable reference point for time-based audit policies.
-    pub fn initialize(&mut self, pool_core: Pubkey) -> Result<()> {
+    pub fn initialize(&mut self, pool_core: Pubkey, timestamp: i64) -> Result<()> {
         // Bind to specific pool instance for scope isolation
         self.pool_core = pool_core;
 
@@ -105,12 +105,10 @@ impl AuditTrailHead {
         self.latest_hash = [0u8; 32]; // Genesis hash for chain initialization
         self.total_entries = 0;
 
-        let clock = Clock::get()?;
-
         // Establish temporal anchor points for the audit trail
         // Both timestamps start identical to provide baseline consistency
-        self.created_at = clock.unix_timestamp;
-        self.last_updated = clock.unix_timestamp;
+        self.created_at = timestamp;
+        self.last_updated = timestamp;
 
         Ok(())
     }
@@ -180,7 +178,7 @@ impl AuditTrailHead {
 /// during protocol operations. Avoiding deserialization overhead is crucial for
 /// maintaining transaction throughput in high-frequency DeFi operations.
 #[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(InitSpace)] // Expecting 288 bytes
 #[repr(C)]
 pub struct AuditTrailEntry {
     /// Pool binding ensuring audit entry scope isolation and preventing cross-contamination.
@@ -572,9 +570,10 @@ pub fn initialize_audit_trail_head(ctx: Context<InitializeAuditTrailHead>) -> Re
     // This ensures the head starts in a valid, consistent state ready for entries
     let audit_trail_head = &mut ctx.accounts.audit_trail_head.load_init()?;
 
+    let clock = Clock::get()?;
     // Bind the audit trail to the specific pool for scope isolation
     // This prevents cross-contamination and enables pool-specific analysis
-    audit_trail_head.initialize(ctx.accounts.pool_core.key())?;
+    audit_trail_head.initialize(ctx.accounts.pool_core.key(), clock.unix_timestamp)?;
 
     Ok(())
 }
