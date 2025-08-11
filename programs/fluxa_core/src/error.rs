@@ -108,8 +108,12 @@ pub enum PdaSecurityAuthorityError {
     /// Timelock operation expired; ensures stale operations cannot be executed.
     #[msg("Timelock operation expired")]
     TimelockOperationExpired,
+    /// Invalid audit index; ensures all audit trails are properly indexed and verifiable.
     #[msg("Invalid audit index")]
     InvalidAuditIndex,
+    /// Invalid proposal; ensures all proposals are properly formed and verifiable.
+    #[msg("Invalid proposal")]
+    InvalidProposal,
 }
 
 /// Errors for factory-level operations, sharding, and protocol configuration.
@@ -179,6 +183,34 @@ pub enum PoolError {
     /// Why: Ensures all ticks are created at valid, protocol-aligned indices.
     #[msg("Initial tick not aligned with spacing")]
     InitialTickSpacingMismatch,
+    /// Pool is already in enterprise mode.
+    /// Why: Prevents duplicate enterprise upgrades that could corrupt state.
+    #[msg("Pool already in enterprise mode")]
+    AlreadyEnterprise,
+    /// Security foundation already initialized for this pool.
+    /// Why: Prevents duplicate security foundation initialization.
+    #[msg("Security foundation already initialized")]
+    SecurityFoundationAlreadyInitialized,
+    /// Security foundation not initialized yet.
+    /// Why: Ensures proper upgrade sequence is followed.
+    #[msg("Security foundation not initialized")]
+    SecurityFoundationNotInitialized,
+    /// Audit system already initialized for this pool.
+    /// Why: Prevents duplicate audit system initialization.
+    #[msg("Audit system already initialized")]
+    AuditSystemAlreadyInitialized,
+    /// Audit system not initialized yet.
+    /// Why: Ensures proper upgrade sequence is followed.
+    #[msg("Audit system not initialized")]
+    AuditSystemNotInitialized,
+    /// Pool not ready for enterprise finalization.
+    /// Why: Ensures all prerequisites are met before finalizing enterprise upgrade.
+    #[msg("Pool not ready for enterprise finalization")]
+    NotReadyForEnterpriseFinalization,
+    /// Caller not authorized for this operation.
+    /// Why: Prevents unauthorized access to sensitive operations.
+    #[msg("Unauthorized operation")]
+    Unauthorized,
 }
 
 /// Errors for tick-level operations, rate limiting, and anomaly detection.
