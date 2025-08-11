@@ -58,18 +58,4 @@ pub struct PoolCreatedEvent {
     pub creator: Pubkey,
     pub timestamp: i64,
     pub slot: u64,
-
-    /// Security authority keys for protocol safety.
-    /// Why: Ensures all security and risk controls are auditable and traceable to specific accounts.
-    pub secureity_coordinator: Pubkey,
-    pub multisig_config: Pubkey,
-    pub core_authority: Pubkey,
-    pub audit_trail_head: Pubkey,
-    pub emergency_contacts: Pubkey,
-
-    /// Multisig threshold and required confirmations for governance actions.
-    /// Why: Enforces protocol governance and risk controls; ensures all critical actions are auditable and require consensus
-    /// for security.
-    pub multisig_threshold: u8,
-    pub required_confirmations: u8,
 }
