@@ -1,3 +1,4 @@
+pub mod enterprise_upgrade;
 pub mod pool_config;
 pub mod pool_core;
 pub mod pool_security;
