@@ -26,7 +26,7 @@ use anchor_lang::solana_program::hash::hashv;
 /// have been properly initialized and their PDAs correctly derived. Malicious or corrupted references
 /// could compromise the entire security model.
 #[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(InitSpace)] // Expecting 272 bytes
 #[repr(C)]
 pub struct SecurityCoordinator {
     /// Root pool reference that owns this security coordinator - enables security scope isolation
@@ -167,6 +167,15 @@ pub struct AddEmergencyContactArgs {
     pub authority: Pubkey,
 }
 
+pub struct SecurityEventArgs<'a> {
+    pub actor: Pubkey,
+    pub target: Pubkey,
+    pub action: &'a [u8],
+    pub data_hash: [u8; 32],
+    pub timestamp: i64,
+    pub block_height: u64,
+}
+
 impl SecurityCoordinator {
     /// Initializes the security coordinator with validated component references.
     ///
@@ -190,6 +199,7 @@ impl SecurityCoordinator {
         multisig_config: Pubkey,
         audit_trail_head: Pubkey,
         emergency_contacts: Pubkey,
+        timestamp: i64,
     ) -> Result<()> {
         // Store immutable references to security component PDAs
         // These form the trust boundary - any compromise here affects entire security model
@@ -199,22 +209,20 @@ impl SecurityCoordinator {
         self.audit_trail_head = audit_trail_head;
         self.emergency_contacts = emergency_contacts;
 
-        let clock = Clock::get()?;
-
         // Initialize with secure defaults - Normal status with no active flags
         // Event sequence starts at 0 to establish baseline for replay protection
         self.security_context = SecurityContext {
             security_version: 1,
             security_status: SecurityStatus::Normal,
             security_flags: 0, // No special security modes active initially
-            last_security_event: clock.unix_timestamp,
+            last_security_event: timestamp,
             event_sequence: 0, // Will increment with first logged event
         };
 
         // Establish immutable creation time and initial update timestamp
         // These timestamps anchor time-based security policies
-        self.created_at = clock.unix_timestamp;
-        self.last_updated = clock.unix_timestamp;
+        self.created_at = timestamp;
+        self.last_updated = timestamp;
 
         Ok(())
     }
@@ -240,41 +248,39 @@ impl SecurityCoordinator {
         &mut self,
         audit_trail_head: &mut AuditTrailHead,
         audit_trail_entry: &mut AuditTrailEntry,
-        actor: Pubkey,
-        target: Pubkey,
-        action: &[u8],
-        data_hash: [u8; 32],
+        args: SecurityEventArgs,
     ) -> Result<()> {
-        // Calculate next sequential index - audit trail maintains strict ordering
+        // Sequential index calculation prevents audit trail gaps that could indicate tampering
+        // Each entry builds on the previous index, creating an immutable ordering sequence
         let audit_index = audit_trail_head.current_index + 1;
 
-        // Retrieve previous hash for chain integrity - links this entry to audit history
+        // Hash chaining creates cryptographic integrity - each entry includes previous hash
+        // This makes selective deletion impossible without breaking the entire chain
         let previous_hash = audit_trail_head.latest_hash;
 
-        let clock = Clock::get()?;
-
-        // Initialize new audit entry with cryptographic linkage to previous entries
-        // This creates an immutable, verifiable sequence of security events
+        // Two-phase audit entry creation: initialize then link to maintain atomicity
+        // If either operation fails, no partial audit state is left behind
         audit_trail_entry.initialize(InitArgs {
             pool_core: self.pool_core,
             audit_index,
-            action: Self::pad_action(action), // Normalize action length for consistent hashing
-            actor,
-            target,
-            data_hash,
-            previous_hash, // Cryptographic link to maintain chain integrity
-            timestamp: clock.unix_timestamp,
-            block_height: clock.slot, // Solana block height for additional time anchoring
+            action: Self::pad_action(args.action), // Fixed-length prevents hash collision attacks
+            actor: args.actor,
+            target: args.target,
+            data_hash: args.data_hash,
+            previous_hash, // Establishes cryptographic link to audit history
+            timestamp: args.timestamp,
+            block_height: args.block_height, // Solana block height provides additional temporal anchoring
         })?;
 
-        // Update audit trail head to point to new entry - atomic operation
+        // Atomic audit trail head update - either fully succeeds or leaves no trace
+        // This prevents partial audit states that could confuse trail verification
         audit_trail_head.add_entry(audit_trail_entry)?;
 
-        // Update coordinator's security context with new event metadata
-        // Wrapping add prevents overflow in long-running deployments
+        // Coordinator state updates use wrapping arithmetic for long-term stability
+        // Event sequence overflow is handled gracefully without breaking audit ordering
         self.security_context.event_sequence = self.security_context.event_sequence.wrapping_add(1);
-        self.security_context.last_security_event = clock.unix_timestamp;
-        self.last_updated = clock.unix_timestamp;
+        self.security_context.last_security_event = args.timestamp;
+        self.last_updated = args.timestamp;
 
         Ok(())
     }
@@ -293,9 +299,13 @@ impl SecurityCoordinator {
     /// - Potential buffer overflow issues in hash computation routines
     fn pad_action(action: &[u8]) -> [u8; 32] {
         let mut padded_action = [0u8; 32];
-        let action_len = action.len().min(32); // Truncate if longer than 32 bytes to prevent overflow
+        // Bounded copy prevents buffer overflows while ensuring deterministic length
+        // min() protects against maliciously oversized action strings that could cause panics
+        let action_len = action.len().min(32);
         padded_action[..action_len].copy_from_slice(&action[..action_len]);
-        padded_action // Zero-padding ensures deterministic hash computation
+        // Zero-padding creates consistent hash inputs regardless of original action length
+        // This prevents different-length strings from producing identical hashes
+        padded_action
     }
 
     /// Orchestrates the proposal phase of authority change with multisig validation.
@@ -325,33 +335,55 @@ impl SecurityCoordinator {
         new_authority: Pubkey,
         proposer: Pubkey,
     ) -> Result<()> {
-        // Verify proposer authorization before any state changes
-        // This prevents unauthorized users from initiating authority changes
+        // Dual authorization check prevents unauthorized authority changes
+        // Both multisig membership AND current authority status required for maximum security
         if !multisig_config.is_member(&proposer) {
             return Err(PdaSecurityAuthorityError::NotAMultisigMember.into());
         }
+        if proposer != core_authority.current_authority {
+            return Err(PdaSecurityAuthorityError::Unauthorized.into());
+        }
 
-        // Immediately transition to authority change state to prevent concurrent proposals
-        // This acts as a critical section lock for authority-related operations
+        // Immediate state transition acts as critical section lock for authority operations
+        // Prevents race conditions where multiple authority changes could be proposed simultaneously
         self.security_context.security_status = SecurityStatus::AuthorityTransition;
 
-        // Delegate actual proposal logic to core authority module
-        // Separation of concerns - coordinator handles orchestration, core handles mechanics
-        core_authority.propose_authority_change(new_authority, proposer)?;
+        let clock = Clock::get()?;
 
-        // Create deterministic hash of proposal parameters for audit linking
-        // Combines both the target authority and proposer to prevent replay attacks
+        // Cryptographic commitment includes timestamp to prevent replay attacks
+        // Each proposal gets unique hash even if same new_authority is proposed multiple times
+        let proposal_digest = hashv(&[
+            b"authority_change",
+            new_authority.as_ref(),
+            clock.unix_timestamp.to_le_bytes().as_ref(),
+        ])
+        .to_bytes();
+
+        // Audit trail hash combines both target and initiator for complete accountability
+        // Links who proposed what authority change for forensic analysis
         let data_hash = hashv(&[new_authority.as_ref(), proposer.as_ref()]).to_bytes();
 
-        // Log the proposal in audit trail for transparency and forensic analysis
-        // This creates an immutable record of who proposed what authority change when
+        // Separation of concerns: coordinator orchestrates, core authority implements
+        // This decoupling enables independent testing and potential future upgrades
+        core_authority.propose_authority_change(
+            new_authority,
+            proposal_digest,
+            clock.unix_timestamp,
+        )?;
+
+        // Immutable audit record created before any potential failure points
+        // Even if subsequent operations fail, the proposal attempt is permanently logged
         self.log_security_event(
             audit_trail_head,
             audit_trail_entry,
-            proposer,
-            new_authority,
-            b"authority_change_proposed",
-            data_hash,
+            SecurityEventArgs {
+                actor: proposer,
+                target: new_authority,
+                action: b"authority_change_proposed",
+                data_hash,
+                timestamp: clock.unix_timestamp,
+                block_height: clock.slot,
+            },
         )?;
 
         Ok(())
@@ -387,69 +419,91 @@ impl SecurityCoordinator {
         audit_trail_entry: &mut AuditTrailEntry,
         confirmer: Pubkey,
     ) -> Result<bool> {
-        // Validate confirmer is authorized before processing confirmation
-        // Prevents unauthorized parties from influencing authority changes
+        // Authorization gating prevents non-members from influencing authority changes
+        // Critical security boundary - only pre-authorized multisig members can confirm
         if !multisig_config.is_member(&confirmer) {
             return Err(PdaSecurityAuthorityError::NotAMultisigMember.into());
         }
 
-        // Ensure there's actually a pending authority change to confirm
-        // Prevents confirmation operations when no proposal is active
+        // State validation prevents confirmation of non-existent proposals
+        // Catches programming errors and prevents meaningless confirmation operations
         if !core_authority.has_pending_authority {
             return Err(PdaSecurityAuthorityError::NoAuthorityChangeRequested.into());
         }
 
         let pending_authority = core_authority.pending_authority;
 
-        // Create unique proposal hash that binds confirmation to specific proposal instance
-        // Includes timestamp to prevent replay of confirmations across different proposals
+        // Proposal hash binding prevents cross-proposal confirmation attacks
+        // Timestamp inclusion ensures confirmations are tied to specific proposal instances
         let proposal_hash = hashv(&[
-            b"authority_change",        // Operation type identifier
-            pending_authority.as_ref(), // Target authority being confirmed
-            &core_authority.authority_change_requested_at.to_le_bytes(), // Timestamp binding
+            b"authority_change",        // Domain separation for different operation types
+            pending_authority.as_ref(), // Binds confirmation to specific authority target
+            &core_authority.authority_change_requested_at.to_le_bytes(), // Temporal binding
         ])
         .to_bytes();
 
-        // Process confirmation and check if threshold reached atomically
-        // This prevents race conditions between confirmation recording and threshold checking
-        let threshold_reached = multisig_config.confirm_proposal(&confirmer, proposal_hash)?;
+        let clock = Clock::get()?;
 
-        // Update status to reflect pending multisig state during confirmation process
+        // Atomic confirmation processing prevents race conditions between recording and checking
+        // Either confirmation is fully processed or it fails with no partial state changes
+        let threshold_reached =
+            multisig_config.confirm_proposal(&confirmer, proposal_hash, clock.unix_timestamp)?;
+
+        // Status update reflects intermediate confirmation state for external monitoring
+        // Signals that multisig process is active but not yet complete
         self.security_context.security_status = SecurityStatus::MultisigPending;
 
-        // Create audit hash linking confirmer to the specific proposal being confirmed
+        // Audit hash links specific confirmer to specific proposal for accountability
+        // Enables forensic analysis of who confirmed what authority change
         let data_hash = hashv(&[confirmer.as_ref(), &proposal_hash]).to_bytes();
 
-        // Log the confirmation for audit trail completeness
+        // Individual confirmation logging provides granular audit trail
+        // Each confirmation is permanently recorded even if threshold not yet reached
         self.log_security_event(
             audit_trail_head,
             audit_trail_entry,
-            confirmer,
-            pending_authority,
-            b"multisig_confirmation",
-            data_hash,
+            SecurityEventArgs {
+                actor: confirmer,
+                target: pending_authority,
+                action: b"multisig_confirmation",
+                data_hash,
+                timestamp: clock.unix_timestamp,
+                block_height: clock.slot,
+            },
         )?;
 
-        // If threshold reached, execute the authority change atomically
+        // Threshold-triggered execution implements atomic authority handoff
+        // All execution steps must succeed or authority change is not applied
         if threshold_reached {
-            // Delegate actual authority transfer to core authority module
-            core_authority.confirm_authority_change()?;
+            core_authority.mark_multisig_approved(proposal_hash)?;
+            if core_authority.execute_authority_change(clock.unix_timestamp)? {
+                // Multisig reset prevents confirmation reuse for future proposals
+                // Clean slate approach ensures no stale confirmations carry over
+                multisig_config.reset_confirmations(clock.unix_timestamp);
+            }
 
-            // Return to normal operations - authority change complete
+            // Status return to Normal signals completion of authority transition
+            // Other protocol components can resume normal operations
             self.security_context.security_status = SecurityStatus::Normal;
 
-            // Create execution-specific audit hash for the completed authority change
+            // Execution-specific audit entry provides completion confirmation
+            // Distinguishes between partial confirmations and successful execution
             let exec_hash =
                 hashv(&[b"authority_change_executed", pending_authority.as_ref()]).to_bytes();
 
-            // Log successful execution of authority change
+            // Final audit log entry completes the authority change audit trail
+            // Provides definitive record that authority transition was completed
             self.log_security_event(
                 audit_trail_head,
                 audit_trail_entry,
-                confirmer, // Final confirmer triggered the execution
-                pending_authority,
-                b"authority_change_executed",
-                exec_hash,
+                SecurityEventArgs {
+                    actor: confirmer,
+                    target: pending_authority,
+                    action: b"authority_change_executed",
+                    data_hash: exec_hash,
+                    timestamp: clock.unix_timestamp,
+                    block_height: clock.slot,
+                },
             )?;
         }
 
@@ -484,39 +538,46 @@ impl SecurityCoordinator {
         audit_trail_entry: &mut AuditTrailEntry,
         args: EmergencyPauseArgs,
     ) -> Result<()> {
-        // Verify emergency responder authorization before any state changes
-        // Only pre-authorized emergency contacts can trigger protocol pauses
+        // Emergency authorization operates outside normal multisig to enable rapid response
+        // Pre-validated emergency contacts can act unilaterally when speed is critical
         if !emergency_contacts.has_emergency_authority(&args.responder) {
             return Err(PdaSecurityAuthorityError::InsufficientPermissions.into());
         }
 
-        // Immediately transition to emergency pause state to halt protocol operations
-        // This acts as a global circuit breaker for all protocol functionality
+        // Immediate status transition halts protocol operations before any delays
+        // Circuit breaker pattern: fail-safe rather than fail-open during suspected compromise
         self.security_context.security_status = SecurityStatus::EmergencyPause;
 
-        // Set emergency flag using bitwise OR to preserve existing security flags
-        // 0x01 represents the emergency pause flag in the security flags bitfield
+        // Bitwise OR preserves existing flags while adding emergency pause flag
+        // Multiple security conditions can be active simultaneously without interference
         self.security_context.security_flags |= 0x01;
 
-        // Delegate pause mechanics to core authority while coordinator handles orchestration
-        core_authority.emergency_pause(args.reason_hash, args.emergency_level)?;
+        let clock = Clock::get()?;
 
-        // Construct audit data combining reason hash with emergency level for complete context
-        // This enables forensic analysis of emergency decisions and their justifications
+        // Emergency pause delegation maintains separation of concerns
+        // Coordinator handles orchestration, core authority manages pause mechanics
+        core_authority.emergency_pause(args.emergency_level, clock.unix_timestamp)?;
+
+        // Audit data packing combines reason hash with severity level for analysis
+        // Compact representation enables forensic analysis while maintaining data integrity
         let mut data = [0u8; 32];
         data[..args.reason_hash.len()].copy_from_slice(&args.reason_hash);
         let level_bytes = (args.emergency_level as u8).to_le_bytes();
-        data[31] = level_bytes[0]; // Pack emergency level into final byte
+        data[31] = level_bytes[0]; // Emergency level packed into final byte for space efficiency
 
-        // Create comprehensive audit log entry for emergency pause activation
-        // Critical for post-incident analysis and accountability
+        // Emergency pause audit logging provides accountability for critical decisions
+        // Permanent record enables post-incident analysis and regulatory compliance
         self.log_security_event(
             audit_trail_head,
             audit_trail_entry,
-            args.responder,
-            core_authority.current_authority,
-            b"emergency_pause_activated",
-            data,
+            SecurityEventArgs {
+                actor: args.responder,
+                target: core_authority.current_authority,
+                action: b"emergency_pause_activated",
+                data_hash: data,
+                timestamp: clock.unix_timestamp,
+                block_height: clock.slot,
+            },
         )?;
 
         Ok(())
@@ -554,40 +615,47 @@ impl SecurityCoordinator {
         audit_trail_entry: &mut AuditTrailEntry,
         args: AddEmergencyContactArgs,
     ) -> Result<()> {
-        // Verify that only the current protocol authority can modify emergency contacts
-        // This prevents unauthorized parties from installing malicious emergency responders
+        // Strict authority validation prevents unauthorized emergency contact installation
+        // Only current protocol authority can modify emergency response capabilities
         require!(
             args.authority == core_authority.current_authority,
             PdaSecurityAuthorityError::Unauthorized
         );
 
-        // Delegate the actual contact addition to the emergency contacts module
-        // Separation of concerns - coordinator handles authorization, module handles storage
+        let clock = Clock::get()?;
+
+        // Direct emergency contact addition with explicit discarding of return value
+        // Result is intentionally unused as any errors would have already been propagated
         let _ = EmergencyContacts::add_contact(
             emergency_contacts,
             args.contact,
             args.role,
             args.permissions,
+            clock.unix_timestamp,
         );
 
-        // Create comprehensive audit hash combining all relevant contact parameters
-        // This enables forensic analysis of emergency contact management decisions
+        // Comprehensive audit hash captures all emergency contact parameters
+        // Complete metadata enables forensic analysis of emergency authority decisions
         let data_hash = hashv(&[
-            args.contact.as_ref(),            // Who was added
-            &(args.role as u8).to_le_bytes(), // What role they were assigned
-            &args.permissions.to_le_bytes(),  // What permissions they were granted
+            args.contact.as_ref(),            // Identity of the new emergency contact
+            &(args.role as u8).to_le_bytes(), // Role assignment for operational clarity
+            &args.permissions.to_le_bytes(),  // Permission bitfield for capability analysis
         ])
         .to_bytes();
 
-        // Log the addition of the emergency contact for complete audit trail coverage
-        // This creates an immutable record of all emergency contact modifications
+        // Emergency contact addition audit entry provides permanent accountability
+        // Immutable record of all modifications to emergency response structure
         self.log_security_event(
             audit_trail_head,
             audit_trail_entry,
-            args.authority, // Who authorized the addition
-            args.contact,   // Who was added as emergency contact
-            b"emergency_contact_added",
-            data_hash,
+            SecurityEventArgs {
+                actor: args.authority, // Authority who authorized the emergency contact addition
+                target: args.contact,  // New emergency contact being granted authority
+                action: b"emergency_contact_added",
+                data_hash,
+                timestamp: clock.unix_timestamp,
+                block_height: clock.slot,
+            },
         )?;
 
         Ok(())
@@ -1018,6 +1086,7 @@ pub fn initialize_security_coordinator(ctx: Context<InitializeSecurityCoordinato
     // load_init() ensures this is a fresh account and prepares it for first use
     let security_coordinator = &mut ctx.accounts.security_coordinator.load_init()?;
 
+    let clock = Clock::get()?;
     // Initialize with validated account references - all constraints checked by Anchor
     // These Pubkeys form the immutable security architecture for this pool instance
     security_coordinator.initialize(
@@ -1026,6 +1095,7 @@ pub fn initialize_security_coordinator(ctx: Context<InitializeSecurityCoordinato
         ctx.accounts.multisig_config.key(),
         ctx.accounts.audit_trail_head.key(),
         ctx.accounts.emergency_contacts.key(),
+        clock.unix_timestamp,
     )?;
 
     Ok(())
