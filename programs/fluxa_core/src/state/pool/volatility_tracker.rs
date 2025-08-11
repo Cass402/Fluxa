@@ -39,8 +39,9 @@ pub struct EwmaVolatilityTracker {
     /// - `volatility_cap`: Maximum allowed volatility, in basis points. Why: Prevents runaway fees or risk logic due to oracle errors or attacks.
     /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
     pub enabled: bool,
+    pub _padding: u8,        // Padding for alignment
     pub volatility_cap: u32, // Maximum volatility in basis points
-    pub _padding: [u8; 8],   // Align to 8-byte boundary
+    pub reserved: [u8; 4],   // Align to 8-byte boundary
 }
 
 /// EWMA Volatility Tracker implementation.
@@ -69,8 +70,9 @@ impl EwmaVolatilityTracker {
             min_update_interval,
             update_count: 0,
             enabled: true,
+            _padding: 0,           // Padding for alignment
             volatility_cap: 10000, // 100% volatility cap
-            _padding: [0; 8],
+            reserved: [0; 4],
         }
     }
 
