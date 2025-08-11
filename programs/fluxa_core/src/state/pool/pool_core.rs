@@ -3,17 +3,10 @@ use crate::math::core_arithmetic::Q64x64;
 use crate::math::price_math::sqrt_price_to_tick;
 use crate::state::pool::pool_config::PoolConfig;
 use crate::state::pool::pool_security::PoolSecurity;
-use crate::state::pool::volatility_tracker::EwmaVolatilityTracker;
 use crate::utils::constants::{
-    DEFAULT_FEE_TIERS, DEFAULT_PROTOCOL_FEE, MAX_SQRT_X64, MIN_SQRT_X64, SECURITY_FLAG_DEFAULT,
-    TICK_SPACING_PER_FEE,
+    DEFAULT_FEE_TIERS, MAX_SQRT_X64, MIN_SQRT_X64, TICK_SPACING_PER_FEE,
 };
 use crate::utils::event::PoolCreatedEvent;
-use crate::utils::security_authority::audit_trail::AuditTrailHead;
-use crate::utils::security_authority::core_authority::CoreAuthority;
-use crate::utils::security_authority::emergency_contacts::EmergencyContacts;
-use crate::utils::security_authority::multisig_config::MultisigConfig;
-use crate::utils::security_authority::security_coordinator::SecurityCoordinator;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
@@ -50,7 +43,7 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 /// This separation enables independent evolution of different protocol aspects without
 /// requiring costly state migrations.
 #[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(InitSpace)] // Expecting 224 bytes
 #[repr(C)]
 pub struct PoolCore {
     /// Immutable token pair defining the pool's trading assets with canonical ordering.
@@ -171,6 +164,57 @@ pub struct PoolCore {
     pub reserved: [u64; 8],
 }
 
+impl Default for PoolCore {
+    fn default() -> Self {
+        Self {
+            token_0: Pubkey::default(),
+            token_1: Pubkey::default(),
+            sqrt_price: Q64x64::zero(),
+            liquidity: Q64x64::zero(),
+            tick_current: 0,
+            tick_spacing: 0,
+            fee: 0,
+            fee_growth_global_0: Q64x64::zero(),
+            fee_growth_global_1: Q64x64::zero(),
+            last_update_slot: 0,
+            protocol_version: 1,
+            status_flags: 0,
+            bump_core: 0,
+            bump_vault_0: 0,
+            bump_vault_1: 0,
+            _padding: [0; 1],
+            reserved: [0; 8],
+        }
+    }
+}
+
+impl PoolCore {
+    /// Enterprise upgrade status flags for tracking multi-phase initialization
+    pub const SECURITY_FOUNDATION_INITIALIZED: u16 = 0x01;
+    pub const AUDIT_SYSTEM_INITIALIZED: u16 = 0x02;
+    pub const ENTERPRISE_MODE_ACTIVE: u16 = 0x04;
+
+    /// Check if pool has enterprise capabilities enabled
+    pub fn is_enterprise(&self) -> bool {
+        self.status_flags & Self::ENTERPRISE_MODE_ACTIVE != 0
+    }
+
+    /// Check if security foundation is initialized
+    pub fn has_security_foundation(&self) -> bool {
+        self.status_flags & Self::SECURITY_FOUNDATION_INITIALIZED != 0
+    }
+
+    /// Check if audit system is initialized
+    pub fn has_audit_system(&self) -> bool {
+        self.status_flags & Self::AUDIT_SYSTEM_INITIALIZED != 0
+    }
+
+    /// Check if pool is ready for enterprise upgrade finalization
+    pub fn ready_for_enterprise_finalization(&self) -> bool {
+        self.has_security_foundation() && self.has_audit_system() && !self.is_enterprise()
+    }
+}
+
 /// Validates fee tier against protocol-defined canonical mappings for security and consistency.
 ///
 /// This function implements a critical safety check by ensuring only pre-approved fee tiers
@@ -218,34 +262,6 @@ fn is_tick_aligned(tick: i32, spacing: u16) -> bool {
     tick.rem_euclid(spacing as i32) == 0
 }
 
-/// Comprehensive account validation context for atomic pool creation with security guarantees.
-///
-/// This context structure implements defense-in-depth for pool creation by enforcing multiple
-/// layers of validation and security constraints. The design reflects lessons learned from
-/// DeFi exploits where insufficient validation during pool creation led to protocol vulnerabilities.
-///
-/// ## Atomic Initialization Strategy
-/// All related accounts (core, security, config, vaults, authority structures) are created
-/// in a single transaction to prevent partial initialization states that could be exploited.
-/// This approach eliminates race conditions where attackers could interfere with pool
-/// setup between multiple transactions.
-///
-/// ## Deterministic Address Derivation
-/// Uses consistent seed patterns across all accounts to ensure predictable addresses that
-/// can be computed off-chain. This enables efficient indexing and prevents address collision
-/// attacks where malicious actors might try to claim pool-related account addresses.
-///
-/// ## Constraint-Based Security Model
-/// Anchor constraints are used extensively to enforce protocol invariants at the instruction
-/// level, preventing invalid pool configurations from being created. This approach moves
-/// security validation to the framework level, reducing the attack surface and ensuring
-/// consistent enforcement across all pool creation attempts.
-///
-/// ## Authority Separation Principle
-/// Distinguishes between different authority roles (payer, initial authority, emergency responder)
-/// to enable flexible operational models while maintaining security. This separation allows
-/// for scenarios where operational costs, management authority, and emergency response are
-/// handled by different entities.
 #[derive(Accounts)]
 #[instruction(fee_tier: u32, tick_spacing: u16, initial_sqrt_price: Q64x64)]
 pub struct CreatePool<'info> {
@@ -342,80 +358,6 @@ pub struct CreatePool<'info> {
     )]
     pub vault_1: Account<'info, TokenAccount>,
 
-    /// Security coordination layer orchestrating multi-layered protection mechanisms.
-    ///
-    /// Acts as the central coordinator for all security-related functionality including
-    /// authority validation, emergency response, and audit trail management. This
-    /// centralized approach ensures consistent security policy enforcement across
-    /// all pool operations while maintaining clear separation of concerns.
-    #[account(
-        init,
-        payer = payer,
-        seeds = [b"security_coordinator", pool_core.key().as_ref()],
-        bump,
-        space = 8 + SecurityCoordinator::INIT_SPACE,
-    )]
-    pub security_coordinator: AccountLoader<'info, SecurityCoordinator>,
-
-    /// Core authority management for administrative operations and access control.
-    ///
-    /// Implements a separate authority structure to enable sophisticated access
-    /// control patterns including time-locked operations, multi-signature requirements,
-    /// and emergency response procedures. Separation from pool core enables independent
-    /// evolution of governance models without affecting trading functionality.
-    #[account(
-        init,
-        payer = payer,
-        seeds = [b"core_authority", pool_core.key().as_ref()],
-        bump,
-        space = 8 + CoreAuthority::INIT_SPACE,
-    )]
-    pub core_authority: AccountLoader<'info, CoreAuthority>,
-
-    /// Multi-signature configuration for distributed authority and enhanced security.
-    ///
-    /// Enables sophisticated governance models where critical operations require
-    /// consensus from multiple parties. This structure supports various multisig
-    /// patterns from simple M-of-N signatures to complex governance workflows
-    /// with different approval requirements for different operation types.
-    #[account(
-        init,
-        payer = payer,
-        seeds = [b"multisig_config", pool_core.key().as_ref()],
-        bump,
-        space = 8 + MultisigConfig::INIT_SPACE,
-    )]
-    pub multisig_config: AccountLoader<'info, MultisigConfig>,
-
-    /// Audit trail head for tamper-evident logging of all critical operations.
-    ///
-    /// Provides cryptographic proof of all pool operations for regulatory compliance
-    /// and forensic analysis. The audit trail enables reconstruction of complete
-    /// pool history and detection of any unauthorized modifications to pool state.
-    #[account(
-        init,
-        payer = payer,
-        seeds = [b"audit_trail_head", pool_core.key().as_ref()],
-        bump,
-        space = 8 + AuditTrailHead::INIT_SPACE,
-    )]
-    pub audit_trail_head: AccountLoader<'info, AuditTrailHead>,
-
-    /// Emergency contact registry for rapid incident response coordination.
-    ///
-    /// Maintains verified contact information for emergency responders who can
-    /// take immediate action during security incidents. This system enables
-    /// faster response times than traditional governance processes when pools
-    /// face active exploitation or other critical threats.
-    #[account(
-        init,
-        payer = payer,
-        seeds = [b"emergency_contacts", pool_core.key().as_ref()],
-        bump,
-        space = 8 + EmergencyContacts::INIT_SPACE,
-    )]
-    pub emergency_contacts: AccountLoader<'info, EmergencyContacts>,
-
     /// Transaction cost payer with independent authority for flexible operational models.
     ///
     /// Separated from other authority roles to enable scenarios where pool creation
@@ -481,9 +423,6 @@ pub fn create_pool(
     fee_tier: u32,
     tick_spacing: u16,
     init_sqrt_price: Q64x64,
-    multisig_threshold: u8,
-    multisig_members: [Pubkey; 7],
-    required_confirmations: u8,
 ) -> Result<()> {
     // Capture blockchain state for temporal anchoring and audit trail initialization
     let clock = Clock::get()?;
@@ -533,143 +472,38 @@ pub fn create_pool(
     let bump_vault_0 = ctx.bumps.vault_0;
     let bump_vault_1 = ctx.bumps.vault_1;
 
-    // Initialize security infrastructure in dependency order to ensure proper linking
-    // Core authority must be established first as other components depend on it
-    let mut core_authority = ctx.accounts.core_authority.load_init()?;
-    core_authority.initialize(
-        ctx.accounts.pool_core.key(),
-        ctx.accounts.initial_authority.key(),
-        required_confirmations,
-    )?;
-
-    // Multi-signature configuration enables distributed governance and enhanced security
-    // Initialized early to provide authority validation for subsequent security components
-    let mut multisig_config = ctx.accounts.multisig_config.load_init()?;
-    multisig_config.initialize(
-        ctx.accounts.pool_core.key(),
-        multisig_threshold,
-        multisig_members,
-    )?;
-
-    // Audit trail head establishes the foundation for tamper-evident logging
-    // Must be initialized before security coordinator to provide audit capabilities
-    let mut audit_trail_head = ctx.accounts.audit_trail_head.load_init()?;
-    audit_trail_head.initialize(ctx.accounts.pool_core.key())?;
-
-    // Emergency contacts registry enables rapid incident response coordination
-    // Provides pre-authorized channels for critical security communications
-    let mut emergency_contacts = ctx.accounts.emergency_contacts.load_init()?;
-    emergency_contacts.initialize(
-        ctx.accounts.pool_core.key(),
-        ctx.accounts.emergency_responder.key(),
-    )?;
-
-    // Security coordinator orchestrates all security components into cohesive protection
-    // Initialized last as it requires references to all other security infrastructure
-    let mut security_coordinator = ctx.accounts.security_coordinator.load_init()?;
-    security_coordinator.initialize(
-        ctx.accounts.pool_core.key(),
-        ctx.accounts.core_authority.key(),
-        ctx.accounts.multisig_config.key(),
-        ctx.accounts.audit_trail_head.key(),
-        ctx.accounts.emergency_contacts.key(),
-    )?;
-
     // Initialize core trading state with validated parameters and zero-copy efficiency
     // Uses direct struct assignment for atomic initialization preventing partial state
     let mut pool_core = ctx.accounts.pool_core.load_init()?;
-    *pool_core = PoolCore {
-        // Immutable token pair identity established during creation
-        token_0: ctx.accounts.token_0.key(),
-        token_1: ctx.accounts.token_1.key(),
-
-        // Market state initialized to provided starting conditions
-        sqrt_price: init_sqrt_price,
-        liquidity: Q64x64::zero(), // No liquidity until first provision
-        tick_current: init_tick,
-        tick_spacing,
-        fee: fee_tier as u16,
-
-        // Fee tracking accumulators start at zero for clean accounting
-        fee_growth_global_0: Q64x64::zero(),
-        fee_growth_global_1: Q64x64::zero(),
-
-        // Temporal anchoring for protocol operations
-        last_update_slot: slot,
-        protocol_version: 1, // Initial version enabling future migrations
-        status_flags: 0,     // Normal operational status
-
-        // Cached PDA bumps for gas optimization
-        bump_core,
-        bump_vault_0,
-        bump_vault_1,
-
-        // Alignment and future expansion space
-        _padding: [0; 1],
-        reserved: [0; 8],
-    };
+    *pool_core = PoolCore::default();
+    pool_core.token_0 = ctx.accounts.token_0.key();
+    pool_core.token_1 = ctx.accounts.token_1.key();
+    pool_core.sqrt_price = init_sqrt_price;
+    pool_core.tick_current = init_tick;
+    pool_core.tick_spacing = tick_spacing;
+    pool_core.fee = fee_tier as u16;
+    pool_core.last_update_slot = slot;
+    pool_core.bump_core = bump_core;
+    pool_core.bump_vault_0 = bump_vault_0;
+    pool_core.bump_vault_1 = bump_vault_1;
 
     // Initialize security monitoring and protection systems with defensive defaults
     // Security settings prioritize protection over convenience for new pools
     let mut pool_security = ctx.accounts.pool_security.load_init()?;
-    *pool_security = PoolSecurity {
-        // Core pool binding for security scope isolation
-        pool_core: ctx.accounts.pool_core.key(),
-
-        // Security status tracking with conservative defaults
-        security_flags: SECURITY_FLAG_DEFAULT,
-        total_swap_volume_0: Q64x64::zero(), // Volume tracking for anomaly detection
-        total_swap_volume_1: Q64x64::zero(),
-        active_positions_count: 0,
-        last_security_check: slot,
-        suspicious_activity_score: 0,
-
-        // MEV protection enabled by default due to high exploitation risk in new pools
-        mev_protection_enabled: true,
-
-        // Security infrastructure references for coordinated response
-        emergency_contacts: ctx.accounts.emergency_contacts.key(),
-        security_coordinator: ctx.accounts.security_coordinator.key(),
-
-        // Circuit breaker configuration for automatic protection
-        circuit_breaker_triggered_at: 0,
-        circuit_breaker_threshold: 800, // Conservative threshold for new pools
-
-        // Account metadata and expansion space
-        bump_security,
-        _padding: [0; 3],
-        reserved: [0; 4],
-    };
+    *pool_security = PoolSecurity::default();
+    pool_security.pool_core = ctx.accounts.pool_core.key();
+    pool_security.last_security_check = slot;
+    pool_security.emergency_contacts = ctx.accounts.emergency_responder.key();
+    pool_security.bump_security = bump_security;
 
     // Initialize operational configuration with protocol defaults and governance hooks
     // Separates mutable config from immutable core state for flexible governance
     let mut pool_config = ctx.accounts.pool_config.load_init()?;
-    *pool_config = PoolConfig {
-        // Core pool binding for configuration scope
-        pool_core: ctx.accounts.pool_core.key(),
-
-        // Protocol fee structure initialized to network defaults
-        protocol_fee_0: DEFAULT_PROTOCOL_FEE,
-        protocol_fee_1: DEFAULT_PROTOCOL_FEE,
-        protocol_fees_token_0: Q64x64::zero(), // Accumulated fees start at zero
-        protocol_fees_token_1: Q64x64::zero(),
-
-        // Volatility tracking for risk management and dynamic parameters
-        volatility_tracker: EwmaVolatilityTracker::new(60), // 60-slot smoothing window
-
-        // Operational limits disabled initially, can be configured by governance
-        max_swap_limit: 0,     // No single-swap limit
-        daily_volume_limit: 0, // No daily volume cap
-        last_volume_reset: slot,
-
-        // Governance binding for configuration management
-        core_authority: ctx.accounts.core_authority.key(),
-
-        // Account metadata and expansion space
-        bump_config,
-        _padding: [0; 7],
-        reserved: [0; 8],
-    };
+    *pool_config = PoolConfig::default();
+    pool_config.pool_core = ctx.accounts.pool_core.key();
+    pool_config.last_volume_reset = slot;
+    pool_config.core_authority = ctx.accounts.initial_authority.key();
+    pool_config.bump_config = bump_config;
 
     // Emit comprehensive pool creation event for monitoring and indexing systems
     // This event provides all necessary information for off-chain services to track
@@ -701,17 +535,6 @@ pub fn create_pool(
         creator: ctx.accounts.payer.key(),
         timestamp: unix,
         slot,
-
-        // Security infrastructure for monitoring and governance tracking
-        secureity_coordinator: ctx.accounts.security_coordinator.key(),
-        multisig_config: ctx.accounts.multisig_config.key(),
-        core_authority: ctx.accounts.core_authority.key(),
-        audit_trail_head: ctx.accounts.audit_trail_head.key(),
-        emergency_contacts: ctx.accounts.emergency_contacts.key(),
-
-        // Governance configuration for policy analysis
-        multisig_threshold,
-        required_confirmations,
     });
 
     Ok(())
