@@ -1,6 +1,7 @@
 use crate::error::PoolError;
 use crate::math::core_arithmetic::Q64x64;
 use crate::math::price_math::sqrt_price_to_tick;
+use crate::state::factory::factory_shard::FactoryShard;
 use crate::state::pool::pool_config::PoolConfig;
 use crate::state::pool::pool_security::PoolSecurity;
 use crate::utils::constants::{
@@ -263,7 +264,7 @@ fn is_tick_aligned(tick: i32, spacing: u16) -> bool {
 }
 
 #[derive(Accounts)]
-#[instruction(fee_tier: u32, tick_spacing: u16, initial_sqrt_price: Q64x64)]
+#[instruction(fee_tier: u32, tick_spacing: u16, initial_sqrt_price: Q64x64, factory_key: Pubkey, shard_index: u16)]
 pub struct CreatePool<'info> {
     /// Primary pool state account with deterministic derivation and comprehensive validation.
     ///
@@ -316,6 +317,17 @@ pub struct CreatePool<'info> {
         space = 8 + PoolConfig::INIT_SPACE,
     )]
     pub pool_config: AccountLoader<'info, PoolConfig>,
+
+    /// Factory shard that will manage this pool.
+    ///
+    /// Validates that the shard exists and is properly initialized.
+    /// Capacity validation is done in the instruction handler.
+    #[account(
+        mut,
+        seeds = [b"shard", factory_key.as_ref(), &shard_index.to_le_bytes()],
+        bump,
+    )]
+    pub factory_shard: AccountLoader<'info, FactoryShard>,
 
     /// Token mint accounts defining the trading pair with immutable references.
     ///
@@ -429,6 +441,11 @@ pub fn create_pool(
     let slot = clock.slot;
     let unix = clock.unix_timestamp;
 
+    // Validate that the factory shard has capacity for new pools
+    let factory_shard = ctx.accounts.factory_shard.load()?;
+    require!(factory_shard.has_capacity(), PoolError::ShardAtCapacity);
+    drop(factory_shard); // Release the borrow before mut borrow below
+
     // Validate fee tier against protocol whitelist using binary search for efficiency
     // Binary search is O(log N) and works because DEFAULT_FEE_TIERS is sorted
     // This prevents malicious pools with non-standard fees that could exploit pricing assumptions
@@ -487,6 +504,10 @@ pub fn create_pool(
     pool_core.bump_vault_0 = bump_vault_0;
     pool_core.bump_vault_1 = bump_vault_1;
 
+    // Add pool to the factory shard and update shard state
+    let mut factory_shard = ctx.accounts.factory_shard.load_mut()?;
+    factory_shard.add_pool(ctx.accounts.pool_core.key(), slot)?;
+
     // Initialize security monitoring and protection systems with defensive defaults
     // Security settings prioritize protection over convenience for new pools
     let mut pool_security = ctx.accounts.pool_security.load_init()?;
@@ -501,6 +522,7 @@ pub fn create_pool(
     let mut pool_config = ctx.accounts.pool_config.load_init()?;
     *pool_config = PoolConfig::default();
     pool_config.pool_core = ctx.accounts.pool_core.key();
+    pool_config.factory_shard = ctx.accounts.factory_shard.key();
     pool_config.last_volume_reset = slot;
     pool_config.core_authority = ctx.accounts.initial_authority.key();
     pool_config.bump_config = bump_config;
@@ -513,6 +535,7 @@ pub fn create_pool(
         pool_core: ctx.accounts.pool_core.key(),
         pool_security: ctx.accounts.pool_security.key(),
         pool_config: ctx.accounts.pool_config.key(),
+        factory_shard: ctx.accounts.factory_shard.key(),
         token_0: ctx.accounts.token_0.key(),
         token_1: ctx.accounts.token_1.key(),
         vault_0: ctx.accounts.vault_0.key(),
