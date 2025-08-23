@@ -44,7 +44,7 @@ pub struct PoolSecurity {
     ///
     /// - `mev_protection_enabled`: Enables/disables MEV protection logic. Why: Allows for dynamic risk management and protocol upgrades without redeploying the contract.
     /// - `emergency_contacts`: Pubkey for emergency response (e.g., multisig, DAO). Why: Enables rapid intervention in case of attack or critical failure.
-    pub mev_protection_enabled: bool,
+    pub mev_protection_enabled: u8, // 0 = disabled, 1 = enabled
     // Future: Add MEV protection window, price impact, and volume spike thresholds for more granular controls.
     pub emergency_contacts: Pubkey,
     pub security_coordinator: Pubkey,
@@ -61,7 +61,7 @@ pub struct PoolSecurity {
     /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
     /// - `reserved`: Pre-allocated space for future upgrades (e.g., new risk controls, monitoring fields) without breaking account layout.
     pub bump_security: u8, // Cache bump for efficiency
-    pub enterprise_mode: bool, // Whether this pool is in enterprise mode with enhanced security/compliance
+    pub enterprise_mode: u8, // Whether this pool is in enterprise mode with enhanced security/compliance
     pub _padding: [u8; 2],
     pub reserved: [u64; 4],
 }
@@ -76,13 +76,13 @@ impl Default for PoolSecurity {
             total_swap_volume_1: Q64x64::zero(),
             last_security_check: 0,
             suspicious_activity_score: 0,
-            mev_protection_enabled: true,
+            mev_protection_enabled: 1,
             emergency_contacts: Pubkey::default(),
             security_coordinator: Pubkey::default(),
             circuit_breaker_triggered_at: 0,
             circuit_breaker_threshold: 0,
             bump_security: 0,
-            enterprise_mode: false,
+            enterprise_mode: 0,
             _padding: [0; 2],
             reserved: [0; 4],
         }
