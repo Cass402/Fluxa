@@ -2,7 +2,7 @@
 mod tests {
     use crate::math::core_arithmetic::*;
     use crate::utils::constants::*;
-    use ethnum::U256;
+    //use ethnum::U256;
     use proptest::prelude::*;
 
     // Helper strategies for bounded values
@@ -198,7 +198,10 @@ mod tests {
 
         // NEW: Test extreme ratios in mul_div
         #[test]
-        fn test_mul_div_extreme_ratios(a in 1u128..=u128::MAX >> 4, b in 1u128..=u128::MAX >> 4) {
+        fn test_mul_div_extreme_ratios(
+            a in 1u128..=u64::MAX as u128, // restrict range so a * b fits in u128
+            b in 1u128..=u64::MAX as u128
+        ) {
             // Test case where a * b would overflow u128
             let large_a = u128::MAX >> 1;
             let large_b = u128::MAX >> 1;
@@ -211,10 +214,8 @@ mod tests {
             if let Ok(result) = mul_div(small_a, small_b, large_c) {
                 prop_assert_eq!(result, 0, "Small numerator should give 0");
             }
-
-            // Only consider a,b such that the full product fits in u128
-            prop_assume!(U256::from(a) * U256::from(b) <= U256::from(u128::MAX));
-            let c = a * b; // safe now
+            // Now a * b always fits in u128, so no need for prop_assume!
+            let c = a * b;
             prop_assert_eq!(
                 mul_div(a, b, c)?,
                 1,
