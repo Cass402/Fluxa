@@ -23,6 +23,11 @@ pub struct PoolCreatedEvent {
     /// Why: Stores protocol fee, volatility tracker, and governance controls.
     pub pool_config: Pubkey,
 
+    /// Factory shard account key managing this pool.
+    ///
+    /// Why: Enables tracking of pool distribution across shards for load balancing and analytics.
+    pub factory_shard: Pubkey,
+
     /// Token mint addresses for the pool.
     ///
     /// Why: Immutable asset pair; used for all downstream validation and accounting.
