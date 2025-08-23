@@ -1,8 +1,8 @@
 use crate::error::FactoryError;
 use crate::math::core_arithmetic::{mul_div_q64, Q64x64};
 use crate::utils::constants::{
-    DEFAULT_FEE_TIERS, DEFAULT_PROTOCOL_FEE, MAX_FEE_TIERS, MAX_POOLS_PER_SHARD, POOL_CREATION_FEE,
-    STATUS_EMERGENCY, STATUS_MAINTENANCE, STATUS_NORMAL, STATUS_PAUSED,
+    DEFAULT_FEE_TIERS, DEFAULT_PROTOCOL_FEE, MAX_FEE_TIERS, MAX_POOLS_PER_SHARD, MAX_SHARDS,
+    POOL_CREATION_FEE, STATUS_EMERGENCY, STATUS_MAINTENANCE, STATUS_NORMAL, STATUS_PAUSED,
 };
 use crate::utils::security_authority::core_authority::CoreAuthority;
 use crate::utils::security_authority::emergency_contacts::EmergencyContacts;
@@ -209,11 +209,25 @@ pub struct Factory {
     /// maintaining efficient storage and comparison operations.
     pub version: u32,
 
+    /// **Shard Registry**: Fixed array of active shard keys for bidirectional linkage.
+    ///
+    /// Why: Enables complete factory ↔ shard linkage for:
+    /// - Direct shard validation and lookup
+    /// - Efficient shard iteration for maintenance operations
+    /// - Atomic shard management during scaling operations
+    /// - Administrative operations requiring shard enumeration
+    ///
+    /// Array design rationale:
+    /// - Fixed size prevents account bloat and enables deterministic sizing
+    /// - Zero values serve as array terminators for sparse shard arrays
+    /// - Supports up to MAX_SHARDS active shards per factory
+    pub shard_keys: [Pubkey; MAX_SHARDS],
+
     /// **Future-Proofing Storage**: Pre-allocated space for seamless protocol evolution.
     ///
     /// Reserved fields enable adding new features without account migrations or
-    /// rent increases. Size reduced to accommodate enterprise security fields
-    /// while maintaining upgrade capacity for anticipated future requirements.
+    /// rent increases. Size reduced to accommodate shard registry while maintaining
+    /// upgrade capacity for anticipated future requirements.
     pub reserved: [u64; 5],
 }
 
@@ -289,8 +303,11 @@ impl Factory {
         // Version management: establish protocol generation
         self.version = 1;
 
+        // Shard registry: initialize empty shard array
+        self.shard_keys = [Pubkey::default(); MAX_SHARDS];
+
         // Future-proofing: initialize reserved space to zero
-        self.reserved = [0u64; 5];
+        self.reserved = [0u64; 5]; // Updated size to accommodate shard_keys
 
         Ok(())
     }
@@ -357,6 +374,67 @@ impl Factory {
         self.last_update_slot = current_slot;
 
         Ok(new_shard_index)
+    }
+
+    /// **Shard Registry Management**: Add shard to factory's tracking array.
+    ///
+    /// ## Bidirectional Linkage Strategy
+    /// Stores shard Pubkey in factory's registry to enable complete factory ↔ shard
+    /// bidirectional navigation. This enables efficient shard enumeration for
+    /// administrative operations and validation.
+    ///
+    /// ## Capacity Management
+    /// Validates shard capacity before addition to prevent array overflow and
+    /// ensure deterministic account sizing.
+    pub fn register_shard(&mut self, shard_key: Pubkey, current_slot: u64) -> Result<()> {
+        let shard_index = (self.shard_count - 1) as usize; // Index of the just-added shard
+
+        require!(shard_index < MAX_SHARDS, FactoryError::ShardAtCapacity);
+
+        self.shard_keys[shard_index] = shard_key;
+        self.last_update_slot = current_slot;
+
+        Ok(())
+    }
+
+    /// **Shard Lookup**: Get shard key by index with bounds checking.
+    ///
+    /// ## Safe Array Access
+    /// Prevents out-of-bounds access and returns None for invalid indices,
+    /// enabling safe shard enumeration without panics.
+    pub fn get_shard_key(&self, index: u16) -> Option<Pubkey> {
+        let index = index as usize;
+        if index < (self.shard_count as usize) && index < MAX_SHARDS {
+            let key = self.shard_keys[index];
+            if key != Pubkey::default() {
+                Some(key)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// **Factory Capacity Check**: Determine if factory can accommodate new shards.
+    ///
+    /// ## Capacity Planning
+    /// Enables proactive capacity management and load balancing decisions
+    /// before shard limits are reached.
+    pub fn has_shard_capacity(&self) -> bool {
+        (self.shard_count as usize) < MAX_SHARDS
+    }
+
+    /// **Factory Utilization Metrics**: Get shard utilization percentage.
+    ///
+    /// ## Analytics Support
+    /// Provides utilization metrics for monitoring and capacity planning.
+    /// Percentage format enables easy interpretation and alerting thresholds.
+    pub fn shard_utilization_percentage(&self) -> u8 {
+        if MAX_SHARDS == 0 {
+            return 100; // Edge case: prevent division by zero
+        }
+        ((self.shard_count as u32 * 100) / MAX_SHARDS as u32) as u8
     }
 
     /// **Operational Control**: Protocol pause/resume for maintenance and upgrades.
