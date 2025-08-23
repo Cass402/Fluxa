@@ -29,6 +29,7 @@ pub const MAX_DELAY: i64 = 30 * 24 * 3600; // 30d: Maximum timelock, preventing 
 /// They are chosen to ensure scalability, prevent resource exhaustion, and enable efficient bitwise status management.
 pub const MAX_FEE_TIERS: usize = 8; // Limits fee tier array size for zero-copy and deterministic account layouts.
 pub const MAX_POOLS_PER_SHARD: usize = 256; // Prevents a single shard from exhausting compute/memory.
+pub const MAX_SHARDS: usize = 64; // Maximum number of shards per factory for efficient management and storage.
 pub const DEFAULT_PROTOCOL_FEE: u32 = 100; // 1% default, balancing protocol revenue and user cost.
 pub const POOL_CREATION_FEE: u64 = 1_000_000; // Small fee to deter spam and cover storage costs.
 pub const DEFAULT_FEE_TIERS: [u32; MAX_FEE_TIERS] = [100, 500, 3000, 10000, 0, 0, 0, 0]; // Preallocated for zero-copy, unused slots are zeroed.
