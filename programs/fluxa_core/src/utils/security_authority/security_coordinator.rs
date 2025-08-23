@@ -427,7 +427,7 @@ impl SecurityCoordinator {
 
         // State validation prevents confirmation of non-existent proposals
         // Catches programming errors and prevents meaningless confirmation operations
-        if !core_authority.has_pending_authority {
+        if core_authority.has_pending_authority == 0 {
             return Err(PdaSecurityAuthorityError::NoAuthorityChangeRequested.into());
         }
 
