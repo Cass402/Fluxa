@@ -86,14 +86,14 @@ pub struct CoreAuthority {
     /// This boolean prevents overlapping authority changes which could create race conditions
     /// or confusion about which transition takes precedence. Only one governance transition
     /// can be active at any time, ensuring clean state management.
-    pub has_pending_authority: bool,
+    pub has_pending_authority: u8,
 
     /// Multi-signature approval status for the current governance proposal.
     ///
     /// This flag tracks whether the multisig threshold has been reached for the pending
     /// authority change. The separation between multisig approval and time-lock completion
     /// ensures both community consensus and temporal validation requirements are satisfied.
-    pub multisig_approved: bool,
+    pub multisig_approved: u8,
 
     /// Cryptographic commitment to the current governance proposal content.
     ///
@@ -114,7 +114,7 @@ pub struct CoreAuthority {
     /// This boolean enables immediate protocol pausing in response to critical security
     /// incidents. The separation between operational_status and this flag allows for
     /// emergency overrides that can bypass normal operational state transitions.
-    pub emergency_pause_active: bool,
+    pub emergency_pause_active: u8,
 
     /// Temporal anchor for emergency pause duration enforcement.
     ///
@@ -198,15 +198,15 @@ impl CoreAuthority {
 
         // Initialize governance transition state to secure defaults
         self.pending_authority = Pubkey::default();
-        self.has_pending_authority = false;
+        self.has_pending_authority = 0;
         self.authority_change_requested_at = 0;
         self.authority_change_delay = AUTHORITY_CHANGE_DELAY;
-        self.multisig_approved = false;
+        self.multisig_approved = 0;
         self.proposal_digest = [0u8; 32];
 
         // Set operational state to normal with no emergency conditions
         self.operational_status = OperationalStatus::Normal;
-        self.emergency_pause_active = false;
+        self.emergency_pause_active = 0;
         self.emergency_pause_initiated_at = 0;
         self.emergency_pause_timeout = 0;
 
@@ -252,12 +252,12 @@ impl CoreAuthority {
         timestamp: i64,
     ) -> Result<()> {
         // Prevent overlapping governance transitions
-        if self.has_pending_authority {
+        if self.has_pending_authority != 0 {
             return Err(PdaSecurityAuthorityError::AuthorityChangeInProgress.into());
         }
 
         // Atomically establish pending authority transition state
-        self.has_pending_authority = true;
+        self.has_pending_authority = 1;
         self.pending_authority = new_authority;
         self.authority_change_requested_at = timestamp;
         self.proposal_digest = proposal_digest;
@@ -298,7 +298,7 @@ impl CoreAuthority {
         timestamp: i64,
     ) -> Result<()> {
         // Immediately activate emergency pause for instant protection
-        self.emergency_pause_active = true;
+        self.emergency_pause_active = 1;
         self.emergency_pause_initiated_at = timestamp;
 
         // Calculate severity-appropriate timeout duration
@@ -340,7 +340,7 @@ impl CoreAuthority {
         }
 
         // Mark proposal as approved after integrity validation
-        self.multisig_approved = true;
+        self.multisig_approved = 1;
         Ok(())
     }
     /// Executes authority transition after validating all security requirements.
@@ -380,16 +380,16 @@ impl CoreAuthority {
 
         // Validate multisig consensus before proceeding
         require!(
-            self.multisig_approved,
+            self.multisig_approved != 0,
             PdaSecurityAuthorityError::InsufficientSignatures
         );
 
         // Execute atomic authority transition
         self.current_authority = self.pending_authority;
         self.pending_authority = Pubkey::default();
-        self.has_pending_authority = false;
+        self.has_pending_authority = 0;
         self.authority_change_requested_at = 0;
-        self.multisig_approved = false;
+        self.multisig_approved = 0;
         self.proposal_digest = [0u8; 32];
 
         // Signal successful execution to calling code
