@@ -274,8 +274,9 @@ pub fn initialize_shard(ctx: Context<InitializeShard>, shard_index: u16) -> Resu
 
     shard.initialize(ctx.accounts.factory.key(), shard_index, clock.slot)?;
 
-    // Update factory shard count
-    factory.add_shard(clock.slot)?;
+    // Update factory shard count and register shard
+    let shard_index = factory.add_shard(clock.slot)?;
+    factory.register_shard(ctx.accounts.shard.key(), clock.slot)?;
 
     msg!("Shard {} initialized for factory", shard_index);
     Ok(())
