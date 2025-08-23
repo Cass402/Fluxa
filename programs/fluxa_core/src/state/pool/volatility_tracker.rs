@@ -38,7 +38,7 @@ pub struct EwmaVolatilityTracker {
     /// - `enabled`: Whether the tracker is active. Why: Allows for protocol upgrades and emergency disables without redeploying.
     /// - `volatility_cap`: Maximum allowed volatility, in basis points. Why: Prevents runaway fees or risk logic due to oracle errors or attacks.
     /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
-    pub enabled: bool,
+    pub enabled: u8,
     pub _padding: u8,        // Padding for alignment
     pub volatility_cap: u32, // Maximum volatility in basis points
     pub reserved: [u8; 4],   // Align to 8-byte boundary
@@ -69,7 +69,7 @@ impl EwmaVolatilityTracker {
             last_update_slot: 0,
             min_update_interval,
             update_count: 0,
-            enabled: true,
+            enabled: 1,
             _padding: 0,           // Padding for alignment
             volatility_cap: 10000, // 100% volatility cap
             reserved: [0; 4],
@@ -92,7 +92,7 @@ impl EwmaVolatilityTracker {
     /// `PoolError::VolatilityUpdateTooFrequent` if the update is too frequent
     pub fn update_volatility(&mut self, current_price: Q64x64, current_slot: u64) -> Result<()> {
         // Ensure the tracker is enabled
-        if !self.enabled {
+        if self.enabled == 0 {
             return Ok(());
         }
 
