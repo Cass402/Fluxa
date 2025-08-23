@@ -186,7 +186,7 @@ pub fn cross_tick_with_enhanced_security(
     pool: &mut PoolCore,
     tick_data: &mut TickData,
     rate_limit: &mut TickRateLimit,
-    zero_for_one: bool,
+    zero_for_one: u8,
     current_slot: u64,
     swap_volume_0: Q64x64,
     swap_volume_1: Q64x64,
@@ -316,10 +316,10 @@ fn update_fee_growth(pool: &PoolCore, tick_data: &mut TickData) -> Result<()> {
 fn apply_liquidity_delta(
     pool: &mut PoolCore,
     tick_data: &TickData,
-    zero_for_one: bool,
+    zero_for_one: u8,
 ) -> Result<()> {
     // Direction determines whether to add or subtract liquidity. Negation is used for zero_for_one swaps.
-    let liquidity_delta = if zero_for_one {
+    let liquidity_delta = if zero_for_one != 0 {
         tick_data.liquidity_net.negate()? // Use proper Q64x64Signed negation
     } else {
         tick_data.liquidity_net
@@ -452,7 +452,7 @@ pub struct TickCross<'info> {
 /// - All logic is delegated to a single batched function, ensuring atomicity and reducing the risk of partial state updates.
 pub fn tick_cross_instruction(
     ctx: Context<TickCross>,
-    zero_for_one: bool,
+    zero_for_one: u8,
     volume_0: Q64x64,
     volume_1: Q64x64,
 ) -> Result<()> {
