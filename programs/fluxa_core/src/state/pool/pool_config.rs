@@ -21,6 +21,11 @@ pub struct PoolConfig {
     /// Why: Ensures this config is always bound to a specific pool, preventing misconfiguration or spoofing. Used for Anchor constraint validation.
     pub pool_core: Pubkey,
 
+    /// Reference to the associated Factory Shard account.
+    ///
+    /// Why: Ensures this config is always bound to a specific factory shard
+    pub factory_shard: Pubkey,
+
     /// Protocol fee configuration and accounting.
     ///
     /// - `protocol_fee_0`/`protocol_fee_1`: Fee in basis points for each token. Why: Allows for asymmetric fee structures, supporting advanced protocol monetization.
@@ -63,6 +68,7 @@ impl Default for PoolConfig {
     fn default() -> Self {
         Self {
             pool_core: Pubkey::default(),
+            factory_shard: Pubkey::default(),
             protocol_fee_0: DEFAULT_PROTOCOL_FEE,
             protocol_fee_1: DEFAULT_PROTOCOL_FEE,
             protocol_fees_token_0: Q64x64::zero(),
