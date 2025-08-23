@@ -540,7 +540,7 @@ pub fn finalize_enterprise_upgrade(ctx: Context<FinalizeEnterpriseUpgrade>) -> R
     // Pool security integration with enterprise infrastructure
     // Links operational security policies to the enterprise security coordinator
     let mut pool_security = ctx.accounts.pool_security.load_mut()?;
-    pool_security.enterprise_mode = true;
+    pool_security.enterprise_mode = 1;
     pool_security.security_coordinator = ctx.accounts.security_coordinator.key();
     pool_security.emergency_contacts = ctx.accounts.emergency_contacts.key();
 
