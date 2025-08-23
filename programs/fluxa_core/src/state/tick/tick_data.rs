@@ -48,7 +48,7 @@ pub struct TickData {
     pub initialization_nonce: u32,
 
     /// True if this tick has been initialized. Single byte for fast checks; padded for alignment.
-    pub initialized: bool,
+    pub initialized: u8,
     pub _padding_2: [u8; 7], // Maintains 8-byte alignment for zero-copy safety.
 
     /// Reserved for future protocol upgrades. Ensures backward compatibility and seamless migrations.
@@ -80,7 +80,7 @@ impl TickData {
         timestamp: i64,
     ) -> Result<()> {
         // Security: Prevent re-initialization and replay attacks
-        if self.initialized {
+        if self.initialized == 1 {
             return Err(TickError::TickAlreadyInitialized.into());
         }
 
@@ -106,7 +106,7 @@ impl TickData {
         self.status_flags = FLAG_ACTIVE;
         self.tick_spacing_validation = tick_spacing;
         self.initialization_nonce = initialization_nonce;
-        self.initialized = true;
+        self.initialized = 1;
 
         // Zero reserved space for deterministic hashes and future upgrades
         self.reserved = [0u64; 4];
@@ -137,8 +137,8 @@ impl TickData {
     /// # Why
     /// - Bitwise flag management allows for efficient, atomic state transitions and future extensibility.
     #[inline(always)]
-    pub fn set_emergency_pause(&mut self, paused: bool) {
-        if paused {
+    pub fn set_emergency_pause(&mut self, paused: u8) {
+        if paused != 0 {
             self.status_flags |= FLAG_EMERGENCY_PAUSE;
         } else {
             self.status_flags &= !FLAG_EMERGENCY_PAUSE;
@@ -210,7 +210,7 @@ impl TickData {
     /// - Combines checks to minimize sysvar hits and improve performance.
     #[inline(always)]
     fn validate_operational_state(&self) -> Result<()> {
-        if !self.initialized {
+        if self.initialized == 0 {
             return Err(TickError::TickNotInitialized.into());
         }
         if self.is_emergency_paused() {
@@ -392,7 +392,7 @@ pub struct LoadTick<'info> {
             &tick.load()?.initialization_nonce.to_le_bytes()
         ],
         bump,
-        constraint = tick.load()?.initialized @ TickError::TickNotInitialized,
+        constraint = tick.load()?.initialized == 1 @ TickError::TickNotInitialized,
     )]
     pub tick: AccountLoader<'info, TickData>,
 
@@ -436,7 +436,7 @@ pub fn load_tick(ctx: Context<LoadTick>) -> Result<()> {
     let tick = ctx.accounts.tick.load()?;
 
     // Protocol safety: enforce that tick is initialized before any operation
-    require!(tick.initialized, TickError::TickNotInitialized);
+    require!(tick.initialized == 1, TickError::TickNotInitialized);
 
     Ok(())
 }
