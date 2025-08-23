@@ -6,6 +6,7 @@
 //! - Hot/cold path logic is used to optimize for frequent tick access patterns, with linear search for ultra-hot ticks and binary search for cold ticks.
 //! - Bitwise packing and fixed-size arrays are used throughout to avoid heap allocation and maximize CU efficiency.
 //! - All cache rebuilds and promotions are performed in-place, with explicit statistics for auditability and protocol optimization.
+use crate::math::core_arithmetic::Q64x64;
 use crate::state::tick::tick_compression::storage::{CompressedTickStorage, TickStoragePage};
 use crate::state::tick::tick_data::TickData;
 use anchor_lang::prelude::*;
@@ -121,7 +122,7 @@ pub struct TickLookupCache {
     pub max_entries: u16,   // 2 bytes - cache capacity
     pub hot_threshold: u16, // 2 bytes - access count for "hot"
     pub version: u8,        // 1 byte - cache version
-    pub cache_valid: bool,  // 1 byte - is cache valid
+    pub cache_valid: u8,    // 1 byte - is cache valid
 
     pub _padding1: [u8; 8], // 88 bytes total so far
 
@@ -171,7 +172,7 @@ impl TickLookupCache {
         self.max_entries = 512; // Fixed capacity for zero-copy
         self.hot_threshold = 3; // Configurable hotness threshold
         self.version = 1;
-        self.cache_valid = false;
+        self.cache_valid = 0;
 
         self.hot_tick_count = 0;
         self.hot_ticks = [CachedTickAccess::default(); 16];
@@ -218,7 +219,7 @@ impl TickLookupCache {
             let mut entry = CachedTickAccess::new_inline(tick.tick_index, i);
 
             // Preserve hotness from previous cache
-            if self.cache_valid {
+            if self.cache_valid == 1 {
                 if let Some(old_entry) = self.find_entry_for_preservation(tick.tick_index) {
                     entry.access_count = old_entry.access_count;
                     entry.last_access_slot = old_entry.last_access_slot;
@@ -244,7 +245,7 @@ impl TickLookupCache {
                 let mut entry = CachedTickAccess::new_page(tick.tick_index, page_idx as u8, i);
 
                 // Preserve hotness
-                if self.cache_valid {
+                if self.cache_valid == 1 {
                     if let Some(old_entry) = self.find_entry_for_preservation(tick.tick_index) {
                         entry.access_count = old_entry.access_count;
                         entry.last_access_slot = old_entry.last_access_slot;
@@ -282,7 +283,7 @@ impl TickLookupCache {
         // Phase 5: Sort main cache by tick_index for binary search
         self.sort_entries_by_tick_index();
 
-        self.cache_valid = true;
+        self.cache_valid = 1;
         self.total_rebuilds += 1;
 
         Ok(())
@@ -356,7 +357,7 @@ impl TickLookupCache {
         tick_index: i32,
         current_slot: u64,
     ) -> Option<(bool, usize, u8)> {
-        if !self.cache_valid {
+        if self.cache_valid == 0 {
             self.cache_misses += 1;
             self.miss_streak += 1;
             self.hit_streak = 0;
@@ -493,7 +494,7 @@ impl TickLookupCache {
             let tick = &main_storage.inline_ticks[i];
             let mut entry = CachedTickAccess::new_inline(tick.tick_index, i);
 
-            if self.cache_valid {
+            if self.cache_valid == 1 {
                 if let Some(old_entry) = self.find_entry_for_preservation(tick.tick_index) {
                     entry.access_count = old_entry.access_count;
                     entry.last_access_slot = old_entry.last_access_slot;
@@ -517,7 +518,7 @@ impl TickLookupCache {
                 let tick = &page.ticks[i];
                 let mut entry = CachedTickAccess::new_page(tick.tick_index, page_idx as u8, i);
 
-                if self.cache_valid {
+                if self.cache_valid == 1 {
                     if let Some(old_entry) = self.find_entry_for_preservation(tick.tick_index) {
                         entry.access_count = old_entry.access_count;
                         entry.last_access_slot = old_entry.last_access_slot;
@@ -552,7 +553,7 @@ impl TickLookupCache {
         // Sort by tick_index for binary search
         self.heap_sort_by_tick_index();
 
-        self.cache_valid = true;
+        self.cache_valid = 1;
         self.total_rebuilds += 1;
 
         Ok(())
@@ -657,15 +658,19 @@ impl TickLookupCache {
     pub fn get_cache_stats(&self) -> UltraCacheStats {
         let total_requests = self.cache_hits + self.cache_misses;
         let hit_rate = if total_requests > 0 {
-            self.cache_hits as f32 / total_requests as f32
+            Q64x64::from_int(self.cache_hits as u64)
+                .checked_div(Q64x64::from_int(total_requests as u64))
+                .unwrap()
         } else {
-            0.0
+            Q64x64::zero()
         };
 
         let hot_hit_rate = if self.cache_hits > 0 {
-            self.hot_tick_hits as f32 / self.cache_hits as f32
+            Q64x64::from_int(self.hot_tick_hits as u64)
+                .checked_div(Q64x64::from_int(self.cache_hits as u64))
+                .unwrap()
         } else {
-            0.0
+            Q64x64::zero()
         };
 
         // Count truly hot ticks in main cache
@@ -708,7 +713,7 @@ impl TickLookupCache {
     /// - Ensures cache freshness and protocol safety by rebuilding every ~5 minutes or when invalid.
     #[inline(always)]
     pub fn needs_rebuild(&self, current_slot: u64) -> bool {
-        if !self.cache_valid {
+        if self.cache_valid == 0 {
             return true;
         }
 
@@ -727,8 +732,8 @@ pub struct UltraCacheStats {
     pub capacity: usize,
     pub entries: usize,
     pub hot_entries: usize,
-    pub hit_rate: f32,
-    pub hot_hit_rate: f32,
+    pub hit_rate: Q64x64,
+    pub hot_hit_rate: Q64x64,
     pub hot_ticks_in_main: usize,
     pub total_hits: u32,
     pub total_misses: u32,
@@ -737,7 +742,7 @@ pub struct UltraCacheStats {
     pub hit_streak: u16,
     pub miss_streak: u16,
     pub last_hit_tick: i32,
-    pub valid: bool,
+    pub valid: u8,
     pub cache_size_bytes: usize,
 }
 
