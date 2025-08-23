@@ -183,6 +183,10 @@ pub enum PoolError {
     /// Why: Ensures all ticks are created at valid, protocol-aligned indices.
     #[msg("Initial tick not aligned with spacing")]
     InitialTickSpacingMismatch,
+    /// Shard has reached its maximum pool capacity.
+    /// Why: Prevents overflows and ensures safe, predictable sharding.
+    #[msg("Shard is at maximum capacity")]
+    ShardAtCapacity,
     /// Pool is already in enterprise mode.
     /// Why: Prevents duplicate enterprise upgrades that could corrupt state.
     #[msg("Pool already in enterprise mode")]
@@ -211,6 +215,14 @@ pub enum PoolError {
     /// Why: Prevents unauthorized access to sensitive operations.
     #[msg("Unauthorized operation")]
     Unauthorized,
+    /// Pool context not provided for pool-specific operation.
+    /// Why: Ensures pool-specific operations have proper pool context.
+    #[msg("Pool not provided for pool operation")]
+    PoolNotProvided,
+    /// Operation requires enterprise pool but pool is not enterprise.
+    /// Why: Prevents unauthorized access to enterprise-only features.
+    #[msg("Operation requires enterprise pool")]
+    RequiresEnterprisePool,
 }
 
 /// Errors for tick-level operations, rate limiting, and anomaly detection.
