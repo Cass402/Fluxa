@@ -402,7 +402,7 @@ impl CompressedTickStorage {
             status_flags: tick_data.status_flags,
             tick_spacing_validation: tick_data.tick_spacing_validation,
             initialization_nonce: tick_data.initialization_nonce,
-            initialized: if tick_data.initialized { 1 } else { 0 },
+            initialized: tick_data.initialized,
             loss_pct,
             _padding: [0; 10],
         };
@@ -466,7 +466,7 @@ impl CompressedTickStorage {
             status_flags: ct.status_flags,
             tick_spacing_validation: ct.tick_spacing_validation,
             initialization_nonce: ct.initialization_nonce,
-            initialized: ct.initialized != 0,
+            initialized: ct.initialized,
             _padding_2: [0; 7],
             reserved: [0; 4], // Default values - not stored in compressed format
         })
@@ -499,8 +499,12 @@ impl CompressedTickStorage {
             max_page_capacity: MAX_STORAGE_PAGES,
             total_compressions: self.total_compressions,
             total_decompressions: self.total_decompressions,
-            avg_loss_pct: (self.avg_loss_pct as f32) / 100.0,
-            max_loss_pct: (self.max_loss_pct as f32) / 100.0,
+            avg_loss_pct: Q64x64::from_int(self.avg_loss_pct as u64)
+                .checked_div(Q64x64::from_int(100))
+                .unwrap(),
+            max_loss_pct: Q64x64::from_int(self.max_loss_pct as u64)
+                .checked_div(Q64x64::from_int(100))
+                .unwrap(),
             main_account_bytes: std::mem::size_of::<CompressedTickStorage>(),
             page_account_bytes: std::mem::size_of::<TickStoragePage>(),
         }
@@ -594,7 +598,7 @@ impl TickStoragePage {
             status_flags: tick_data.status_flags,
             tick_spacing_validation: tick_data.tick_spacing_validation,
             initialization_nonce: tick_data.initialization_nonce,
-            initialized: if tick_data.initialized { 1 } else { 0 },
+            initialized: tick_data.initialized,
             loss_pct,
             _padding: [0; 10],
         };
@@ -650,7 +654,7 @@ impl TickStoragePage {
             status_flags: ct.status_flags,
             tick_spacing_validation: ct.tick_spacing_validation,
             initialization_nonce: ct.initialization_nonce,
-            initialized: ct.initialized != 0,
+            initialized: ct.initialized,
             _padding_2: [0; 7],
             reserved: [0; 4], // Default values - not stored in compressed format
         })
@@ -765,8 +769,8 @@ pub struct StorageStats {
     pub max_page_capacity: usize,
     pub total_compressions: u64,
     pub total_decompressions: u64,
-    pub avg_loss_pct: f32,
-    pub max_loss_pct: f32,
+    pub avg_loss_pct: Q64x64,
+    pub max_loss_pct: Q64x64,
     pub main_account_bytes: usize,
     pub page_account_bytes: usize,
 }
