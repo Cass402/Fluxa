@@ -32,6 +32,7 @@ pub struct PoolConfig {
     /// - `protocol_fees_token_0`/`protocol_fees_token_1`: Accumulated protocol fees, in Q64.64. Why: Fixed-point ensures precision and prevents rounding errors in fee accounting.
     pub protocol_fee_0: u32,
     pub protocol_fee_1: u32,
+    pub _fee_padding: [u8; 8], // Alignment padding for Q64x64 fields
     pub protocol_fees_token_0: Q64x64,
     pub protocol_fees_token_1: Q64x64,
 
@@ -71,6 +72,7 @@ impl Default for PoolConfig {
             factory_shard: Pubkey::default(),
             protocol_fee_0: DEFAULT_PROTOCOL_FEE,
             protocol_fee_1: DEFAULT_PROTOCOL_FEE,
+            _fee_padding: [0; 8],
             protocol_fees_token_0: Q64x64::zero(),
             protocol_fees_token_1: Q64x64::zero(),
             volatility_tracker: EwmaVolatilityTracker::new(60),
