@@ -154,6 +154,12 @@ pub struct Factory {
     /// as the protocol scales.
     pub max_pools_per_shard: u16,
 
+    /// **Alignment Padding**: Ensures 8-byte boundary alignment for u64 fields.
+    ///
+    /// Explicit padding prevents compiler layout variations and ensures consistent
+    /// memory access patterns for zero-copy safety.
+    pub _pools_padding: [u8; 4],
+
     /// **Economic Barrier**: Pool creation fee in lamports for spam prevention.
     ///
     /// u64 accommodates future SOL price appreciation without overflow risk.
@@ -208,6 +214,12 @@ pub struct Factory {
     /// u32 supports extensive versioning schemes (major.minor.patch.build) while
     /// maintaining efficient storage and comparison operations.
     pub version: u32,
+
+    /// **Alignment Padding**: Ensures proper alignment for large arrays.
+    ///
+    /// Explicit padding prevents compiler layout variations and ensures consistent
+    /// memory access patterns for zero-copy safety with large array fields.
+    pub _version_padding: [u8; 4],
 
     /// **Shard Registry**: Fixed array of active shard keys for bidirectional linkage.
     ///
@@ -290,6 +302,7 @@ impl Factory {
         self.pool_count = 0; // Genesis state: no pools exist yet
         self.shard_count = 0; // Genesis state: sharding activated on-demand
         self.max_pools_per_shard = config.max_pools_per_shard;
+        self._pools_padding = [0u8; 4]; // Explicit zero-padding for alignment
         self.creation_fee = config.creation_fee;
         self.last_update_slot = current_slot; // Establish temporal baseline
         self.status_flags = STATUS_NORMAL; // Operational from initialization
@@ -302,6 +315,7 @@ impl Factory {
 
         // Version management: establish protocol generation
         self.version = 1;
+        self._version_padding = [0u8; 4]; // Explicit zero-padding for alignment
 
         // Shard registry: initialize empty shard array
         self.shard_keys = [Pubkey::default(); MAX_SHARDS];
