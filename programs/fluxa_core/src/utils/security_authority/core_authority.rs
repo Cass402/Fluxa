@@ -81,41 +81,6 @@ pub struct CoreAuthority {
     /// - Creates predictable governance timelines for stakeholder planning
     pub authority_change_delay: i64,
 
-    /// State flag indicating an active authority transition process.
-    ///
-    /// This boolean prevents overlapping authority changes which could create race conditions
-    /// or confusion about which transition takes precedence. Only one governance transition
-    /// can be active at any time, ensuring clean state management.
-    pub has_pending_authority: u8,
-
-    /// Multi-signature approval status for the current governance proposal.
-    ///
-    /// This flag tracks whether the multisig threshold has been reached for the pending
-    /// authority change. The separation between multisig approval and time-lock completion
-    /// ensures both community consensus and temporal validation requirements are satisfied.
-    pub multisig_approved: u8,
-
-    /// Cryptographic commitment to the current governance proposal content.
-    ///
-    /// This hash serves as a tamper-evident commitment mechanism, ensuring all multisig
-    /// signers are approving identical proposal content. It prevents proposal substitution
-    /// attacks where the proposal content changes after signatures are collected.
-    pub proposal_digest: [u8; 32],
-
-    /// Current protocol operational state with graduated response capabilities.
-    ///
-    /// This enumerated status enables fine-grained protocol control, allowing different
-    /// operational modes based on current conditions. The graduated approach enables
-    /// proportional responses to different threat levels without binary on/off controls.
-    pub operational_status: OperationalStatus,
-
-    /// Emergency pause activation flag for rapid incident response.
-    ///
-    /// This boolean enables immediate protocol pausing in response to critical security
-    /// incidents. The separation between operational_status and this flag allows for
-    /// emergency overrides that can bypass normal operational state transitions.
-    pub emergency_pause_active: u8,
-
     /// Temporal anchor for emergency pause duration enforcement.
     ///
     /// This timestamp enables automatic emergency pause expiration, ensuring protocol
@@ -144,6 +109,42 @@ pub struct CoreAuthority {
     /// patterns that might indicate compromise or abandonment.
     pub last_updated: i64,
 
+    /// State flag indicating an active authority transition process.
+    ///
+    /// This boolean prevents overlapping authority changes which could create race conditions
+    /// or confusion about which transition takes precedence. Only one governance transition
+    /// can be active at any time, ensuring clean state management.
+    pub has_pending_authority: u8,
+
+    /// Multi-signature approval status for the current governance proposal.
+    ///
+    /// This flag tracks whether the multisig threshold has been reached for the pending
+    /// authority change. The separation between multisig approval and time-lock completion
+    /// ensures both community consensus and temporal validation requirements are satisfied.
+    pub multisig_approved: u8,
+
+    /// Cryptographic commitment to the current governance proposal content.
+    ///
+    /// This hash serves as a tamper-evident commitment mechanism, ensuring all multisig
+    /// signers are approving identical proposal content. It prevents proposal substitution
+    /// attacks where the proposal content changes after signatures are collected.
+    pub proposal_digest: [u8; 32],
+
+    /// Current protocol operational state with graduated response capabilities.
+    ///
+    /// This enumerated status enables fine-grained protocol control, allowing different
+    /// operational modes based on current conditions. The graduated approach enables
+    /// proportional responses to different threat levels without binary on/off controls.
+    // Stored as raw u8 (OperationalStatus) for zero_copy Pod/Zeroable compliance.
+    pub operational_status: u8,
+
+    /// Emergency pause activation flag for rapid incident response.
+    ///
+    /// This boolean enables immediate protocol pausing in response to critical security
+    /// incidents. The separation between operational_status and this flag allows for
+    /// emergency overrides that can bypass normal operational state transitions.
+    pub emergency_pause_active: u8,
+
     /// Protocol version identifier for upgrade compatibility and feature gating.
     ///
     /// This version field enables safe protocol evolution by allowing different
@@ -157,8 +158,8 @@ pub struct CoreAuthority {
     /// - **Future Compatibility**: Enables adding new fields without breaking existing accounts
     /// - **Memory Alignment**: Ensures optimal memory layout for zero-copy access patterns
     /// - **Upgrade Safety**: Provides space for emergency protocol modifications
-    /// The 64-byte size aligns with common cache line boundaries for performance.
-    pub reserved: [u8; 64],
+    /// The 66-byte size aligns with common cache line boundaries for performance.
+    pub reserved: [u8; 66],
 }
 
 impl CoreAuthority {
@@ -205,7 +206,7 @@ impl CoreAuthority {
         self.proposal_digest = [0u8; 32];
 
         // Set operational state to normal with no emergency conditions
-        self.operational_status = OperationalStatus::Normal;
+        self.operational_status = OperationalStatus::Normal as u8;
         self.emergency_pause_active = 0;
         self.emergency_pause_initiated_at = 0;
         self.emergency_pause_timeout = 0;
@@ -311,7 +312,7 @@ impl CoreAuthority {
             };
 
         // Synchronize operational status for consistent protocol state
-        self.operational_status = OperationalStatus::EmergencyPause;
+        self.operational_status = OperationalStatus::EmergencyPause as u8;
 
         Ok(())
     }
@@ -433,6 +434,25 @@ pub enum OperationalStatus {
 
     /// Active protocol upgrade mode with transitional state management.
     Upgrading = 4,
+}
+
+impl CoreAuthority {
+    #[inline(always)]
+    pub fn operational_status_enum(&self) -> Option<OperationalStatus> {
+        match self.operational_status {
+            0 => Some(OperationalStatus::Normal),
+            1 => Some(OperationalStatus::Maintenance),
+            2 => Some(OperationalStatus::EmergencyPause),
+            3 => Some(OperationalStatus::Deprecated),
+            4 => Some(OperationalStatus::Upgrading),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_operational_status(&mut self, status: OperationalStatus) {
+        self.operational_status = status as u8;
+    }
 }
 
 /// Emergency severity classification for calibrated response protocols.
