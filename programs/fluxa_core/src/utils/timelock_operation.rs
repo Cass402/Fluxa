@@ -45,6 +45,7 @@ pub struct TimelockOperation {
     pub target_program: Pubkey,
     pub instruction_data_hash: [u8; 32],
     pub instruction_data: [u8; 1024], // Store actual instruction data
+    pub _padding1: [u8; 5],           // 3 bytes
     pub instruction_data_len: u16,
 
     /// Timing
@@ -61,7 +62,8 @@ pub struct TimelockOperation {
     /// These fields track who proposed and executed the operation, and its current status, for full auditability and accountability.
     pub proposer: Pubkey,
     pub executor: Pubkey,
-    pub status: TimelockStatus,
+    // Stored as raw u8 (TimelockStatus) for zero_copy Pod safety.
+    pub status: u8,
 
     /// Confirmation tracking
     ///
@@ -69,6 +71,7 @@ pub struct TimelockOperation {
     /// Bitmap and counters enable efficient, atomic multi-sig confirmation without Vec, supporting up to 64 signers with a single u64.
     pub confirmation_count: u8,
     pub required_confirmations: u8,
+    pub _padding2: [u8; 5],
     pub confirmations_bitmap: u64, // Support up to 64 confirmers
 
     /// Metadata
@@ -129,7 +132,7 @@ impl TimelockOperation {
         self.target_program = args.target_program;
         self.proposer = args.proposer;
         self.required_confirmations = args.required_confirmations;
-        self.status = TimelockStatus::Pending;
+        self.status = TimelockStatus::Pending as u8;
         self.executed_at = 0;
         self.executor = Pubkey::default();
 
@@ -162,7 +165,7 @@ impl TimelockOperation {
     /// - All state transitions are atomic and auditable.
     pub fn confirm(&mut self, confirmer_index: u8) -> Result<bool> {
         // Ensure the operation is pending
-        if self.status != TimelockStatus::Pending {
+        if self.status_enum() != Some(TimelockStatus::Pending) {
             return Err(PdaSecurityAuthorityError::TimelockNotReady.into());
         }
 
@@ -188,7 +191,7 @@ impl TimelockOperation {
 
         // Check if ready for execution
         if self.confirmation_count >= self.required_confirmations {
-            self.status = TimelockStatus::Approved;
+            self.set_status(TimelockStatus::Approved);
         }
 
         Ok(self.confirmation_count >= self.required_confirmations)
@@ -200,7 +203,8 @@ impl TimelockOperation {
     /// This method enforces the protocol's timelock guarantees, ensuring that no operation can be executed before the required delay and confirmations.
     pub fn is_ready_for_execution(&self) -> bool {
         let clock = Clock::get().unwrap();
-        self.status == TimelockStatus::Approved && clock.unix_timestamp >= self.execution_time
+        self.status_enum() == Some(TimelockStatus::Approved)
+            && clock.unix_timestamp >= self.execution_time
     }
 
     /// Check if the operation has expired
@@ -233,7 +237,7 @@ impl TimelockOperation {
         }
 
         // Mark as executed
-        self.status = TimelockStatus::Executed;
+        self.set_status(TimelockStatus::Executed);
         self.executor = executor;
 
         let clock = Clock::get()?;
@@ -249,12 +253,12 @@ impl TimelockOperation {
     /// This method allows for safe cancellation of pending operations, ensuring that only non-executed operations can be cancelled and all state transitions are auditable.
     pub fn cancel(&mut self) -> Result<()> {
         // Ensure the operation is not already executed
-        if self.status == TimelockStatus::Executed {
+        if self.status_enum() == Some(TimelockStatus::Executed) {
             return Err(PdaSecurityAuthorityError::TimelockNotReady.into());
         }
 
         // Mark as cancelled
-        self.status = TimelockStatus::Cancelled;
+        self.set_status(TimelockStatus::Cancelled);
 
         let clock = Clock::get()?;
         self.last_updated = clock.unix_timestamp;
@@ -283,6 +287,25 @@ pub enum TimelockStatus {
     Executed = 2,
     Cancelled = 3,
     Expired = 4,
+}
+
+impl TimelockOperation {
+    #[inline(always)]
+    pub fn status_enum(&self) -> Option<TimelockStatus> {
+        match self.status {
+            0 => Some(TimelockStatus::Pending),
+            1 => Some(TimelockStatus::Approved),
+            2 => Some(TimelockStatus::Executed),
+            3 => Some(TimelockStatus::Cancelled),
+            4 => Some(TimelockStatus::Expired),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_status(&mut self, status: TimelockStatus) {
+        self.status = status as u8;
+    }
 }
 
 /// Timelock operation types
