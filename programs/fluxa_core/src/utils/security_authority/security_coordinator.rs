@@ -5,6 +5,7 @@ use crate::utils::security_authority::emergency_contacts::{EmergencyContacts, Em
 use crate::utils::security_authority::multisig_config::MultisigConfig;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
+use bytemuck::{Pod, Zeroable};
 
 /// Central security orchestrator that coordinates multi-layered security mechanisms across the DeFi protocol.
 ///
@@ -67,22 +68,9 @@ pub struct SecurityCoordinator {
 /// Fields are ordered by access frequency and aligned for optimal CPU cache utilization.
 /// The total size is kept minimal to reduce network transfer costs when syncing state
 /// across multiple validator nodes.
-#[derive(Clone, Copy, Debug, AnchorSerialize, AnchorDeserialize, InitSpace)]
+#[derive(Clone, Copy, Debug, AnchorSerialize, AnchorDeserialize, InitSpace, Pod, Zeroable)]
 #[repr(C)]
 pub struct SecurityContext {
-    /// Protocol security schema version - enables coordinated security upgrades
-    /// across all protocol components without breaking compatibility
-    pub security_version: u16,
-
-    /// Current operational security state - determines which operations are permitted
-    /// and enables circuit-breaker patterns during adverse conditions
-    pub security_status: SecurityStatus,
-
-    /// Bitfield for granular security feature toggles - uses bitwise operations
-    /// to minimize storage while supporting up to 32 independent security flags
-    /// (e.g., maintenance windows, experimental features, circuit breakers)
-    pub security_flags: u32,
-
     /// Unix timestamp of most recent security-relevant event - enables time-based
     /// security policies and helps detect suspicious activity patterns
     pub last_security_event: i64,
@@ -90,6 +78,21 @@ pub struct SecurityContext {
     /// Monotonically increasing sequence number - prevents replay attacks and
     /// ensures strict ordering of security events across distributed systems
     pub event_sequence: u64,
+
+    /// Bitfield for granular security feature toggles - uses bitwise operations
+    /// to minimize storage while supporting up to 32 independent security flags
+    /// (e.g., maintenance windows, experimental features, circuit breakers)
+    pub security_flags: u32,
+
+    /// Protocol security schema version - enables coordinated security upgrades
+    /// across all protocol components without breaking compatibility
+    pub security_version: u16,
+
+    /// Current operational security state - determines which operations are permitted
+    /// and enables circuit-breaker patterns during adverse conditions
+    pub security_status: u8,
+
+    pub _padding: u8, // Padding for 8-byte alignment
 }
 
 /// Operational security states that determine protocol behavior and available operations.
@@ -213,10 +216,11 @@ impl SecurityCoordinator {
         // Event sequence starts at 0 to establish baseline for replay protection
         self.security_context = SecurityContext {
             security_version: 1,
-            security_status: SecurityStatus::Normal,
+            security_status: SecurityStatus::Normal as u8,
             security_flags: 0, // No special security modes active initially
             last_security_event: timestamp,
             event_sequence: 0, // Will increment with first logged event
+            _padding: 0,
         };
 
         // Establish immutable creation time and initial update timestamp
@@ -346,7 +350,7 @@ impl SecurityCoordinator {
 
         // Immediate state transition acts as critical section lock for authority operations
         // Prevents race conditions where multiple authority changes could be proposed simultaneously
-        self.security_context.security_status = SecurityStatus::AuthorityTransition;
+        self.security_context.security_status = SecurityStatus::AuthorityTransition as u8;
 
         let clock = Clock::get()?;
 
@@ -451,7 +455,7 @@ impl SecurityCoordinator {
 
         // Status update reflects intermediate confirmation state for external monitoring
         // Signals that multisig process is active but not yet complete
-        self.security_context.security_status = SecurityStatus::MultisigPending;
+        self.security_context.security_status = SecurityStatus::MultisigPending as u8;
 
         // Audit hash links specific confirmer to specific proposal for accountability
         // Enables forensic analysis of who confirmed what authority change
@@ -484,7 +488,7 @@ impl SecurityCoordinator {
 
             // Status return to Normal signals completion of authority transition
             // Other protocol components can resume normal operations
-            self.security_context.security_status = SecurityStatus::Normal;
+            self.security_context.security_status = SecurityStatus::Normal as u8;
 
             // Execution-specific audit entry provides completion confirmation
             // Distinguishes between partial confirmations and successful execution
@@ -546,7 +550,7 @@ impl SecurityCoordinator {
 
         // Immediate status transition halts protocol operations before any delays
         // Circuit breaker pattern: fail-safe rather than fail-open during suspected compromise
-        self.security_context.security_status = SecurityStatus::EmergencyPause;
+        self.security_context.security_status = SecurityStatus::EmergencyPause as u8;
 
         // Bitwise OR preserves existing flags while adding emergency pause flag
         // Multiple security conditions can be active simultaneously without interference
