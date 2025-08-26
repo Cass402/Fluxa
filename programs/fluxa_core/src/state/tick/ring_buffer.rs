@@ -1,5 +1,6 @@
 use crate::utils::constants::{MAX_TICK_CROSSES_PER_HOUR, SLOTS_PER_MINUTE};
 use anchor_lang::prelude::*;
+use bytemuck::{Pod, Zeroable};
 
 /// Protocol-optimized ring buffer for tracking per-minute event counts in a fixed window, using bit-packing for minimal memory footprint.
 ///
@@ -18,7 +19,7 @@ use anchor_lang::prelude::*;
 /// # Why not use a map or Vec?
 /// - Deterministic, minimal-size layout is required for zero-copy and Anchor account safety.
 /// - Bit-packing enables O(1) access and update, and is more gas/CU efficient than dynamic structures.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct RingBuffer {
     /// Bit-packed counters for each minute in the window.
@@ -28,11 +29,11 @@ pub struct RingBuffer {
     /// - Bit-packing allows atomic updates and O(1) access for both increment and clear operations.
     pub minute_counts: [u64; 4],
 
-    /// Index of the current minute (0-59 or 0-15).
+    /// Last slot at which the buffer was updated.
     ///
     /// # Why
-    /// - Used to determine which counter to increment and which to clear as time advances.
-    pub current_minute: u8,
+    /// - Used to detect time advancement and trigger window sliding logic.
+    pub last_update_slot: u64,
 
     /// Cached sum of all 4-bit counters (not including overflow).
     ///
@@ -40,11 +41,11 @@ pub struct RingBuffer {
     /// - Allows O(1) total count retrieval, avoiding repeated bit scans.
     pub total_count: u16,
 
-    /// Last slot at which the buffer was updated.
+    /// Index of the current minute (0-59 or 0-15).
     ///
     /// # Why
-    /// - Used to detect time advancement and trigger window sliding logic.
-    pub last_update_slot: u64,
+    /// - Used to determine which counter to increment and which to clear as time advances.
+    pub current_minute: u8,
 
     /// Overflow counter for when a 4-bit minute counter exceeds 15.
     ///
@@ -59,7 +60,7 @@ pub struct RingBuffer {
     pub window_size: u8,
 
     /// Explicit padding for 8-byte alignment and future extensibility.
-    pub _padding: [u8; 6],
+    pub _padding: [u8; 3],
 }
 
 /// Provides a default, zeroed ring buffer with a 60-minute window.
@@ -86,7 +87,7 @@ impl RingBuffer {
             last_update_slot: 0,
             overflow_count: 0,
             window_size: 60,
-            _padding: [0; 6],
+            _padding: [0; 3],
         }
     }
 
