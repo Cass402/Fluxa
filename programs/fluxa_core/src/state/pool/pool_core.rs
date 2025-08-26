@@ -90,6 +90,8 @@ pub struct PoolCore {
     pub tick_spacing: u16,
     pub fee: u16,
 
+    pub _padding1: [u8; 8], // Padding to align next Q64.64 fields to 16-byte boundary
+
     /// Global fee accumulation tracking for precise liquidity provider compensation.
     ///
     /// These accumulators implement a gas-efficient mechanism for tracking fees earned
@@ -142,7 +144,7 @@ pub struct PoolCore {
     pub bump_core: u8,
     pub bump_vault_0: u8,
     pub bump_vault_1: u8,
-    pub _padding: [u8; 1],
+    pub _padding2: [u8; 1],
 
     /// Future-proofing space preventing costly account migrations during protocol evolution.
     ///
@@ -175,6 +177,7 @@ impl Default for PoolCore {
             tick_current: 0,
             tick_spacing: 0,
             fee: 0,
+            _padding1: [0; 8],
             fee_growth_global_0: Q64x64::zero(),
             fee_growth_global_1: Q64x64::zero(),
             last_update_slot: 0,
@@ -183,7 +186,7 @@ impl Default for PoolCore {
             bump_core: 0,
             bump_vault_0: 0,
             bump_vault_1: 0,
-            _padding: [0; 1],
+            _padding2: [0; 1],
             reserved: [0; 8],
         }
     }
