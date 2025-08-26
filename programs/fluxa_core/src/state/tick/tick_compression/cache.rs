@@ -12,10 +12,10 @@ use crate::state::tick::tick_data::TickData;
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-/// Ultra-compact tick access info for cache (16 bytes).
+/// Ultra-compact tick access info for cache (12 bytes).
 ///
 /// # Why this struct?
-/// - Packs all tick access metadata into 16 bytes for cache line efficiency and zero-copy compatibility.
+/// - Packs all tick access metadata into 12 bytes for cache line efficiency and zero-copy compatibility.
 /// - Bitwise packing enables fast location decoding and supports both inline and page-based tick storage.
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -25,7 +25,6 @@ pub struct CachedTickAccess {
     pub location_packed: u32,  // 4 bytes - packed location info
     pub access_count: u16,     // 2 bytes
     pub last_access_slot: u16, // 2 bytes - relative to cache epoch
-    pub _padding: [u8; 4],     // 4 bytes - pad to 16 bytes for alignment
 }
 
 impl CachedTickAccess {
@@ -40,7 +39,6 @@ impl CachedTickAccess {
             location_packed,
             access_count: 0,
             last_access_slot: 0,
-            _padding: [0; 4],
         }
     }
 
@@ -51,7 +49,6 @@ impl CachedTickAccess {
             location_packed,
             access_count: 0,
             last_access_slot: 0,
-            _padding: [0; 4],
         }
     }
 
@@ -124,14 +121,12 @@ pub struct TickLookupCache {
     pub version: u8,        // 1 byte - cache version
     pub cache_valid: u8,    // 1 byte - is cache valid
 
-    pub _padding1: [u8; 8], // 88 bytes total so far
-
     // Hot tick fast-access section (linear search for ultra-hot ticks)
     //
     // # Why linear search?
     // - For N=16, linear search is faster than binary search and minimizes CU for ultra-hot ticks.
     pub hot_tick_count: u8,                // 1 byte
-    pub _hot_padding: [u8; 7],             // 8 bytes
+    pub _padding1: [u8; 3],                // 3 bytes
     pub hot_ticks: [CachedTickAccess; 16], // 256 bytes - 16 hottest ticks
 
     // Main cache entries (binary search, sorted by tick_index)
@@ -147,9 +142,9 @@ pub struct TickLookupCache {
     pub last_hit_tick: i32, // 4 bytes - for debugging
     pub hit_streak: u16,    // 2 bytes - consecutive hits
     pub miss_streak: u16,   // 2 bytes - consecutive misses
-    pub _stats_padding: [u8; 8], // 16 bytes
+    pub _padding2: [u8; 4], // 4 bytes
 
-                            // Total: 88 + 8 + 256 + 8192 + 16 = 8560 bytes (under 10KB)
+                            // Total: 6440 bytes
 }
 
 impl TickLookupCache {
@@ -181,6 +176,10 @@ impl TickLookupCache {
         self.last_hit_tick = 0;
         self.hit_streak = 0;
         self.miss_streak = 0;
+
+        // Zero the padding
+        self._padding1 = [0; 3];
+        self._padding2 = [0; 4];
 
         Ok(())
     }
