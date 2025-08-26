@@ -1,5 +1,6 @@
 use crate::error::PdaSecurityAuthorityError;
 use anchor_lang::prelude::*;
+use bytemuck::{Pod, Zeroable};
 
 /// Emergency response coordination registry for critical incident management.
 ///
@@ -44,23 +45,6 @@ pub struct EmergencyContacts {
     /// ensures emergency responders cannot be redirected to affect unintended pools.
     pub pool_core: Pubkey,
 
-    /// Active emergency contact registry with bounded growth protection.
-    ///
-    /// The count field enables iteration over only active contacts within the fixed
-    /// array, providing O(n) performance where n is the actual contact count rather
-    /// than the maximum capacity. This pattern prevents iterating over empty slots
-    /// during time-critical emergency validation operations.
-    pub contact_count: u8,
-
-    /// Emergency responder registry with deterministic access patterns.
-    ///
-    /// Fixed-size array design provides several critical benefits for emergency systems:
-    /// - **Predictable Gas Costs**: Emergency validation operations have known compute requirements
-    /// - **Memory Layout Stability**: Zero-copy access patterns remain consistent across updates
-    /// - **Attack Surface Limitation**: Bounded contact list prevents resource exhaustion attacks
-    /// - **Cache Efficiency**: Contiguous memory layout optimizes processor cache utilization
-    pub contacts: [EmergencyContact; 5],
-
     /// Designated pause authority for unilateral protocol suspension.
     ///
     /// This special authority can immediately pause protocol operations without requiring
@@ -70,13 +54,14 @@ pub struct EmergencyContacts {
     /// authority escalation where general responders gain pause capabilities.
     pub pause_authority: Pubkey,
 
-    /// Current emergency response severity level for protocol state management.
+    /// Emergency responder registry with deterministic access patterns.
     ///
-    /// This field enables emergency protocols to adjust response parameters based
-    /// on current threat assessment. Higher levels might enable more aggressive
-    /// defensive measures or extended pause durations, while lower levels allow
-    /// more measured responses to minor incidents.
-    pub emergency_response_level: u8,
+    /// Fixed-size array design provides several critical benefits for emergency systems:
+    /// - **Predictable Gas Costs**: Emergency validation operations have known compute requirements
+    /// - **Memory Layout Stability**: Zero-copy access patterns remain consistent across updates
+    /// - **Attack Surface Limitation**: Bounded contact list prevents resource exhaustion attacks
+    /// - **Cache Efficiency**: Contiguous memory layout optimizes processor cache utilization
+    pub contacts: [EmergencyContact; 5],
 
     /// Registry lifecycle timestamp for compliance and forensic analysis.
     ///
@@ -92,14 +77,30 @@ pub struct EmergencyContacts {
     /// compromised or abandoned emergency response capabilities.
     pub last_updated: i64,
 
+    /// Active emergency contact registry with bounded growth protection.
+    ///
+    /// The count field enables iteration over only active contacts within the fixed
+    /// array, providing O(n) performance where n is the actual contact count rather
+    /// than the maximum capacity. This pattern prevents iterating over empty slots
+    /// during time-critical emergency validation operations.
+    pub contact_count: u8,
+
+    /// Current emergency response severity level for protocol state management.
+    ///
+    /// This field enables emergency protocols to adjust response parameters based
+    /// on current threat assessment. Higher levels might enable more aggressive
+    /// defensive measures or extended pause durations, while lower levels allow
+    /// more measured responses to minor incidents.
+    pub emergency_response_level: u8,
+
     /// Reserved capacity for protocol evolution and memory alignment optimization.
     ///
     /// This padding serves multiple purposes:
     /// - **Protocol Upgrades**: Space for adding emergency response features without account migration
     /// - **Memory Alignment**: Ensures optimal cache line utilization for zero-copy operations  
     /// - **Emergency Extensions**: Room for crisis-driven protocol modifications
-    /// The 32-byte size provides substantial flexibility for future emergency system enhancements.
-    pub reserved: [u8; 32],
+    /// The 38-byte size provides substantial flexibility for future emergency system enhancements.
+    pub reserved: [u8; 38],
 }
 
 impl EmergencyContacts {
@@ -200,10 +201,11 @@ impl EmergencyContacts {
         // Create complete contact record with full metadata
         let emergency_contact = EmergencyContact {
             pubkey: contact,
-            role,
+            role: role as u8,
             added_at: timestamp,
             last_active: 0,
             permissions,
+            _padding: [0; 3],
         };
 
         // Atomically register contact with registry state updates
@@ -308,8 +310,9 @@ impl EmergencyContacts {
 /// The role field enables emergency response organization and coordination by establishing
 /// clear responsibilities and escalation paths during incident management while maintaining
 /// compatibility with permission-based access control for specific emergency operations.
-#[account(zero_copy(unsafe))]
-#[derive(InitSpace)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize, Pod, Zeroable, InitSpace,
+)]
 #[repr(C)]
 pub struct EmergencyContact {
     /// Emergency responder public key for cryptographic authorization.
@@ -325,7 +328,9 @@ pub struct EmergencyContact {
     pub permissions: u32,
 
     /// Organizational role for emergency response coordination and escalation.
-    pub role: EmergencyRole,
+    pub role: u8,
+
+    pub _padding: [u8; 3],
 }
 
 /// Default EmergencyContact implementation with secure zero-state initialization.
@@ -352,10 +357,11 @@ impl Default for EmergencyContact {
     fn default() -> Self {
         Self {
             pubkey: Pubkey::default(),
-            role: EmergencyRole::Responder,
+            role: EmergencyRole::Responder as u8,
             added_at: 0,
             last_active: 0,
             permissions: 0,
+            _padding: [0; 3],
         }
     }
 }
@@ -381,7 +387,7 @@ impl Default for EmergencyContact {
 /// reflects real-world emergency response team structures where different expertise types
 /// are needed for comprehensive incident management, but all roles maintain equivalent
 /// emergency authority rather than hierarchical privilege escalation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize, InitSpace)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum EmergencyRole {
     /// General emergency responder with standard incident response capabilities.
