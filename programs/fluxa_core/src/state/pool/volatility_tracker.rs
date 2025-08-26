@@ -2,6 +2,7 @@ use crate::error::PoolError;
 use crate::math::core_arithmetic::{mul_div_q64, sqrt_x64, Q64x64};
 use crate::utils::constants::STANDARD_LAMBDA;
 use anchor_lang::prelude::*;
+use bytemuck::{Pod, Zeroable};
 
 /// Exponentially-weighted moving average (EWMA) volatility tracker for on-chain risk management.
 ///
@@ -12,7 +13,7 @@ use anchor_lang::prelude::*;
 ///
 /// ## Usage
 /// This struct is used for dynamic fee adjustment, risk controls, and monitoring, referenced by pool config and security logic.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Pod, Zeroable, InitSpace)]
 #[repr(C)]
 pub struct EwmaVolatilityTracker {
     /// EWMA parameters and state.
@@ -22,6 +23,7 @@ pub struct EwmaVolatilityTracker {
     /// - `previous_price`: Last observed price, in Q64.64. Why: Needed for log-return calculation; Q64.64 ensures precision and overflow safety.
     pub lambda: u32, // Decay factor in fixed point (e.g., 0.94 * 2^16)
     pub current_volatility: u32, // Current volatility estimate (basis points)
+    pub _volatility_padding: [u8; 8], // Alignment padding for u128 field
     pub previous_price: Q64x64,  // Previous price for return calculation
 
     /// Rate limiting and update tracking.
@@ -39,9 +41,10 @@ pub struct EwmaVolatilityTracker {
     /// - `volatility_cap`: Maximum allowed volatility, in basis points. Why: Prevents runaway fees or risk logic due to oracle errors or attacks.
     /// - `_padding`: Ensures 8-byte alignment for Anchor zero-copy safety and future extensibility.
     pub enabled: u8,
-    pub _padding: u8,        // Padding for alignment
-    pub volatility_cap: u32, // Maximum volatility in basis points
-    pub reserved: [u8; 4],   // Align to 8-byte boundary
+    pub _padding: u8,          // Padding for alignment
+    pub volatility_cap: u32,   // Maximum volatility in basis points
+    pub reserved: [u8; 4],     // Align to 8-byte boundary
+    pub _end_padding: [u8; 8], // Final alignment padding for struct
 }
 
 /// EWMA Volatility Tracker implementation.
@@ -65,6 +68,7 @@ impl EwmaVolatilityTracker {
         Self {
             lambda: STANDARD_LAMBDA,
             current_volatility: 0,
+            _volatility_padding: [0; 8],
             previous_price: Q64x64::zero(),
             last_update_slot: 0,
             min_update_interval,
@@ -73,6 +77,7 @@ impl EwmaVolatilityTracker {
             _padding: 0,           // Padding for alignment
             volatility_cap: 10000, // 100% volatility cap
             reserved: [0; 4],
+            _end_padding: [0; 8],
         }
     }
 
