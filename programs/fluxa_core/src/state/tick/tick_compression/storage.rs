@@ -68,7 +68,7 @@ impl PackedFees {
     }
 }
 
-/// High-precision, compressed tick representation (56 bytes) with full Q64.64 precision.
+/// High-precision, compressed tick representation (64 bytes) with full Q64.64 precision.
 ///
 /// # Why this struct?
 /// - Encodes all relevant tick data in a compact, zero-copy format for efficient on-chain storage and migration.
@@ -89,7 +89,27 @@ pub struct CompressedTick {
     pub initialization_nonce: u32,        // 4 bytes - matches TickData
     pub initialized: u8,                  // 1 byte - converted from bool
     pub loss_pct: u8,                     // 1 byte - compression loss tracking
-    pub _padding: [u8; 10],               // Pad to 56 bytes total
+    pub _padding: [u8; 10],               // Pad to 64 bytes total
+}
+
+impl Default for CompressedTick {
+    fn default() -> Self {
+        Self {
+            liquidity_net: Q64x64Signed::zero(),
+            fee_pair: PackedFees { packed_data: 0 },
+            tick_index: 0,
+            slot_delta: 0,
+            cross_count: 0,
+            last_update_timestamp_delta: 0,
+            suspicious_activity_score: 0,
+            status_flags: 0,
+            tick_spacing_validation: 0,
+            initialization_nonce: 0,
+            initialized: 0,
+            loss_pct: 0,
+            _padding: [0; 10],
+        }
+    }
 }
 
 /// Main storage account for compressed ticks, containing metadata and inline ticks for small pools.
@@ -122,9 +142,9 @@ pub struct CompressedTickStorage {
     //
     // # Why these fields?
     // - Tick spacing and fee tier are core pool parameters, validated for bitmap compatibility and protocol safety.
+    pub fee_tier: u32,     // 4 bytes
     pub tick_spacing: u16, // 2 bytes
     pub version: u8,       // 1 byte
-    pub fee_tier: u32,     // 4 bytes
 
     // Tick counting and page management
     //
@@ -135,7 +155,7 @@ pub struct CompressedTickStorage {
     pub active_page_count: u8, // 1 byte - number of page accounts in use
     pub next_page_index: u8,   // 1 byte - next page to allocate
 
-    pub _padding1: [u8; 4], // Pad to boundary: 132 bytes so far
+    pub _padding1: [u8; 2], // Pad to boundary: 132 bytes so far
 
     // Main bitmap for fast tick existence checks
     //
@@ -148,6 +168,8 @@ pub struct CompressedTickStorage {
     // # Why these fields?
     // - Enables overflow tick storage for large pools, scaling beyond inline capacity.
     pub page_accounts: [Pubkey; MAX_STORAGE_PAGES], // 640 bytes (20 * 32)
+
+    pub _padding2: [u8; 8],
 
     // Inline tick storage for small pools (avoids need for pages)
     //
@@ -163,9 +185,9 @@ pub struct CompressedTickStorage {
     pub total_decompressions: u64, // 8 bytes
     pub avg_loss_pct: u16,         // 2 bytes
     pub max_loss_pct: u8,          // 1 byte
-    pub _padding2: [u8; 5],        // 24 bytes
+    pub _padding3: [u8; 13],       // 13 bytes
 
-                                   // Total: 132 + 512 + 640 + 3200 + 24 = 4508 bytes
+                                   // Total: 4528 bytes
 }
 
 /// Page account for overflow tick storage.
@@ -180,12 +202,12 @@ pub struct TickStoragePage {
     // # Why these fields?
     // - Parent storage and page index enable deterministic page management and migration.
     pub parent_storage: Pubkey, // 32 bytes - main storage account
-    pub page_index: u8,         // 1 byte - which page this is (0-19)
-    pub tick_count: u8,         // 1 byte - active ticks in this page
     pub created_slot: u64,      // 8 bytes - when page was created
     pub last_update_slot: u64,  // 8 bytes - last modification
+    pub page_index: u8,         // 1 byte - which page this is (0-19)
+    pub tick_count: u8,         // 1 byte - active ticks in this page
 
-    pub _padding: [u8; 6], // 56 bytes total header
+    pub _padding1: [u8; 6], // 56 bytes total header
 
     // Page-local bitmap for this tick range
     //
@@ -193,21 +215,21 @@ pub struct TickStoragePage {
     // - Enables O(1) tick existence checks within the page, minimizing lookup cost.
     pub page_bitmap: [u64; PAGE_BITMAP_WORDS], // 64 bytes (512 tick coverage per page)
 
-    // Tick storage array
-    //
-    // # Why array?
-    // - Fixed-size array enables zero-copy, deterministic layout and efficient migration.
-    pub ticks: [CompressedTick; TICKS_PER_PAGE], // 9600 bytes (150 * 64)
-
     // Page statistics
     //
     // # Why these fields?
     // - Tracks compression loss and usage for protocol audit and optimization.
     pub compression_count: u32, // 4 bytes
     pub avg_loss_pct: u16,      // 2 bytes
-    pub _stats_padding: [u8; 2], // 8 bytes
+    pub _padding2: [u8; 2],     // 8 bytes
 
-                                // Total: 56 + 64 + 9600 + 8 = 9728 bytes (under 10KB limit)
+    // Tick storage array
+    //
+    // # Why array?
+    // - Fixed-size array enables zero-copy, deterministic layout and efficient migration.
+    pub ticks: [CompressedTick; TICKS_PER_PAGE], // 9600 bytes (150 * 64)
+
+                                                 // Total: 10,176 bytes
 }
 
 impl CompressedTickStorage {
@@ -265,6 +287,11 @@ impl CompressedTickStorage {
         self.total_decompressions = 0;
         self.avg_loss_pct = 0;
         self.max_loss_pct = 0;
+
+        // Zero the padding
+        self._padding1 = [0; 2];
+        self._padding2 = [0; 8];
+        self._padding3 = [0; 13];
 
         Ok(())
     }
@@ -454,7 +481,7 @@ impl CompressedTickStorage {
 
         Ok(TickData {
             tick_index: ct.tick_index,
-            _padding_1: [0; 4],
+            _padding_1: [0; 3],
             liquidity_net: ct.liquidity_net,
             fee_growth_outside_0: fee0,
             fee_growth_outside_1: fee1,
@@ -467,7 +494,6 @@ impl CompressedTickStorage {
             tick_spacing_validation: ct.tick_spacing_validation,
             initialization_nonce: ct.initialization_nonce,
             initialized: ct.initialized,
-            _padding_2: [0; 7],
             reserved: [0; 4], // Default values - not stored in compressed format
         })
     }
@@ -543,6 +569,10 @@ impl TickStoragePage {
 
         self.compression_count = 0;
         self.avg_loss_pct = 0;
+
+        // Zero the padding
+        self._padding1 = [0; 6];
+        self._padding2 = [0; 2];
 
         Ok(())
     }
@@ -642,7 +672,7 @@ impl TickStoragePage {
 
         Ok(TickData {
             tick_index: ct.tick_index,
-            _padding_1: [0; 4],
+            _padding_1: [0; 3],
             liquidity_net: ct.liquidity_net,
             fee_growth_outside_0: fee0,
             fee_growth_outside_1: fee1,
@@ -655,7 +685,6 @@ impl TickStoragePage {
             tick_spacing_validation: ct.tick_spacing_validation,
             initialization_nonce: ct.initialization_nonce,
             initialized: ct.initialized,
-            _padding_2: [0; 7],
             reserved: [0; 4], // Default values - not stored in compressed format
         })
     }
@@ -734,26 +763,6 @@ fn unpack_fee_pair_q64(packed: u64) -> (Q64x64, Q64x64) {
     let f1_raw = (f1_24bit as u128) << shift_amount;
 
     (Q64x64::from_raw(f0_raw), Q64x64::from_raw(f1_raw))
-}
-
-impl Default for CompressedTick {
-    fn default() -> Self {
-        Self {
-            liquidity_net: Q64x64Signed::zero(),
-            fee_pair: PackedFees { packed_data: 0 },
-            tick_index: 0,
-            slot_delta: 0,
-            cross_count: 0,
-            last_update_timestamp_delta: 0,
-            suspicious_activity_score: 0,
-            status_flags: 0,
-            tick_spacing_validation: 0,
-            initialization_nonce: 0,
-            initialized: 0,
-            loss_pct: 0,
-            _padding: [0; 10],
-        }
-    }
 }
 
 /// Storage statistics for tick storage accounts.
