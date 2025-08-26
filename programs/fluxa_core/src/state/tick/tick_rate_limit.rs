@@ -19,7 +19,7 @@ use anchor_lang::prelude::*;
 ///
 /// ## Usage
 /// This account is tightly coupled to a specific pool and is seeded for Anchor constraint validation, ensuring only the correct pool can mutate its state.
-#[account(zero_copy(unsafe))]
+#[account(zero_copy)]
 #[repr(C)]
 pub struct TickRateLimit {
     /// Reference to the pool this rate limit is bound to.
@@ -32,22 +32,10 @@ pub struct TickRateLimit {
     /// Why: RingBuffer enables O(1) insertions and bounded memory, avoiding the unpredictability and cost of Vec on-chain.
     pub tick_cross_window: RingBuffer,
 
-    /// 24-hour total tick crosses, for long-term anomaly/trend detection.
-    ///
-    /// Why: Allows for historical analysis and capacity planning, not just short-term DoS protection.
-    pub total_crosses_24h: u64,
-    pub last_reset_slot: u64,
-    pub peak_crosses_per_hour: u32,
-    pub anomaly_score: u32,
-
     /// Exponential moving average (EMA) of tick crosses per minute, using Q64.64 fixed-point.
     ///
     /// Why: EMA smooths out short-term volatility, providing a robust signal for trend and anomaly detection. Q64.64 ensures high precision for on-chain math.
     pub crosses_ema: Q64x64, // EMA of crosses per minute
-    /// Decay factor for EMA, in Q16.16 fixed-point (not integer!).
-    ///
-    /// Why: Allows fine-tuning of EMA responsiveness. Stored as Q16.16 for compactness, but must be shifted for Q64.64 math. Do not use from_int!
-    pub ema_decay_factor: u16, // EMA lambda parameter (Q16.16 fixed-point)
 
     /// EMAs for token volumes and price volatility, for MEV/threat detection.
     ///
@@ -57,8 +45,26 @@ pub struct TickRateLimit {
     pub price_volatility_ema: Q64x64, // EMA of price volatility
     pub last_price_update: u64,       // Last price observation timestamp (for time-based decay)
 
+    /// 24-hour total tick crosses, for long-term anomaly/trend detection.
+    ///
+    /// Why: Allows for historical analysis and capacity planning, not just short-term DoS protection.
+    pub total_crosses_24h: u64,
+    pub last_reset_slot: u64,
+    pub peak_crosses_per_hour: u32,
+    pub anomaly_score: u32,
+
+    /// Decay factor for EMA, in Q16.16 fixed-point (not integer!).
+    ///
+    /// Why: Allows fine-tuning of EMA responsiveness. Stored as Q16.16 for compactness, but must be shifted for Q64.64 math. Do not use from_int!
+    pub ema_decay_factor: u16, // EMA lambda parameter (Q16.16 fixed-point)
+
+    // Expanded to 14 bytes so overall struct size (including `reserved`) is a 16-byte multiple.
+    // Size math: fields up to ema_decay_factor = 178 bytes. Padding 14 -> 192. `reserved` (64) -> 256 total.
+    // Prevents compiler from inserting 8 bytes of hidden tail padding (which caused zero_copy size mismatch).
+    pub _padding: [u8; 6],
+
     /// Reserved for future upgrades (e.g., new detection metrics) without breaking account layout.
-    pub reserved: [u64; 8],
+    pub reserved: [u64; 9],
 }
 
 impl TickRateLimit {
@@ -78,7 +84,8 @@ impl TickRateLimit {
         self.volume_ema_1 = Q64x64::zero();
         self.price_volatility_ema = Q64x64::zero();
         self.last_price_update = current_slot;
-        self.reserved = [0; 8];
+        self._padding = [0; 6];
+        self.reserved = [0; 9];
 
         Ok(())
     }
