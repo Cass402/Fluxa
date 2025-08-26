@@ -22,12 +22,16 @@ pub struct Position {
     pub tick_lower: i32, // 4 bytes
     /// Upper bound of the tick range.
     pub tick_upper: i32, // 4 bytes
-    /// Amount of liquidity provided. Uses Q64x64 for high-precision math, matching protocol arithmetic.
-    pub liquidity: Q64x64, // 16 bytes
+
+    /// Bitfield for status flags. Enables efficient multi-state tracking (active, closed, paused, etc.) and atomic updates.
+    pub status_flags: u32, // 4 bytes
     /// Nonce to prevent replay and ensure uniqueness of PDAs. u16 is sufficient for practical use and saves space over u64.
     pub position_nonce: u16, // 2 bytes
-    /// Padding to maintain 8-byte alignment. Required for safe zero-copy.
-    pub _padding1: [u8; 6], // 6 bytes
+
+    pub _padding1: [u8; 2],
+
+    /// Amount of liquidity provided. Uses Q64x64 for high-precision math, matching protocol arithmetic.
+    pub liquidity: Q64x64, // 16 bytes
 
     /// Tracks fee growth inside the position's tick range at last update for both tokens. This enables precise fee accounting and minimizes on-chain computation.
     pub fee_growth_inside_0_last: Q64x64, // 16 bytes
@@ -43,8 +47,6 @@ pub struct Position {
     pub creation_slot: u64, // 8 bytes
     pub last_update_slot: u64,   // 8 bytes
     pub creation_timestamp: i64, // 8 bytes
-    /// Bitfield for status flags. Enables efficient multi-state tracking (active, closed, paused, etc.) and atomic updates.
-    pub status_flags: u32, // 4 bytes
 
     /// Cached hash of core position fields. Used for fast, on-chain integrity verification and to detect unauthorized mutations.
     pub position_hash: [u8; 32], // 32 bytes
@@ -92,7 +94,7 @@ impl Position {
         self.tick_upper = args.tick_upper;
         self.liquidity = args.liquidity;
         self.position_nonce = args.position_nonce;
-        self._padding1 = [0u8; 6]; // Defensive: always zero padding for deterministic hashes
+        self._padding1 = [0u8; 2]; // Defensive: always zero padding for deterministic hashes
 
         // Fee fields are always zero at creation to prevent fee leakage or double counting.
         self.fee_growth_inside_0_last = Q64x64::zero();
