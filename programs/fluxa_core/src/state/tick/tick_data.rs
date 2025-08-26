@@ -18,10 +18,6 @@ use anchor_lang::prelude::*;
 #[account(zero_copy(unsafe))]
 #[repr(C)]
 pub struct TickData {
-    /// The index of this tick. Aligned for fast access and used as a primary key in the pool.
-    pub tick_index: i32,
-    pub _padding_1: [u8; 4], // Maintains 8-byte alignment and compatibility with previous versions.
-
     /// Net liquidity change at this tick (Q64.64 fixed point). Used for tick crossing and pool math.
     pub liquidity_net: Q64x64Signed,
     /// Fee growth for token 0 outside this tick (Q64.64 fixed point).
@@ -36,6 +32,9 @@ pub struct TickData {
     /// Timestamp of the last update. Enables precise off-chain analytics and time-based triggers.
     pub last_update_timestamp: i64,
 
+    /// The index of this tick. Aligned for fast access and used as a primary key in the pool.
+    pub tick_index: i32,
+
     /// Score indicating potential malicious activity. Used for on-chain risk management and protocol defense.
     pub suspicious_activity_score: u32,
     /// Maximum threshold for suspicious activity before audit is required. Protocol-tunable for risk management.
@@ -49,7 +48,7 @@ pub struct TickData {
 
     /// True if this tick has been initialized. Single byte for fast checks; padded for alignment.
     pub initialized: u8,
-    pub _padding_2: [u8; 7], // Maintains 8-byte alignment for zero-copy safety.
+    pub _padding_1: [u8; 3], // Maintains 8-byte alignment for zero-copy safety.
 
     /// Reserved for future protocol upgrades. Ensures backward compatibility and seamless migrations.
     pub reserved: [u64; 4],
@@ -107,6 +106,7 @@ impl TickData {
         self.tick_spacing_validation = tick_spacing;
         self.initialization_nonce = initialization_nonce;
         self.initialized = 1;
+        self._padding_1 = [0u8; 3]; // Ensure padding is zeroed for deterministic hashes
 
         // Zero reserved space for deterministic hashes and future upgrades
         self.reserved = [0u64; 4];
