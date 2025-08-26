@@ -40,19 +40,21 @@ pub struct PositionBatch {
 
     /// Merkle tree state for incremental updates and future optimizations.
     pub merkle_tree_height: u16, // 2 bytes
+    /// Padding for 8-byte alignment. Required for safe zero-copy.
+    pub _merkle_padding1: [u8; 2], // 2 bytes
     /// Next available leaf index for Merkle tree. Enables efficient append and proof generation.
     pub next_leaf_index: u32, // 4 bytes
-    /// Padding for 8-byte alignment. Required for safe zero-copy.
-    pub _merkle_padding: [u8; 6], // 6 bytes
     /// Last slot at which the Merkle root was updated. Used for deferred update logic.
     pub last_merkle_update_slot: u64, // 8 bytes
     /// Number of deferred Merkle updates. Enables batching for CU efficiency.
     pub pending_merkle_updates: u32, // 4 bytes
+    /// Padding for 8-byte alignment. Required for safe zero-copy.
+    pub _merkle_padding2: [u8; 4], // 4 bytes
     /// Reserved for future Merkle tree state (e.g., incremental node storage).
     pub merkle_reserved: [u64; 5], // 40 bytes
 
     /// Reserved for future protocol upgrades. Ensures backward compatibility and seamless migrations.
-    pub reserved: [u64; 4], // 32 bytes
+    pub reserved: [u64; 5], // 40 bytes
 }
 
 impl PositionBatch {
@@ -99,12 +101,12 @@ impl PositionBatch {
         // Merkle tree state is always zeroed for deterministic root and future upgrades.
         self.merkle_tree_height = 0;
         self.next_leaf_index = 0;
-        self._merkle_padding = [0u8; 6];
+        self._merkle_padding1 = [0u8; 2];
         self.last_merkle_update_slot = current_slot;
         self.pending_merkle_updates = 0;
         self.merkle_reserved = [0u64; 5];
 
-        self.reserved = [0u64; 4];
+        self.reserved = [0u64; 5];
 
         Ok(())
     }
