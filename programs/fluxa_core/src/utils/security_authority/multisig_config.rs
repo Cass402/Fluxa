@@ -103,6 +103,8 @@ pub struct MultisigConfig {
     pub confirmation_bitmap: u8,
     pub confirmation_count: u8,
 
+    pub _padding: [u8; 4], // Padding to align
+
     /// Temporal anchors for governance analytics and compliance reporting.
     ///
     /// created_at: Pool governance establishment timestamp.
