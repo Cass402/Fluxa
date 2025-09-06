@@ -1,3 +1,5 @@
+use crate::math::core_arithmetic::Q64x64;
+
 /// Core protocol bounds for tick and price math.
 ///
 /// # Why
@@ -90,11 +92,27 @@ pub const ACCOUNT_SIZE_LIMIT: usize = 10_240; // 10 KiB: fits within Solana acco
 /// Account Optimization constants
 /// Maximum Solana account size limit (10 KiB)
 pub const MAX_ACCOUNT_SIZE: usize = 10 * 1024;
-
 /// Account overhead bytes (discriminator + metadata + padding)
 /// This reserves space for account discriminator, rent exemption data, and alignment
 pub const ACCOUNT_OVERHEAD_BYTES: usize = 128;
-
 /// Rent safety buffer as bit-shift amount (1/32 = ~3.125% buffer)
 /// Using bit-shift for gas-efficient division: amount >> 5 ≈ amount / 32
 pub const RENT_BUFFER_SHIFT: u32 = 5;
+
+/// Flash loan protection parameters.
+pub const EWMA_ALPHA_Q64: Q64x64 = Q64x64::from_raw(3_689_348_814_741_910_323); // 0.2 in Q64.64
+pub const RISK_DECAY_RATE_Q64: Q64x64 = Q64x64::from_raw(461_168_601_842_738_790); // 0.025 in Q64.64
+pub const MIN_VOLUME_FLOR_Q64: Q64x64 = Q64x64::from_raw(18_446_744_073_709_551_616_000_000); // 1,000,000(1M) in Q64.64
+pub const PRECISION_FACTOR_Q64: Q64x64 = Q64x64::from_raw(184_467_440_737_095_516_160_000); // 10,000(1e4) in Q64.64
+pub const SLOT_BUCKET_COUNT: usize = 8; // Number of slot buckets for tracking
+pub const OPERATION_WINDOW_SIZE: usize = 32; // power of 2 for efficiency
+                                             // Fixed-point precision for smooth decay
+pub const DECAY_PRECISION: u32 = 10_000; // 4 decimal places
+                                         // Bitset aging configuration
+pub const BITSET_AGING_SLOTS: u64 = 100; // Number of slots before aging bitsets
+pub const PATTERN_CACHE_SIZE: usize = 4; // LRU cache size
+pub const HIGH_IMPACT_THRESHOLD: Q64x64 = Q64x64::from_raw(922337203685477581); // 5% impact (0.05 in Q64.64)
+pub const LARGE_AMOUNT_THRESHOLD: Q64x64 = Q64x64::from_int(10_000_000); // 10 million (10,000,000) in Q64.64
+pub const FLASH_SEQUENCE_PATTERN: u8 = 0b010010; // Add (01) -> Swap (00) -> Remove (10) = 0b010010 in 6-bit window (decimal equivalent: 18)
+pub const MAX_DISTINCT_USERS: usize = 32;
+pub const GLOBAL_BUFFER_SIZE: usize = 64;
