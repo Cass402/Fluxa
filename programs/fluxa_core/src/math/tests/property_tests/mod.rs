@@ -1,2 +1,1 @@
-#[cfg(test)]
-mod core_arithmetic_proptest;
+mod core_arithmetic_property_tests;

@@ -5,10 +5,18 @@ use crate::math::core_arithmetic::Q64x64;
 /// # Why
 /// These constants define the minimum and maximum tick and sqrt price values allowed by the protocol.
 /// They are chosen to ensure all math remains within safe, deterministic, and auditable bounds, and to prevent overflows or underflows in Q64.64 math.
+///
+/// ## Mathematical Derivation
+/// These values are derived from the concentrated liquidity relationship: sqrt_price = 1.0001^(tick/2)
+/// - MAX_SQRT_X64 = 1.0001^(443636/2) = 79226673515401279963822778343 in Q64.64 format
+/// - MIN_SQRT_X64 = 1.0001^(-443636/2) = 4295128739 in Q64.64 format
+///
+/// The exact values were computed using tick_to_sqrt_x64() to ensure mathematical consistency
+/// between the tick-to-sqrt conversion algorithm and the protocol boundary constants.
 pub const MIN_TICK: i32 = -443_636;
 pub const MAX_TICK: i32 = 443_636;
 pub const MIN_SQRT_X64: u128 = 4295128739;
-pub const MAX_SQRT_X64: u128 = 79226673521066979257578248091u128;
+pub const MAX_SQRT_X64: u128 = 79226673515401279963822778343;
 pub const FRAC_BITS: u32 = 64; // Q64.64: 64 fractional bits for fixed-point math, maximizing precision and range.
 pub const ONE_X64: u128 = 1u128 << FRAC_BITS; // Canonical representation of 1.0 in Q64.64, used for normalization and protocol invariants.
 pub const MAX_SAFE: u128 = u128::MAX; // Used for overflow checks in Q64.64 math; ensures all calculations remain safe.

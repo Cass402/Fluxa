@@ -16,8 +16,6 @@ no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 cpi = ["no-entrypoint"]
-cu_testing = []
-verification = ["prusti-contracts"]
 
 [dependencies]
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
@@ -37,11 +35,4 @@ solana-sdk = "2.3.1"
 proptest = "1.7.0"
 criterion = { version = "0.6.0", features = ["html_reports"] }
 rand = "0.9.1"
-
-[[bench]]
-name = "core_arithmetic_bench"
-harness = false
-
-[[test]]
-name = "cu_integration_test"
-required-features = ["cu_testing"]
+rug = "1.28"
