@@ -31,7 +31,7 @@ anchor-client = "0.31.1"
 tokio = { version = "1.45.1", features = ["full"] }
 solana-program-test = "2.3.2"
 solana-bpf-loader-program = "2.3.2"
-solana-sdk = "2.3.1"
+solana-sdk = "3.0.0"
 proptest = "1.7.0"
 criterion = { version = "0.6.0", features = ["html_reports"] }
 rand = "0.9.1"
