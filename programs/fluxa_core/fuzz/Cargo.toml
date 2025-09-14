@@ -1,0 +1,52 @@
+[package]
+name = "fluxa_core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ethnum = "1.5"
+
+[dependencies.fluxa_core]
+path = ".."
+
+[[bin]]
+name = "fuzz_target_1"
+path = "fuzz_targets/fuzz_target_1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sqrt_fuzz"
+path = "fuzz_targets/sqrt_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tick_conversion_fuzz"
+path = "fuzz_targets/tick_conversion_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mul_div_fuzz"
+path = "fuzz_targets/mul_div_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crash_safety_fuzz"
+path = "fuzz_targets/crash_safety_fuzz.rs"
+test = false
+doc = false
+bench = false

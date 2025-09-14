@@ -1,0 +1,15 @@
+[target.aarch64-apple-darwin]
+linker = "/opt/homebrew/opt/llvm/bin/clang"
+rustflags = [
+  "-C","link-arg=-L/opt/homebrew/opt/llvm/lib/c++",
+  "-C","link-arg=-Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++",
+  "-C","link-arg=-stdlib=libc++",
+  "-C","link-arg=-lc++abi",
+  "-C","link-arg=-mmacosx-version-min=15.5",
+]
+
+[target.aarch64-apple-darwin.cc]
+path = "/opt/homebrew/opt/llvm/bin/clang"
+
+[target.aarch64-apple-darwin.cxx]
+path = "/opt/homebrew/opt/llvm/bin/clang++"

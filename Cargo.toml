@@ -2,6 +2,9 @@
 members = [
     "programs/fluxa_core",
 ]
+exclude = [
+    "programs/fluxa_core/fuzz",
+]
 resolver = "2"
 
 [profile.release]
