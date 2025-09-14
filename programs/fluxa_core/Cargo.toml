@@ -21,7 +21,7 @@ cpi = ["no-entrypoint"]
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.1", features = ["metadata"] }
 solana-program = "2.3.0"
-solana-compute-budget-interface = "2.2"
+solana-compute-budget-interface = "3.0"
 ethnum = { version = "1.5.2", features = ["macros"], default-features = false }
 prusti-contracts = { version = "0.2.0", features = ["prusti"], optional = true }
 bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
