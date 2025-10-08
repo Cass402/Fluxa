@@ -731,6 +731,7 @@ pub struct InitializeSecurityCoordinator<'info> {
     /// Pool core account that serves as the root of the security hierarchy.
     /// UncheckedAccount because we only need its public key for PDA derivation,
     /// not to validate its internal structure or state.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// Account paying for the initialization transaction and ongoing rent.
@@ -814,6 +815,7 @@ pub struct AuthorityChangeProposal<'info> {
 
     /// Pool core account serving as the scope delimiter for this authority change operation
     /// UncheckedAccount since we only need its public key for PDA seed validation
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// The multisig member proposing the authority change, who pays for audit entry creation
@@ -823,6 +825,7 @@ pub struct AuthorityChangeProposal<'info> {
 
     /// The proposed new authority that would replace the current authority if confirmed
     /// UncheckedAccount since we only store its public key, not validate its structure
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub new_authority: UncheckedAccount<'info>,
 
     /// Solana system program required for creating the new audit trail entry account
@@ -897,6 +900,7 @@ pub struct MultisigConfirmation<'info> {
 
     /// Pool core account defining the operational scope for this confirmation
     /// Ensures confirmations are properly scoped to the correct pool instance
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// The multisig member providing confirmation, who pays for audit entry creation
@@ -975,6 +979,7 @@ pub struct EmergencyPause<'info> {
 
     /// Pool core account defining the scope of the emergency pause operation
     /// Ensures emergency actions are properly isolated to the affected pool
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// The authorized emergency responder triggering the pause, who pays for audit entry
@@ -1054,10 +1059,12 @@ pub struct AddEmergencyContact<'info> {
 
     /// Pool core account defining the scope of the emergency contact addition
     /// Ensures contact management is properly isolated to the correct pool
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// The new emergency contact being added to the registry
     /// UncheckedAccount since we only store its public key in the emergency contacts registry
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub new_emergency_contact: UncheckedAccount<'info>,
 
     /// The protocol authority authorizing the emergency contact addition, who pays for audit entry

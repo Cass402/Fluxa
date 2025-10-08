@@ -3,7 +3,7 @@ use crate::utils::constants::{HIGH_IMPACT_THRESHOLD, LARGE_AMOUNT_THRESHOLD, SLO
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct CompactOperation {
     pub user: Pubkey,
@@ -70,7 +70,7 @@ impl CompactOperation {
     }
 }
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct SlotBucketCounters {
     pub counters: [u32; SLOT_BUCKET_COUNT],

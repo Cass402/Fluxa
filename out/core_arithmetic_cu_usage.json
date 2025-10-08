@@ -1,0 +1,674 @@
+[
+  {
+    "name": "mul_div",
+    "scenario": "best_case",
+    "description": "Tiny swap settling nearly identical vault balances",
+    "averageComputeUnits": 1180,
+    "samples": [
+      {
+        "computeUnits": 1180,
+        "signature": "2ZhsqLCJJF5x8Nd46iQge7QZ6d1VuzBHA4oTDKq9rNFcvdPHiwpHxTRhPMhU4mdeQ8pjMrC91UDYfAJQYRZYMLDK"
+      },
+      {
+        "computeUnits": 1180,
+        "signature": "5X5RnjhJNjsQsYKm8C1AGpVactKweRM24WEwuKvEco79vJcoSWMmC7Mr8XDuhcvvfVJRw1YSPtDtTWxfXYcJt77o"
+      },
+      {
+        "computeUnits": 1180,
+        "signature": "4RfsZDCqYvQMu6TqyjJ1PaxhmnFxyDmzSviBKpSFYNJyRgARxz4N7petLxfXHyat28bzRRNngkrFz8NsFw4coW1z"
+      },
+      {
+        "computeUnits": 1180,
+        "signature": "5i7qu8ak4epQFZ67A9kAjtWqAdcVmRntvbqmaLsANtY64k6Wpv58hiRnFV6Q9FzAPXww1FBTMyZw6vT1hHP7UH7R"
+      },
+      {
+        "computeUnits": 1180,
+        "signature": "5iZ9MCHPkzMMCcX6qzhKDT1jebvaRuM27myPQycZk4zLec3WsfkewdMeyncqZ2jLvmxC7xiuYeyS682swyfS21jA"
+      }
+    ]
+  },
+  {
+    "name": "mul_div",
+    "scenario": "common_case",
+    "description": "Standard LP notional across active ticks",
+    "averageComputeUnits": 1166,
+    "samples": [
+      {
+        "computeUnits": 1166,
+        "signature": "3PCwX6ViizbCCDWAF1P3QjChZKppyyjLVXznTpbBWepmdriUBuTexcCDUgEsvrD2qZMvTSJgSPBte21nBegmsizq"
+      },
+      {
+        "computeUnits": 1166,
+        "signature": "5x4MTeYevtUadKNoHDp2SykDKcJrAuKCKyfzpKR5VuYM3yjB32Lk7dZYhLNbvgRfmoLMV8KH6pJ8UJ1itQq9nHcK"
+      },
+      {
+        "computeUnits": 1166,
+        "signature": "3LPG2bMF5vBLK6ib27Umo2xTtZ7phwnLPCtaugEhfYngn6vsF6cyy2ZVnxjEUtQWYd3d5bpC5hXwHrSouDainTUA"
+      },
+      {
+        "computeUnits": 1166,
+        "signature": "2vKMKheqxx14iWeN64GFzKRjzQTZJgKs13kBwvaiUTTeDbvtFpj7vj1rCAei2M3Uxh4qnXhe7HqoneTpnY8fJmdF"
+      },
+      {
+        "computeUnits": 1166,
+        "signature": "22j37SLjGdrDt1YZDE1CkXvnpz5RU64pV3JFcL34mRnEKtyhHTLhUwMpR3FLie3X2Nnm9vkPhVdZ3YccdpJw3Yac"
+      }
+    ]
+  },
+  {
+    "name": "mul_div",
+    "scenario": "worst_case",
+    "description": "High TVL rebalance approaching upper precision bounds",
+    "averageComputeUnits": 2619,
+    "samples": [
+      {
+        "computeUnits": 2619,
+        "signature": "Ef9Wtn1ECGfBuiaxbE1rhJ4CH5dfePPRxqksRaDMkDA755v12StFVX9yApRp3xAzuwq4hv9dfyTTwQfDqZybFQ6"
+      },
+      {
+        "computeUnits": 2619,
+        "signature": "5YivooqB6mPg4p8pinbofh9qN2CPjCWJHZ4TLGqVizfJci1Gx3nPvkVCrxamCroUgqooSxZj3DscAW9ehtsmkYYm"
+      },
+      {
+        "computeUnits": 2619,
+        "signature": "354Pj58iia1pYV4wyA3JhP234YbXqx8UDBGTdYmxH4ngUzWqSF6gAU5NYfwgVmREdkaCettZRrMKXEAoBTfnDtuZ"
+      },
+      {
+        "computeUnits": 2619,
+        "signature": "5BkujK1vpBtBdHuVGuB7TUS4hnsTTJKriaWTKv6FB8abd7dFAPiBKa4sDarhFqCxUsWGYQqLijYNsedddC7bP4aR"
+      },
+      {
+        "computeUnits": 2619,
+        "signature": "3m5ie6cUJGKAtYPwxAWTDLW9vJXox4m8qmQtEB1H4MbdsK3MikYwZUGuDfVQSZqC65WSgwZqTTR3JE5wCptpEDhj"
+      }
+    ]
+  },
+  {
+    "name": "mul_div_round_up",
+    "scenario": "best_case",
+    "description": "Fee rounding with tiny token amounts",
+    "averageComputeUnits": 1523,
+    "samples": [
+      {
+        "computeUnits": 1523,
+        "signature": "4XRsjgua4JxtATN6TVJvV2J98BejmYnVR6xbs2FmJAdYX7M8XYJWbtQj1tRR4ctqyLkq5YdszJkjxGYFWgvwgJX3"
+      },
+      {
+        "computeUnits": 1523,
+        "signature": "2UPmskuZ8XHUM8MgypVsN18gfjr4fcw1QM5pd8AS2rQQuUohcqqysZeukhBS8pJ2VrPQhhvjiHk9SB791JsFcc6W"
+      },
+      {
+        "computeUnits": 1523,
+        "signature": "51JtEioA93numWqqj6aryMctQcXwAYDPw8DAKpUpvRrTySXbSM2UY8b1qGUkLdqj9UyVpdjh9CncLrT9oHoFy83v"
+      },
+      {
+        "computeUnits": 1523,
+        "signature": "5TUKmJSXpYVKTjZAVr6tk6Y1buFFcKUE7j2XLs51qwzLKdktgwdyvxcw8zi7dhFAGdrN8oUDPPhQFjWGixLuKo2c"
+      },
+      {
+        "computeUnits": 1523,
+        "signature": "3TKzadt8RwjEfv12tfwYhTbxXA9gZpE3ysUNZtn4WuVttgXmyyGLQC1WDAyMPFRMZUbeUfLHVKC6SaPKB4jjVRjd"
+      }
+    ]
+  },
+  {
+    "name": "mul_div_round_up",
+    "scenario": "common_case",
+    "description": "Rounding whole basis-point adjustments",
+    "averageComputeUnits": 1496,
+    "samples": [
+      {
+        "computeUnits": 1496,
+        "signature": "2jdfETZmeubQdKj1Sg58ETkqsvoB5E7kyBBtJGdvHnjdyhLdBojotZWuUw5hmxmpEijw9K9tgzkFMQbT9nZWv2Vn"
+      },
+      {
+        "computeUnits": 1496,
+        "signature": "2vEPsSv9VdPhyQdsYCbbprpVtTWPtoGXfi5D7yQXXE3qUSAxi2zUksQLJZr5c55x5XYcGd4TVKHfERh7u3bQqTy2"
+      },
+      {
+        "computeUnits": 1496,
+        "signature": "52FrHk63RtmGL7ht8i81ChjekXyKn7SCuH8HXR2n9ApKsiKVrPyfgACC4FrYyNV8dji23E8w6Dde7rTr99dHziNP"
+      },
+      {
+        "computeUnits": 1496,
+        "signature": "5LnLt1ubsNQUyEABZ4BbQhZqJR6tquY1M9QNWizmveU5AsVLcKK54TX6rEXYPeMM5k6kqCUgmFWm1iUPTj1xLWgz"
+      },
+      {
+        "computeUnits": 1496,
+        "signature": "4KV5wnZ5Q3fBWZ7DDrLojvFFvCYM1PG2ktJPVtCjKomi3vxjrhh2iUcDwChCMCY15yJKuwKy6G6EkY1TE98u9xz7"
+      }
+    ]
+  },
+  {
+    "name": "mul_div_round_up",
+    "scenario": "worst_case",
+    "description": "Upper-tail fee sweep with whale liquidity",
+    "averageComputeUnits": 4343,
+    "samples": [
+      {
+        "computeUnits": 4343,
+        "signature": "4WSngn4eYFwUZ4rdM4g88QYJnhS7CT6c5zaTvvj792GHNJD7x5kfaK4wCY71cMC4cuiobv6Pe6w4yYQMUWyUfwgv"
+      },
+      {
+        "computeUnits": 4343,
+        "signature": "23pANj37t93mKjbBPHnGSZfSXLNGR86w2saL6nR7DCjacuyJrbVzbFQHozCJBsHPNcgxLhN2g8NLv3kHWPJR7Sik"
+      },
+      {
+        "computeUnits": 4343,
+        "signature": "LqUEpQPcyXC1j81pGsSKN8vXyahQ6BH6fovvuKFzNsK6t5wg7s465tiEQpYGyxeP5ymMAiZxkgWJy8nE3kNM4Kr"
+      },
+      {
+        "computeUnits": 4343,
+        "signature": "5KMWmSCBZ5kkD5ywrRdL2xjjGRpehgwGjaZAVV7fXGWWo3khStFZuVbrsgd4MGHfHX2WP3pREVpDteZp1YiBindY"
+      },
+      {
+        "computeUnits": 4343,
+        "signature": "48qqL9NqzBkEw5S9S92UuMMC1bCUbg9CppB5e36kGW1LyKiRR4ckn1RFP3c92KabVHtpfDAAsJswYC1SBT9V7iA7"
+      }
+    ]
+  },
+  {
+    "name": "mul_div_q64",
+    "scenario": "best_case",
+    "description": "Unit liquidity scaling",
+    "averageComputeUnits": 1999,
+    "samples": [
+      {
+        "computeUnits": 1999,
+        "signature": "2tx9uT18pQXYHMtrcR3cZJJMcFyW3iDP9FxNtVkdMQY7DGRX8Qjv8VeXQPedmr8sRE1pZDGiEVDmG6z85X1zSApb"
+      },
+      {
+        "computeUnits": 1999,
+        "signature": "5vfyWdkCwYrwSK58aBZfdRJ7LbGWV4vpunrtfgv1rs77GX65PpH58LjCoUoKFhnF5J8tDFLLx1D1uWBdKD87we88"
+      },
+      {
+        "computeUnits": 1999,
+        "signature": "5B43eZqHCTcvWpPAdaFZfZbC5VrjeyzPBmhqChLbp5ku1aqYKMAmApZW2mCNLrXBu1PVFWo1ZiN9XoCAgdqN5t2y"
+      },
+      {
+        "computeUnits": 1999,
+        "signature": "3axKvk5jQ5r4UWy9hm1Pcw79Sm9sY3r2wFtPdxnJgTVDzRta5cx73vDHEsTY9vC5oY3XB4RZoUPLxeKGuwudgcN6"
+      },
+      {
+        "computeUnits": 1999,
+        "signature": "5umTYJF97LqeUFDsAia5RBnc37myQEJ9t64gBfS4Z5kR9oaL9AxHFUAhdntgeE3cck8oDevTZAqT2WYgCGwNkdku"
+      }
+    ]
+  },
+  {
+    "name": "mul_div_q64",
+    "scenario": "common_case",
+    "description": "Mid-range concentrated liquidity adjustment",
+    "averageComputeUnits": 2518,
+    "samples": [
+      {
+        "computeUnits": 2518,
+        "signature": "28Y4x4SZcgWX1tsgeGyVpqdVtN5shntGtFjvRD2j9asDPEhLSKHLEoRZUEsc94mSbmcE7fWm3j5CuM41py37jrR4"
+      },
+      {
+        "computeUnits": 2518,
+        "signature": "5CDxbCUZXFXJoorZrFPKnn3Qjw7xiKYmYiuRA95jLXghw78zi1rv4uorpvpynxDxyNntjuT5TzqVcJfxsfPYrzAe"
+      },
+      {
+        "computeUnits": 2518,
+        "signature": "3rCmknXw5PoNKJmnmL4tPVCqt9uRXidrYtmozWEcUcuTmj8WV571i6B2M8ur6BjZYeE6H8WkMvV1WwMEm8xnesB7"
+      },
+      {
+        "computeUnits": 2518,
+        "signature": "59rfn27w41s2CRskvuZpXAdUojXYKBE1vx6MdBD2ubS7RPxikTU5JozfBiRvZ7oKqYUXp2sF1ymfWxH1WNufAcqx"
+      },
+      {
+        "computeUnits": 2518,
+        "signature": "MKd2LreWh5nSW6ar5Asup9W9DwFrSWbXU1Jpbz2BATXZRkGfppfaKQJPVsYqww5Z5WFdPgXxvWHx14U6p8yQehF"
+      }
+    ]
+  },
+  {
+    "name": "mul_div_q64",
+    "scenario": "worst_case",
+    "description": "Extreme leverage shift across a wide tick range",
+    "averageComputeUnits": 2519,
+    "samples": [
+      {
+        "computeUnits": 2519,
+        "signature": "F6qMZwa6aKjc9rxS5RwrHiscpio8FaK2pzmn9JnezRpzWxXQwELpao4XCS7e3JkWi6M2g8gSsk6HwxaHEEUXx3T"
+      },
+      {
+        "computeUnits": 2519,
+        "signature": "22yX1Wqq6d6hGq2ARPivL4jjoh4DcnAok2CsVFGBCpiNSEQgbTdSHPZshtyik8rPnnWM5JmgcErrq6ScyD4VZWwT"
+      },
+      {
+        "computeUnits": 2519,
+        "signature": "5fGKHj95fJtZoDpMLhsvMfpacQUBRENa9JRDERTp9eY6bPrNLkbL1k2YkzEqwC9hYqgaUtGYtcxajZTGCgei7wjC"
+      },
+      {
+        "computeUnits": 2519,
+        "signature": "2W6xiM6RzUHDewm1Fn46hvDakTyVp28afvmgt8hqJdyDjRXQdAXVWGEsfzUb8itcu1RFTARdMhPeUifBeLPFSb7N"
+      },
+      {
+        "computeUnits": 2519,
+        "signature": "23CWkFW3a4gbnzfsEFynqCT5BNY8ZJjt58bEBuus99vJZB29ukUuYRZU5HnJaW7GDATPEMgaEknC534y7HmzTPyU"
+      }
+    ]
+  },
+  {
+    "name": "sqrt_x64",
+    "scenario": "best_case",
+    "description": "Spot price exactly at 1.0",
+    "averageComputeUnits": 679,
+    "samples": [
+      {
+        "computeUnits": 679,
+        "signature": "3cGUHUzKkJ8t1kohMusUq4Pyeza4hgCm7XPZjQqBV4A7fNKoEd97eK81MdNudKr45zbzLoHjaaw3TebWmhCYU766"
+      },
+      {
+        "computeUnits": 679,
+        "signature": "3ftP11GHspbPkxfjELFGcqQHs7x1xQJMVAKHdHGgkY3oMYwxaAnaF9Z6caqi8dknrrXmYx78VMkdb5Kc4Bu8UtWZ"
+      },
+      {
+        "computeUnits": 679,
+        "signature": "4s7FDPhyKmhZFMWfQuKLf8ywJ6BZ5SAbXxivh6Lfd7995T5f4yx55ibernKsgpD8cBakbcJabF8aZagKB2jeirNe"
+      },
+      {
+        "computeUnits": 679,
+        "signature": "58wyNbtHenkv5hPLeyxsbH496H1yRzpQYdNv8TYdQbak8k2u4u4tqCHtANoWqDa7ZTmdKSJH7unXfCKgSTk6zHCp"
+      },
+      {
+        "computeUnits": 679,
+        "signature": "47Sq44aQvwoRtoJbmdk2nQZyPa5jJvipBgP2Ny2G66KKZM1VNSpHWiLFMaJ1BDZbyPmy6s1rBszQGDt5E2KcvibJ"
+      }
+    ]
+  },
+  {
+    "name": "sqrt_x64",
+    "scenario": "common_case",
+    "description": "Price discovery around a 6.25x premium",
+    "averageComputeUnits": 9644,
+    "samples": [
+      {
+        "computeUnits": 9644,
+        "signature": "5WyGte7MKQ4QPLjB8Wqr8Ue8gBT2vZkBEmUewPBbhkW9f9w1NR9NnPEv6f937k1fmYzU5PgRGT3EBpzD9zq6P7dD"
+      },
+      {
+        "computeUnits": 9644,
+        "signature": "dMfjctT2rhEHYfsB7woL37hVVshfrhF7sc1G4JCwDHmPZ33NEDoKmJB5nj26fb9hqxxXLymav8rKCzv2UNQSoDU"
+      },
+      {
+        "computeUnits": 9644,
+        "signature": "5SLCQghghUxEpjvpfoiGKGjXd1Mzrerm2v4mHQfWJXv4KuBg73digHtDjYeUGevzSRV4oWqBh1qjrcoUNfq7mDPN"
+      },
+      {
+        "computeUnits": 9644,
+        "signature": "TvPASChTSxEcXrZRjDyp1TRAVJFEiQkkzHcHDk5odvn4EGGnypXgTQKN49mwyjXG3ku5DFSYPwifzJsS42AGkUV"
+      },
+      {
+        "computeUnits": 9644,
+        "signature": "4ToiFfNwfWnBDQEQD9qvErYkkfD5FeaTQuyqhzKseQu9Hhvk6Mf1G88vfEZPo4tHvrvD3MtHD68MohmXMdAXFpbC"
+      }
+    ]
+  },
+  {
+    "name": "sqrt_x64",
+    "scenario": "worst_case",
+    "description": "Mega-cap asset climbing six orders of magnitude",
+    "averageComputeUnits": 10911,
+    "samples": [
+      {
+        "computeUnits": 10911,
+        "signature": "58JRgC5h2Ji3fmG1h1ozRQ13BadD3kUyGq27LA58HmDxvmroh55yA4ToSRSibtQ5cpLQD1qNd8GMbEyRuuLYhYCc"
+      },
+      {
+        "computeUnits": 10911,
+        "signature": "4g9p4jLSrduFzFUwpZm78WhSNPmXvq1h1SHQ8AfLsVzGB3N8pNDFacpZcctqhkDmdmHqg92yBiStXw2rrTL2Pns8"
+      },
+      {
+        "computeUnits": 10911,
+        "signature": "5obxy7jQi3RzH76ZHFVur6C57ianAXR2W2X3myqKd1mttWQKpKjAf6Dxz9rieSb6UJfQd7gmcchcjmLYdanhSWd8"
+      },
+      {
+        "computeUnits": 10911,
+        "signature": "3Do2Ma3vguhoQn818EHJTDxunZpK17zQ92iXsro89sbFndhDFhZCEa1Jx4fX1P6Df4G7eLsUVocTdc9STm5nwvps"
+      },
+      {
+        "computeUnits": 10911,
+        "signature": "4wxJvR7K7KV14cKweFUz82TyA6hxFGfFjRRD3fsg8hGuhPxFXuCkYLWY9xYkmWYtVTQN5UPchRDzFqtEmcw7S5WP"
+      }
+    ]
+  },
+  {
+    "name": "recip_q64x64_nearest",
+    "scenario": "best_case",
+    "description": "Invert unity (balanced pools)",
+    "averageComputeUnits": 1730,
+    "samples": [
+      {
+        "computeUnits": 1730,
+        "signature": "wKZSufqqR5JzPknU9kZMXeesS7fDLLexiJTxJLjqygA3bwDTKowuK267yBmr7iwhCEm5ZSBFgzmSye3sJVEqosp"
+      },
+      {
+        "computeUnits": 1730,
+        "signature": "2sGepFq7oChPxpoG3FWrRQ6WJxLkMF6GuifrSgUqnFkCuRXG1ENFiFvKP7sKk6e8RJf9pQPNyiBp1xatMUfx6pSF"
+      },
+      {
+        "computeUnits": 1730,
+        "signature": "5zg8d5NvgnFFjKqaUePcDLjgaLHVtfHyapLfj5yjj62yszL9LKg8BuKoa4AeBdWXmGbe41v3M7VwTMUzM9vHH9i2"
+      },
+      {
+        "computeUnits": 1730,
+        "signature": "2kyDvQqj58xcGrN4EUwpj96tqceVq6MUuUB4TH5Sff4QfuaTs6hghuZdbVZQYw74YFzz9C1CLnE92Xen4NzphGL8"
+      },
+      {
+        "computeUnits": 1730,
+        "signature": "WAwt74DPwv7a7BArdrkyW37XEJsgrioeXLgdEeAmEvSP3LXcs5HVakmaSFZmRVW32fB2r6ZsAFzMBo6UYRph9Zr"
+      }
+    ]
+  },
+  {
+    "name": "recip_q64x64_nearest",
+    "scenario": "common_case",
+    "description": "Stablecoin premium oscillating around 1.5x",
+    "averageComputeUnits": 2298,
+    "samples": [
+      {
+        "computeUnits": 2298,
+        "signature": "3F6peeG1xY6iY6hSHWCrK7UDU739QNmULA9nUSQksoaUojDLQkmrgY4F8YixLNDSHQJhDbEgXkdQnEvApdHwRnqr"
+      },
+      {
+        "computeUnits": 2298,
+        "signature": "4WFhZo2yz1MvKW3bCd2b6sjfozxr2hYegmG6tcwfQGpiYDi934VtobfXbhdRzUH8hs1oSU3mHoFM76Dz7HvByBvP"
+      },
+      {
+        "computeUnits": 2298,
+        "signature": "3bZdRtbnQ25VSVUhYBhk76GmKLKCHeohT9wZJ5pyeKcAbrQh9GqKwFhGDqD1B67U63LmtHdQ7oThKNR88iBGspH5"
+      },
+      {
+        "computeUnits": 2298,
+        "signature": "5a7d3dmFn3RMB3mmS37tg6Qt5mw19BYBRKJnpF7twqvpPxAWdzifHY76QE8eKE2h3iZjor5LSi9p8cLdESru8py3"
+      },
+      {
+        "computeUnits": 2298,
+        "signature": "41iuQWNqH6kgf2cVrjS9SjBK3LzhLf5jsf4qkmuXzA5xzCw8pASBhg3xho3wvjCDHY8zTr6E8r2NrqJH2drnYnbt"
+      }
+    ]
+  },
+  {
+    "name": "recip_q64x64_nearest",
+    "scenario": "worst_case",
+    "description": "Highly imbalanced price 1e-6 of reference",
+    "averageComputeUnits": 2268,
+    "samples": [
+      {
+        "computeUnits": 2268,
+        "signature": "3DEWGtyzkAMuCLs8Pxr8HriYGwQpuTbd1JJX5jhMmcVYFT4G7AUXBQh4T7gbfn4nCJqQKphFnnKQAhapbFDZNtM7"
+      },
+      {
+        "computeUnits": 2268,
+        "signature": "493qrGrFcuBFSLFUzSUYcczWNzMGBQEk5YNKfXYikGAeaqtJGj1FKciEErK5vVkUZgsxbAkT6TXTHdyRDuF5UGfR"
+      },
+      {
+        "computeUnits": 2268,
+        "signature": "3bBaEXkvPgUNiLU3A9jKawRtFr984Yo1BWHCuE6iAnQo7Fa4sn3DU6QdxWXr4dYS2Tyx3MfgnmeCwVaCQc2tMqEn"
+      },
+      {
+        "computeUnits": 2268,
+        "signature": "4HdrrXJ6n6LDqRBczMLrtQNtkM5un655wvfN1DwPU87cT1dzq9BauRkR7rsz188ecuya7djVnFgs9tceK6YJ6T9Q"
+      },
+      {
+        "computeUnits": 2268,
+        "signature": "2deMKiGRnLuqx5NQiWVNexKWX9wUEKEDSv5kqzeGiuThTbQcNx4GFsMUY8siXJ8JaC3mHy1W6sYT9t1UfTveSxVS"
+      }
+    ]
+  },
+  {
+    "name": "tick_to_sqrt_x64",
+    "scenario": "best_case",
+    "description": "Exactly at reference tick",
+    "averageComputeUnits": 759,
+    "samples": [
+      {
+        "computeUnits": 759,
+        "signature": "4EBGWWMqdaeBjrrUN1gHou2BeQEiEpJGfAqcRxpxsKySgU7wTsFHrFt8bbfq4XEj7vq8vypshe2oz9VqDEM92AUz"
+      },
+      {
+        "computeUnits": 759,
+        "signature": "5Sq3DuVapkiu8HqoR8Qxh7yLDZkXwXW2vBXwGudVUHxS2iYEVDK3YGL4n2Fdp4kXmBU6RbEvohNjq1GX8x7woby5"
+      },
+      {
+        "computeUnits": 759,
+        "signature": "sPLtvUJjS1seoh7FCWrUVQYdCSCTyNeTZonaJtScvNHdrdLabowbWcTrPjpaooGqnwXhXLi621ULsKLzbRRkTAe"
+      },
+      {
+        "computeUnits": 759,
+        "signature": "XfBrQZgbSNrYVYNsw1DacFSyvJgT6vcvJE7bH2gDT6edn4aaUyobkKnYNPhgxQ53xGvGyNTtCj2WtweWxz6X1Ya"
+      },
+      {
+        "computeUnits": 759,
+        "signature": "2puhTCHjPKaPBV39g1Vubgak8wUDUZhDPKRyFcKV1LM16bSqoHfFbkYJgDks38phjsyezUu9B8dxEeaJ9Qbto9CA"
+      }
+    ]
+  },
+  {
+    "name": "tick_to_sqrt_x64",
+    "scenario": "common_case",
+    "description": "Active LP tick range around 12% drift",
+    "averageComputeUnits": 1450,
+    "samples": [
+      {
+        "computeUnits": 1450,
+        "signature": "57UfyViLsZsPqAkExREHhkwDVT8kGJ64vKQoFqgwNmjmBuDx7TL53VGEZMhRRChZjteNfZhsYM9aWYAfZV9PvoNh"
+      },
+      {
+        "computeUnits": 1450,
+        "signature": "5WnCY5ZuMUr8nyjt1ZxwSbK3qfRZMywsNXxJp8sJknN9EfVNah4Jb1uRhRF6rhC81SswcEo3gZC3zTcBK3ioAxkY"
+      },
+      {
+        "computeUnits": 1450,
+        "signature": "3uky2FGxkcdLX77W2ZGhctbtEoLib2KNVymz8rEf9HYkqiox5tMEmRqZCiacBoVsm5f9RHpcPBSePvzY3vsLo16D"
+      },
+      {
+        "computeUnits": 1450,
+        "signature": "53mkSEHNkGwN8M8mztoKPJTUEwReQNgNR2KArbSThfLXtfhn1hrzu9zKreeup6vMg6DTgcdcL365pMKLmYsVRk7a"
+      },
+      {
+        "computeUnits": 1450,
+        "signature": "2iN3VRp5vy6fZro1h132yBEsXbvYqqncR7KGYrWJjfLLQp6njK8fRcN4oDBbdwdbbse4PUqX8Lz7xiSymLK9sahA"
+      }
+    ]
+  },
+  {
+    "name": "tick_to_sqrt_x64",
+    "scenario": "worst_case",
+    "description": "Frontier tick used for oracle sanity sweep",
+    "averageComputeUnits": 2300,
+    "samples": [
+      {
+        "computeUnits": 2300,
+        "signature": "3d6ucKCUtjscvJrN94KM9vBQbktrDmbamEJHHkbdHkgj1xEKZEvD2bNqTYceGhMrkPjECBRAstHTWX5hWMRPuEUW"
+      },
+      {
+        "computeUnits": 2300,
+        "signature": "47pXGykmEQc481B8zAQKstf1zwpYEC1WP5b7GJQrz4xV2nzy6RcJpHfTHxDnKwQpV2LisRfQeFhBWst6vhJ3BPvU"
+      },
+      {
+        "computeUnits": 2300,
+        "signature": "54mF1AwiF8Ugm2pkyxeAfzk3pVgZrYxGniiLAyRuFw98v6y9VuL1MUGZ5FRPbm4gXCd3A1E44DZw4Xou4ajZfiQb"
+      },
+      {
+        "computeUnits": 2300,
+        "signature": "371tVgLs9pTAFPUwc4GG3reCNiNMxXwdz7FcrjL71g4XSBM44pRphpabm3pKJM1beksAytXYpCLaxQQZiqG6E33K"
+      },
+      {
+        "computeUnits": 2300,
+        "signature": "yUB7foRctA1WvHVzgUUNY9HTrpqrDK2UQSAV2u6sKVR1xmRkr7fXH4bdMTvDmGLfn2gJ9BM9kZYjzS4QvBCLQYS"
+      }
+    ]
+  },
+  {
+    "name": "liquidity_from_amount_0",
+    "scenario": "best_case",
+    "description": "Tight range market making near spot",
+    "averageComputeUnits": 2512,
+    "samples": [
+      {
+        "computeUnits": 2512,
+        "signature": "2wjBaHzXwfjLKtg8h9vwoq4NBTPFzynvXhtXGtoKUgfm951unPnEgDSdoqLQArUcaRD8krzEUfLYcxBoHT6LruQJ"
+      },
+      {
+        "computeUnits": 2512,
+        "signature": "4dJr1je3vESLV1uJG2kcc1WpYonC7ZnYrokb2EaUkAD3cvWowhh9L9KLQENamTa3xNQeK8euMEyKuWKjXAHYm8Xh"
+      },
+      {
+        "computeUnits": 2512,
+        "signature": "2X7Lk5AAnDPeutv6rs26YQjwwzwWNtJPTXrBUAerEgog6pLCzq7yWjnKbVoRapZPe3pYmuTjVknPbyjrdMH2MFyt"
+      },
+      {
+        "computeUnits": 2512,
+        "signature": "2xYSwzkMQ9eHDKvB4pgoxmK2NGUuUMjyxM63Tw582fwKc1GhpaiTZJ5MVRUdMkb8TgJBGUW4ZrG7W8kvCHyrfikD"
+      },
+      {
+        "computeUnits": 2512,
+        "signature": "3MjNyMPL1BQUtdbR8Ss9HTZ7tRokVgcKB1QhqLexuVzmFRLFq4snQKfiP5hVNDXuHkADEsDKqEPS4PCQLpBgnfHY"
+      }
+    ]
+  },
+  {
+    "name": "liquidity_from_amount_0",
+    "scenario": "common_case",
+    "description": "Standard price banding over 3.2x width",
+    "averageComputeUnits": 2787,
+    "samples": [
+      {
+        "computeUnits": 2787,
+        "signature": "Xv7ubZQjRsMSg9vWD1rkr2FuJpKdEczRyCW69d5n7dTxfCLA5jxvPLT7V2ZhYNxCZmVDiGPWX9CPg9SiNT6vdQp"
+      },
+      {
+        "computeUnits": 2787,
+        "signature": "xG5k7nNsxW1KumFjVkfMNwxBmu86TLcLGAZ1zHqmgPcRN25XqMjcYhfLX1iw1PmCs1ogqRdUBMwff9wEKc749F2"
+      },
+      {
+        "computeUnits": 2787,
+        "signature": "5SDxLox5a1VtTJFL8doTjrSdiMtEkK4K3sRmsTLe4HNk9wPmAQa3aosmmm5cpe5i5idKfJpFWg2tNxMLHLEKjkVE"
+      },
+      {
+        "computeUnits": 2787,
+        "signature": "41PthJqKtz8q7GX2bL6Y1FEmzSpVrfBtGToTiCa3u2HC1o324Ehti7MzFhNc2xX7zrBPifenBrM5Pfv2diFN9F7d"
+      },
+      {
+        "computeUnits": 2787,
+        "signature": "VdmveKkhcrgrLxQ2PoSmkf139Y3W5C89RrbzkxfMYXZEo2dJRg3Nm5GNk7eooj82S6NbkXCTyUvLA78fjV2WCbu"
+      }
+    ]
+  },
+  {
+    "name": "liquidity_from_amount_0",
+    "scenario": "worst_case",
+    "description": "Wide volatility hedge spanning 0.1x to 100x",
+    "averageComputeUnits": 2920,
+    "samples": [
+      {
+        "computeUnits": 2920,
+        "signature": "5ME7SssZJnxMp6TUXevqh5b1Cv99kTn5Jqy5waLJmy2nq1eBRfxoTWVq9b2Vof8NsESVC3heaL1S5jTbXu7crSJH"
+      },
+      {
+        "computeUnits": 2920,
+        "signature": "3PXEmWAcoVHUTST4boorbzsn6948FofVSuCQgbvnRcHHwhVaFrgZZm84jdZTWWzH7MYtAofESCRsvqiVJpSPxwCT"
+      },
+      {
+        "computeUnits": 2920,
+        "signature": "2gNzjJaMpaEd4HQQNSzXF2YGhZxUYa4WApWfgR3cbrow9HHdUwgcQH4ECiVLgzxYmr1zS6suSe3kF4taF4DwMXh6"
+      },
+      {
+        "computeUnits": 2920,
+        "signature": "5GFP2YE99TkA9rz8JQHv1cwpxyJespMYjAn13PSVLLiwaPMFCtma1L7FTy9AnGPU6Eko4VXobjSFvaPQmRDQnwVa"
+      },
+      {
+        "computeUnits": 2920,
+        "signature": "5DKJHAGjLsnTybkEUjX6W2GCSz32ziNvHGsQ793ZTK17WC1dK5MLJVxXs8feH3PovEMobCa2mMJBoKPAHt6ZMSj8"
+      }
+    ]
+  },
+  {
+    "name": "liquidity_from_amount_1",
+    "scenario": "best_case",
+    "description": "Small quote-side provision near parity",
+    "averageComputeUnits": 2100,
+    "samples": [
+      {
+        "computeUnits": 2100,
+        "signature": "5SmXoAe1G3ZitxyupbJN1NYhsCUymHaykx2y2gcZLgZttZchtQkwytKG8EDk4XX2zjUJn1NtcRTywUH3jiQ4mXhQ"
+      },
+      {
+        "computeUnits": 2100,
+        "signature": "5GN6pTe16n41GLzGRDAUqFiBujycLZ6UuGCDroGWx3UhzqVas4Wo2guR41YENZmGmRLNKuoPUYanPhBMKdvMdX4g"
+      },
+      {
+        "computeUnits": 2100,
+        "signature": "gMR9saHuZ1gpMj7NFsBwb2Uipp6LfqLBJonNdiaaaqe1FjS2qzEQAx7SNM8eVGhDXonJtth9zsuLuBxViZYRcKK"
+      },
+      {
+        "computeUnits": 2100,
+        "signature": "2YBgTm5B9iuu1hjKExDeuH1mfJBkgCca1zurjQiLwE3Lgwe7opNLCPsNyMQRNxkDz1r7csgQAT7VpVg6RW37sa8U"
+      },
+      {
+        "computeUnits": 2100,
+        "signature": "5aHJCixVKhAijAgtiigrCzd1rff2UHZsVsGmbdcE7kezctJzmniQKXypmGi1X4fUDAwJ7NmZjtPHfq7fdpAwUDs5"
+      }
+    ]
+  },
+  {
+    "name": "liquidity_from_amount_1",
+    "scenario": "common_case",
+    "description": "Balanced range order around 1.5x price",
+    "averageComputeUnits": 1936,
+    "samples": [
+      {
+        "computeUnits": 1936,
+        "signature": "29kLu8UXgWSmQkh5xMnnBHd66LMD1SH9fZhzKzDZD968k5BJsvqBirjnbfMZ7inwGJeSmB1dneuMTRZqSubFr7NY"
+      },
+      {
+        "computeUnits": 1936,
+        "signature": "ZZFUywbyZfPcXrq7CXL7VhSmmrHmB1Vib5MwVLbikfGWmcSBKL3E9hw7wohmi1yP9smuo8A4J9mLXYfux6jUM3D"
+      },
+      {
+        "computeUnits": 1936,
+        "signature": "5F4Yf83qfU5yRixAYiUtc3nPM6EJYUd5TwHsda5pXKYjpEJhxAJsQno1SoXEpd8H5KTsMvEGYY5ni1C9dYtwDzmj"
+      },
+      {
+        "computeUnits": 1936,
+        "signature": "4Q1hjrpc3DN3tMmyGTBuNxNBgbrCFSnnGPX1rUDbN6pYGwHyGByAgxQAEfiFnDFxpxcpVcxB8RcpdSZmcAfx1FvR"
+      },
+      {
+        "computeUnits": 1936,
+        "signature": "2PqytNDTaKLu8iSH6qHQFs8k6hr8HaTT49prVvy4AD7gokSJ6xAnJmvgm5kWn9FaQqF9tHqSz4Z7DXZRaaUosryc"
+      }
+    ]
+  },
+  {
+    "name": "liquidity_from_amount_1",
+    "scenario": "worst_case",
+    "description": "Defensive liquidity spanning two orders of magnitude",
+    "averageComputeUnits": 2522,
+    "samples": [
+      {
+        "computeUnits": 2522,
+        "signature": "4tfjHpLBXKUwdmthhfovAXmrAEM8Aq3ZaeLnSMAimWcxt4H4PEuRqsZbN8fx6CffYRRL5HWbtCyxvEu7k2BpK6ej"
+      },
+      {
+        "computeUnits": 2522,
+        "signature": "5CyzGtYs3zJzduLiLQ5uSzTrCEN6U6L52dXjKRfZMwgByD12zWZT7kWNC1s9QNYbKiPPYyboKxDtkVtDmkB7zoZB"
+      },
+      {
+        "computeUnits": 2522,
+        "signature": "5WbTog3dcX3H4SsABCwnYsBCUQmcuhVh547CyTdfdk2SxajuTT5L4Daqtg4A3GcZkaSHAxk1j4RoDHPH4rin3KqY"
+      },
+      {
+        "computeUnits": 2522,
+        "signature": "2dg3LMz8CpCWykbNwhyxFFP9Nui8NvUPMBLLsMhzh32tniswxzeCRRCnGDNdaySmFhEFQP4ih2uHiuvAisVaU9mo"
+      },
+      {
+        "computeUnits": 2522,
+        "signature": "sWPjxsxFH7n7wtF7CUGFLmRRyYgNEsia29rU9NbFyKMR2ZiUYbAJvX6HdsEytYTN37VkfcdXj18yXuGbHRnEDxE"
+      }
+    ]
+  }
+]

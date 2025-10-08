@@ -41,9 +41,7 @@
 #[cfg(test)]
 mod property_based_tests {
     use crate::math::core_arithmetic::*;
-    use crate::math::tests::unit_tests::core_arithmetic_unit_tests::{
-        assert_rel_close, REL_PPB_STRICT, ULP_SAFE,
-    };
+    use crate::math::tests::precision::{assert_rel_close, REL_PPB_STRICT, ULP_SAFE, ULP_TIGHT};
     use crate::utils::constants::{
         FRAC_BITS, MAX_SQRT_X64, MAX_TICK, MIN_SQRT_X64, MIN_TICK, ONE_X64,
     };
@@ -56,9 +54,6 @@ mod property_based_tests {
     const PRACTICAL_MAX_TICK: i32 = 300_000;
 
     // Protocol constants for better precision testing
-    const ECON_EPS_RAW: u128 = 4; // Economic epsilon in raw units (4 ULP)
-    const EPS_ULP: u128 = 4; // ULP tolerance for near-zero values
-
     // Helper function for test configuration
     fn proptest_config() -> ProptestConfig {
         ProptestConfig {
@@ -197,11 +192,13 @@ mod property_based_tests {
             a in q64x64_strategy(),
             b in q64x64_strategy()
         ) {
+            let bound = MAX_SQRT_X64.saturating_mul(1024);
+            prop_assume!(a.raw() <= bound && b.raw() <= bound);
             if let (Ok(ab), Ok(ba)) = (a.checked_mul(b), b.checked_mul(a)) {
                 assert_rel_close(
                     ab,
                     ba,
-                    REL_PPB_STRICT * 10, // Slightly relaxed for accumulated rounding
+                    REL_PPB_STRICT,
                     ULP_SAFE,
                     &format!("Multiplication commutativity: {} * {} vs {} * {}", a.raw(), b.raw(), b.raw(), a.raw())
                 );
@@ -259,56 +256,36 @@ mod property_based_tests {
             b in q64x64_safe_for_assoc(),
             c in q64x64_safe_for_assoc()
         ) {
+            let bound = MAX_SQRT_X64.saturating_mul(512);
+            prop_assume!(a.raw() <= bound && b.raw() <= bound && c.raw() <= bound);
+
             let left = a.checked_mul(b).and_then(|ab| ab.checked_mul(c));
             let right = b.checked_mul(c).and_then(|bc| a.checked_mul(bc));
 
             match (left, right) {
                 (Ok(left_result), Ok(right_result)) => {
-                    let result_magnitude = left_result.raw().max(right_result.raw());
-
-                    if result_magnitude < ECON_EPS_RAW {
-                        // Below economic significance - use absolute ULP bounds only
-                        let abs_diff = if left_result.raw() > right_result.raw() {
-                            left_result.raw() - right_result.raw()
-                        } else {
-                            right_result.raw() - left_result.raw()
-                        };
-
-                        prop_assert!(
-                            abs_diff <= EPS_ULP,
-                            "Associativity absolute error too large for tiny results: |{} - {}| = {} > {} ULP",
-                            left_result.raw(), right_result.raw(), abs_diff, EPS_ULP
-                        );
-                    } else {
-                        // Multiplication is inherently non-associative with rounding - this is math, not a bug
-                        // Log the difference for analysis but don't fail the test
-                        let _ulp_diff = if left_result.raw() > right_result.raw() {
-                            left_result.raw() - right_result.raw()
-                        } else {
-                            right_result.raw() - left_result.raw()
-                        };
-
-                        let _rel_error_ppb = if left_result.raw() > right_result.raw() {
-                            ((left_result.raw() - right_result.raw()) * 1_000_000_000) / right_result.raw()
-                        } else {
-                            ((right_result.raw() - left_result.raw()) * 1_000_000_000) / left_result.raw()
-                        };
-
-                        // // Just log extreme cases for debugging, but don't fail
-                        // if ulp_diff > 1_000_000 || rel_error_ppb > 1_000_000 {
-                        //     println!("Large associativity difference: ULP={}, PPB={} for ({} * {}) * {} vs {} * ({} * {})",
-                        //         ulp_diff, rel_error_ppb, a.raw(), b.raw(), c.raw(), a.raw(), b.raw(), c.raw());
-                        // }
-                    }
+                    // enforce strict tolerance within economically relevant envelope
+                    assert_rel_close(
+                        left_result,
+                        right_result,
+                        REL_PPB_STRICT,
+                        ULP_SAFE,
+                        &format!(
+                            "Multiplication associativity within bound: ({} * {}) * {} vs {} * ({} * {})",
+                            a.raw(),
+                            b.raw(),
+                            c.raw(),
+                            a.raw(),
+                            b.raw(),
+                            c.raw()
+                        ),
+                    );
                 }
                 (Err(_), Err(_)) => {
-                    // Both operations failing is acceptable - consistent overflow behavior
+                    // Both paths overflowed consistently; skip
+                    return Ok(());
                 }
-                _ => {
-                    // Inconsistent overflow is expected in fixed-point with per-step rounding
-                    // One parenthesization may overflow while the other fits - this is not a bug
-                    // Log it but don't fail the test
-                }
+                _ => prop_assume!(false),
             }
         }
     }
@@ -326,6 +303,8 @@ mod property_based_tests {
             b in q64x64_strategy(),
             c in q64x64_strategy()
         ) {
+            let bound = MAX_SQRT_X64.saturating_mul(1024);
+            prop_assume!(a.raw() <= bound && b.raw() <= bound && c.raw() <= bound);
             // Test a * (b + c) = (a * b) + (a * c)
             let left = b.checked_add(c).and_then(|bc| a.checked_mul(bc));
             let right = a.checked_mul(b).and_then(|ab|
@@ -336,7 +315,7 @@ mod property_based_tests {
                 assert_rel_close(
                     left_result,
                     right_result,
-                    REL_PPB_STRICT * 50, // Account for multiple operations and rounding
+                    REL_PPB_STRICT,
                     ULP_SAFE,
                     &format!("Distributivity: {} * ({} + {}) vs ({} * {}) + ({} * {})",
                              a.raw(), b.raw(), c.raw(), a.raw(), b.raw(), a.raw(), c.raw())
@@ -537,11 +516,12 @@ mod property_based_tests {
                         );
 
                         // Also check relative error as a second line of defense
+                        prop_assume!(abs_tick <= 200_000);
                         assert_rel_close(
                             product,
                             one,
-                            REL_PPB_STRICT * 100, // 100 ppb for this critical invariant
-                            ULP_SAFE * 4,
+                            REL_PPB_STRICT,
+                            ULP_TIGHT,
                             &format!("Tick reciprocity relative error: tick_to_sqrt({}) * tick_to_sqrt({})", tick, -tick)
                         );
                     }

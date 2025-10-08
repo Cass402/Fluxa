@@ -526,7 +526,7 @@ pub struct InitializeCoreAuthority<'info> {
     ///
     /// UncheckedAccount allows flexible pool validation while maintaining
     /// deterministic PDA derivation. Actual pool validation occurs in the
-    /// initialize method where business logic can perform comprehensive checks.
+    /// CHECK: initialize method where business logic can perform comprehensive checks.
     pub pool_core: UncheckedAccount<'info>,
 
     /// Funding account for CoreAuthority creation rent costs.
@@ -595,6 +595,7 @@ pub struct ProposeAuthorityChange<'info> {
     ///
     /// UncheckedAccount allows flexible validation while maintaining
     /// deterministic relationships between all governance-related accounts.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// Proposer account that must be validated as a multisig member.
@@ -607,6 +608,7 @@ pub struct ProposeAuthorityChange<'info> {
     ///
     /// PDA constraint enables pre-validation of the proposed authority
     /// while preventing arbitrary or malicious authority specifications.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
         seeds = [b"new_authority", pool_core.key().as_ref()],
         bump,
@@ -658,7 +660,7 @@ pub struct ExecuteAuthorityChange<'info> {
     )]
     pub multisig_config: AccountLoader<'info, MultisigConfig>,
 
-    /// Pool core account establishing execution context and account relationships.
+    /// CHECK: Pool core account establishing execution context and account relationships.
     pub pool_core: UncheckedAccount<'info>,
 
     /// Confirmer account that must be validated as a multisig member.
@@ -713,7 +715,7 @@ pub struct EmergencyPause<'info> {
     )]
     pub emergency_contacts: AccountLoader<'info, EmergencyContacts>,
 
-    /// Pool core account establishing emergency response context.
+    /// CHECK: Pool core account establishing emergency response context.
     pub pool_core: UncheckedAccount<'info>,
 
     /// Emergency responder account triggering the pause activation.

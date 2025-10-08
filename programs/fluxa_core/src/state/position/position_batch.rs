@@ -537,7 +537,7 @@ pub struct InitializeBatch<'info> {
     )]
     pub batch: AccountLoader<'info, PositionBatch>,
 
-    /// Pool account. Marked as CHECK to allow for custom validation logic in the handler, as pool structure may evolve.
+    /// CHECK: Pool account. Marked as CHECK to allow for custom validation logic in the handler, as pool structure may evolve.
     pub pool: AccountInfo<'info>,
 
     /// The owner of the batch. Must sign to prevent unauthorized creation.
@@ -567,7 +567,7 @@ pub struct BatchUpdatePositions<'info> {
     )]
     pub batch: AccountLoader<'info, PositionBatch>,
 
-    /// Pool account. Marked as CHECK to allow for custom validation logic in the handler, as pool structure may evolve.
+    /// CHECK: Pool account. Marked as CHECK to allow for custom validation logic in the handler, as pool structure may evolve.
     pub pool: AccountInfo<'info>,
 
     /// The owner of the batch. Must sign to prevent unauthorized updates.

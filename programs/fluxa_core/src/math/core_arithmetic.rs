@@ -333,7 +333,21 @@ impl Q64x64 {
 /// without explicit handling, preventing subtle bugs where negative balances
 /// might be interpreted as very large positive values.
 #[repr(transparent)]
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Pod, Zeroable)]
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Pod,
+    Zeroable,
+    InitSpace,
+    AnchorSerialize,
+    AnchorDeserialize,
+)]
 pub struct Q64x64Signed(i128);
 
 /// Signed fixed-point arithmetic with overflow protection and sign handling.
@@ -898,11 +912,15 @@ pub fn tick_to_sqrt_x64(tick: i32) -> Result<Q64x64> {
 pub fn liquidity_from_amount_0(sqrt_a: Q64x64, sqrt_b: Q64x64, amount0: u64) -> Result<u128> {
     require!(sqrt_a.raw() < sqrt_b.raw(), MathError::OutOfRange);
 
-    let delta = sqrt_b.raw() - sqrt_a.raw();
-    // Numerator: amount0 * sqrt_a (converted to raw fixed-point representation)
-    let raw_n = mul_div(amount0 as u128, sqrt_a.raw(), 1)?;
-    // Final calculation: (amount0 * sqrt_a * sqrt_b) / (sqrt_b - sqrt_a)
-    mul_div(raw_n, sqrt_b.raw(), delta)
+    // Use single U256 pipeline to avoid intermediate overflow in (amount0 * sqrt_a * sqrt_b) / delta
+    // This prevents spurious overflow when intermediate results exceed u128 but final result fits
+    let delta = U256::from(sqrt_b.raw() - sqrt_a.raw());
+    let num = U256::from(amount0) * U256::from(sqrt_a.raw()) * U256::from(sqrt_b.raw());
+    let res = num / delta;
+    if res > U256::from(u128::MAX) {
+        return Err(MathError::Overflow.into());
+    }
+    Ok(res.as_u128())
 }
 
 /// Calculates liquidity contribution from token1 amount within a price range.

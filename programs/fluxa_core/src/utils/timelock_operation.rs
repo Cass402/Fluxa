@@ -463,7 +463,7 @@ pub struct CreateTimelockOperation<'info> {
     )]
     pub timelock_operation: AccountLoader<'info, TimelockOperation>,
 
-    /// the pool core account associated with the operation
+    /// CHECK: the pool core account associated with the operation
     pub pool_core: UncheckedAccount<'info>,
 
     /// the payer who will fund the operation
@@ -488,7 +488,7 @@ pub struct ConfirmTimelockOperation<'info> {
     )]
     pub timelock_operation: AccountLoader<'info, TimelockOperation>,
 
-    /// the pool core account associated with the operation
+    /// CHECK: the pool core account associated with the operation
     pub pool_core: UncheckedAccount<'info>,
 
     /// the confirmer who will confirm the operation
@@ -506,7 +506,7 @@ pub struct ExecuteTimelockOperation<'info> {
     )]
     pub timelock_operation: AccountLoader<'info, TimelockOperation>,
 
-    /// the pool core account associated with the operation
+    /// CHECK: the pool core account associated with the operation
     pub pool_core: UncheckedAccount<'info>,
 
     /// the executor who will execute the operation
@@ -524,7 +524,7 @@ pub struct CancelTimelockOperation<'info> {
     )]
     pub timelock_operation: AccountLoader<'info, TimelockOperation>,
 
-    /// the pool core account associated with the operation
+    /// CHECK: the pool core account associated with the operation
     pub pool_core: UncheckedAccount<'info>,
 
     /// the authority who can cancel the operation

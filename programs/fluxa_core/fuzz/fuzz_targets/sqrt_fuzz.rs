@@ -10,6 +10,10 @@
 #![no_main]
 
 use fluxa_core::math::core_arithmetic::{sqrt_x64, Q64x64};
+use fluxa_core::utils::constants::{MAX_SQRT_X64, MIN_SQRT_X64};
+use fluxa_core_fuzz::{
+    assert_rel_close_raw, REL_PPB_SQUARED, REL_PPB_STRICT, ULP_SAFE, ULP_SQUARED_STRICT,
+};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -31,27 +35,13 @@ fuzz_target!(|data: &[u8]| {
             // Result is u128, so it's always >= 0 by definition
             // Test mathematical property: sqrt(x)² ≈ x (within reasonable precision)
             if let Ok(squared) = result.checked_mul(result) {
-                // For most values, the squared result should be close to original
-                // Allow some precision loss due to fixed-point arithmetic
-                let diff = if squared.raw() >= input.raw() {
-                    squared.raw() - input.raw()
-                } else {
-                    input.raw() - squared.raw()
-                };
-
-                // Precision tolerance: allow up to 1000 ULPs of error for numerical stability
-                // This accounts for Newton-Raphson convergence limits and fixed-point rounding
-                if input.raw() > 0 && input.raw() < u128::MAX / 1000 {
-                    let relative_error = (diff as f64) / (input.raw() as f64);
-                    assert!(
-                        relative_error < 0.001,
-                        "sqrt precision too low: input={}, sqrt={}, squared={}, relative_error={}",
-                        input.raw(),
-                        result.raw(),
-                        squared.raw(),
-                        relative_error
-                    );
-                }
+                assert_rel_close_raw(
+                    squared.raw(),
+                    input.raw(),
+                    REL_PPB_SQUARED,
+                    ULP_SQUARED_STRICT,
+                    "sqrt_x64 squared-back",
+                );
             }
 
             // Test monotonicity: if we have a second input, sqrt should preserve ordering
@@ -93,10 +83,6 @@ fuzz_target!(|data: &[u8]| {
     let _ = sqrt_x64(Q64x64::from_raw(MIN_SQRT_X64));
     let _ = sqrt_x64(Q64x64::from_raw(MAX_SQRT_X64));
 
-    // Test that sqrt of squared values returns approximately original
-    // Use protocol-realistic ranges based on actual AMM bounds
-    use fluxa_core::utils::constants::{MAX_SQRT_X64, MIN_SQRT_X64};
-
     // For testing sqrt(x²) = x, we need values where x² won't underflow
     // Use a range that covers realistic AMM prices but avoids precision limits
     let min_testable = MIN_SQRT_X64.max(1u128 << 38); // Use protocol min or precision floor
@@ -108,21 +94,12 @@ fuzz_target!(|data: &[u8]| {
             if squared.raw() >= 1000 {
                 // Ensure adequate precision for sqrt test
                 if let Ok(sqrt_result) = sqrt_x64(squared) {
-                    let diff = if sqrt_result.raw() >= input.raw() {
-                        sqrt_result.raw() - input.raw()
-                    } else {
-                        input.raw() - sqrt_result.raw()
-                    };
-
-                    // sqrt(x²) should equal x within reasonable precision
-                    let relative_error = (diff as f64) / (input.raw() as f64);
-                    assert!(
-                        relative_error < 0.001, // 0.1% tolerance for fixed-point precision
-                        "sqrt(x²) != x: x={}, x²={}, sqrt(x²)={}, relative_error={}",
-                        input.raw(),
-                        squared.raw(),
+                    assert_rel_close_raw(
                         sqrt_result.raw(),
-                        relative_error
+                        input.raw(),
+                        REL_PPB_STRICT,
+                        ULP_SAFE,
+                        "sqrt_x64(squared) round-trip",
                     );
                 }
             }

@@ -12,6 +12,7 @@
 //! - Deterministic chained operations (swap-like simulation)
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::pubkey::Pubkey;
 use fluxa_core::error::MathError;
 use fluxa_core::math::core_arithmetic::{
     liquidity_from_amount_0, liquidity_from_amount_1, mul_div, mul_div_round_up, tick_to_sqrt_x64,
@@ -23,7 +24,6 @@ use fluxa_core::math::liquidity_math::{
 };
 use fluxa_core::state::position::position_account::Position;
 use fluxa_core::utils::constants::ONE_X64;
-use solana_program::pubkey::Pubkey;
 
 // Helper to build a Position in-memory (bypassing Anchor account init for pure math tests)
 fn build_position(tick_lower: i32, tick_upper: i32, liquidity_raw: u128, nonce: u16) -> Position {
@@ -51,19 +51,6 @@ fn build_position(tick_lower: i32, tick_upper: i32, liquidity_raw: u128, nonce: 
     pos.status_flags = Position::FLAG_ACTIVE;
     pos.position_hash = pos.calculate_optimized_hash();
     pos
-}
-
-// Approximate relative error helper (PPB) for u128 raw values
-fn relative_error_ppb(actual: u128, expected: u128) -> u128 {
-    if expected == 0 {
-        return if actual == 0 { 0 } else { u128::MAX };
-    }
-    let diff = if actual > expected {
-        actual - expected
-    } else {
-        expected - actual
-    };
-    (diff.saturating_mul(1_000_000_000u128)) / expected
 }
 
 #[test]
@@ -215,7 +202,7 @@ fn integration_error_propagation() {
     // Division by zero path inside amount_0 when sqrt_lower == 0
     let bad =
         calculate_amount_0_delta_wrapper(Q64x64::zero(), Q64x64::from_int(2), Q64x64::from_int(1));
-    assert!(matches!(bad, Err(_)));
+    assert!(bad.is_err());
 }
 
 // Wrapper to access private helper for error surface test
@@ -252,7 +239,7 @@ fn chained_arithmetic_stability() {
     assert_eq!(inc, inc2);
     let rel_ppb = inc * 1_000_000_000 / combined;
     assert!(
-        rel_ppb >= 4_500_000 && rel_ppb <= 4_600_000,
+        (4_500_000..=4_600_000).contains(&rel_ppb),
         "Fee increment outside expected band: {} ppb",
         rel_ppb
     );

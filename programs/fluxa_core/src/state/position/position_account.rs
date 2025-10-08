@@ -300,7 +300,7 @@ pub struct CreatePosition<'info> {
     )]
     pub batch: AccountLoader<'info, PositionBatch>,
 
-    /// Pool account. Marked as CHECK to allow for custom validation logic in the handler, as pool structure may evolve.
+    /// CHECK: Pool account. Marked as CHECK to allow for custom validation logic in the handler, as pool structure may evolve.
     pub pool: AccountInfo<'info>,
 
     /// The owner of the position. Must sign to prevent unauthorized creation.

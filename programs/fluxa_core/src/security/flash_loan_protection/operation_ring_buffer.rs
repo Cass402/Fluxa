@@ -4,7 +4,7 @@ use crate::utils::constants::{FLASH_SEQUENCE_PATTERN, OPERATION_WINDOW_SIZE, PAT
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct OperationRingBuffer {
     pub operations: [CompactOperation; OPERATION_WINDOW_SIZE],

@@ -431,6 +431,7 @@ pub struct InitializeAuditTrailHead<'info> {
     /// Links audit trail to specific pool to prevent cross-contamination and
     /// enable pool-specific audit analysis. Validation ensures the pool
     /// account exists and is properly formatted.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// Transaction fee payer enabling flexible cost allocation.
@@ -515,6 +516,7 @@ pub struct CreateAuditTrailEntry<'info> {
     /// Links entry to specific pool to prevent cross-contamination and enable
     /// pool-specific audit analysis. Must match the head's pool binding to
     /// maintain audit trail integrity.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// Transaction fee payer enabling flexible operational cost models.

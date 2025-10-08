@@ -30,7 +30,7 @@ const fn min_tick_spacing_for_coverage() -> u16 {
 ///
 /// # Why this struct?
 /// - Reduces storage footprint for timing metadata, supporting efficient tick compression and migration.
-#[derive(Default, Copy, Clone, Pod, Zeroable)]
+#[derive(Default, Copy, Clone, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct SlotEpoch {
     pub base_epoch_slot: u64,
@@ -41,7 +41,7 @@ pub struct SlotEpoch {
 /// # Why this struct?
 /// - Encodes two Q64.64 fee values into a single u64 for space efficiency.
 /// - Tracks compression loss for auditability and protocol safety.
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[derive(Copy, Clone, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct PackedFees {
     /// Fee data packed into 64 bits (24 bits per fee + control bits)
@@ -74,7 +74,7 @@ impl PackedFees {
 /// - Encodes all relevant tick data in a compact, zero-copy format for efficient on-chain storage and migration.
 /// - Compression loss and suspicious activity are tracked for protocol safety and auditability.
 /// - Padding ensures alignment and deterministic layout for bytemuck compatibility.
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[derive(Copy, Clone, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
 #[repr(C)]
 pub struct CompressedTick {
     pub liquidity_net: Q64x64Signed,      // 16 bytes - matches TickData
@@ -119,6 +119,7 @@ impl Default for CompressedTick {
 /// - Inline tick storage avoids page allocation for small pools, minimizing CU and rent costs.
 /// - Bitmap and page references enable scalable tick management for large pools.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct CompressedTickStorage {
     // Pool identification and metadata

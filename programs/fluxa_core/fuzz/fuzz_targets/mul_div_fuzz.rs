@@ -86,25 +86,10 @@ fuzz_target!(|data: &[u8]| {
                 // Only verify if the expected result fits in u128
                 if expected_u256 <= U256::from(u128::MAX) {
                     let expected = expected_u256.as_u128();
-
-                    // Results should be close (within 1 due to rounding differences)
-                    let diff = if result >= expected {
-                        result - expected
-                    } else {
-                        expected - result
-                    };
-                    assert!(
-                        diff <= 1,
-                        "mul_div({}, {}, {}) = {} but U256 ({}*{})/{} = {}, diff={}",
-                        a,
-                        b,
-                        c,
-                        result,
-                        a,
-                        b,
-                        c,
-                        expected,
-                        diff
+                    assert_eq!(
+                        result, expected,
+                        "mul_div({}, {}, {}) mismatch: got {}, expected {}",
+                        a, b, c, result, expected
                     );
                 }
             }

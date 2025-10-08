@@ -3,7 +3,7 @@ use crate::utils::constants::{BITSET_AGING_SLOTS, RISK_DECAY_RATE_Q64};
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorDeserialize, AnchorSerialize)]
 #[repr(C)]
 pub struct RiskDecayAccumulator {
     pub accumulated_decay: Q64x64,
@@ -40,7 +40,7 @@ impl RiskDecayAccumulator {
     }
 }
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorDeserialize, AnchorSerialize)]
 #[repr(C)]
 pub struct DualBitsetAging {
     pub bits_new: u64,

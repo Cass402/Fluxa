@@ -449,7 +449,7 @@ pub struct InitializeEmergencyContacts<'info> {
     )]
     pub emergency_contacts: AccountLoader<'info, EmergencyContacts>,
 
-    /// Pool core account establishing emergency response context and authority relationships.
+    /// CHECK: Pool core account establishing emergency response context and authority relationships.
     pub pool_core: UncheckedAccount<'info>,
 
     /// Funding account for emergency registry creation with separation from operational control.

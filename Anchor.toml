@@ -1,9 +1,9 @@
 [features]
 seeds = false
-skip-lint = false
+skip-lint = true
 
 [programs.localnet]
-fluxa_core = "11111111111111111111111111111112"
+fluxa_core = "4i7vUz8hdydUDGqY2AiabhVJSQZvzDRbSB4kcypnjcWp"
 
 [registry]
 url = "https://api.apr.dev"

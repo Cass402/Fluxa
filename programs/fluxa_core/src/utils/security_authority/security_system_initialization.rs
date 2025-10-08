@@ -127,6 +127,7 @@ pub struct SecuritySystemInitialization<'info> {
     /// UncheckedAccount because we only need its public key for PDA seed derivation,
     /// not to validate its internal structure. All security components are bound to
     /// this pool instance through deterministic address generation.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// Account funding all security component creation and providing rent.

@@ -5,30 +5,14 @@
 //! and economic security in mind, using deterministic fixed-point arithmetic throughout.
 
 use crate::math::core_arithmetic::*;
+use crate::math::tests::precision::{
+    assert_rel_close, REL_PPB_SQUARED, REL_PPB_STRICT, ULP_SAFE, ULP_TIGHT,
+};
 use crate::utils::constants::{FRAC_BITS, MAX_SQRT_X64, MAX_TICK, MIN_SQRT_X64, MIN_TICK, ONE_X64};
 use anchor_lang::error::Error as AnchorError;
-use ethnum::U256;
 
 #[cfg(test)]
 use rug::{ops::Pow, Float};
-
-// ==================== MAINNET-GRADE PRECISION CONSTANTS ====================
-
-/// Relative error tolerance in parts per billion (PPB) for strict mathematical operations.
-/// Used for functions requiring maximum precision like tick-to-price conversions.
-pub const REL_PPB_STRICT: u128 = 1; // 1e-9 relative error
-
-/// Relative error tolerance for squared-back verification checks.
-/// Accounts for error amplification in operations like sqrt(x)² ≈ x.
-pub const REL_PPB_SQUARED: u128 = 10; // 1e-8 relative error
-
-/// Tight ULP (Unit in Last Place) tolerance for high-precision operations.
-/// Used when mathematical result should be very close to expected value.
-pub const ULP_TIGHT: u128 = 2; // 2 raw Q64.64 ULPs
-
-/// Safe ULP tolerance for operations in challenging numerical domains.
-/// Provides margin for operations near boundaries or with complex calculations.
-pub const ULP_SAFE: u128 = 4; // 4 ULPs
 
 // ==================== PRECISION ASSERTION HELPERS ====================
 
@@ -73,72 +57,6 @@ fn generate_tick_base_ref(exponent: f64) -> Q64x64 {
     };
 
     Q64x64::from_raw(raw_value)
-}
-
-/// Asserts that two Q64x64 values are approximately equal within specified tolerances.
-///
-/// This function implements the mainnet-grade precision checking that ensures
-/// mathematical operations maintain required accuracy for consensus-critical calculations.
-///
-/// ## Parameters
-/// - `actual`: The computed result to verify
-/// - `expected`: The mathematically correct expected value
-/// - `rel_ppb`: Maximum relative error in parts per billion
-/// - `ulps`: Maximum error in ULPs (Units in Last Place)
-/// - `context`: Descriptive context for error messages
-///
-/// ## Tolerance Logic
-/// The assertion passes if EITHER condition is met:
-/// 1. Relative error ≤ rel_ppb (for large values where ULP becomes too strict)
-/// 2. Absolute ULP difference ≤ ulps (for small values where relative error is too strict)
-///
-/// This dual-tolerance approach handles the full Q64.64 range correctly.
-pub fn assert_rel_close(
-    actual: Q64x64,
-    expected: Q64x64,
-    rel_ppb: u128,
-    ulps: u128,
-    context: &str,
-) {
-    let actual_raw = actual.raw();
-    let expected_raw = expected.raw();
-
-    // Handle exact equality case
-    if actual_raw == expected_raw {
-        return;
-    }
-
-    // Calculate ULP difference
-    let ulp_diff = actual_raw.abs_diff(expected_raw);
-
-    // ULP tolerance check
-    if ulp_diff <= ulps {
-        return;
-    }
-
-    // Relative error check (avoid division by zero)
-    if expected_raw > 0 {
-        // Calculate relative error in PPB using U256 arithmetic to prevent overflow
-        let num = U256::from(ulp_diff) * U256::from(1_000_000_000u128);
-        let den = U256::from(expected_raw);
-        let rel_error_ppb = (num / den).as_u128();
-
-        if rel_error_ppb <= rel_ppb {
-            return;
-        }
-
-        panic!(
-            "Precision assertion failed in {}: actual={:032x}, expected={:032x}, \
-             ulp_diff={}, rel_ppb_limit={}, actual_rel_ppb={}",
-            context, actual_raw, expected_raw, ulp_diff, rel_ppb, rel_error_ppb
-        );
-    }
-
-    panic!(
-        "Precision assertion failed in {}: actual={:032x}, expected={:032x}, \
-         ulp_diff={}, rel_ppb_limit={}, expected_raw=0 (no relative error calculation)",
-        context, actual_raw, expected_raw, ulp_diff, rel_ppb
-    );
 }
 
 // ==================== Q64x64 CORE OPERATIONS TESTS ====================
@@ -1033,6 +951,55 @@ mod tick_to_sqrt_tests {
                 POW2_COEFF[i + 1] > POW2_COEFF[i],
                 "POW2_COEFF must be monotonically increasing"
             );
+        }
+    }
+
+    #[test]
+    fn test_pow2_coefficient_tables_match_high_precision() {
+        use crate::math::core_arithmetic::{POW2_COEFF, POW2_COEFF_RECIP};
+        use rug::{float::Round, Float};
+
+        const PREC: u32 = 256;
+
+        // Construct 1.0001 exactly as 10001 / 10000 for deterministic precision
+        let mut base = Float::with_val(PREC, 10001u32);
+        base /= 10000u32;
+        let mut current = base.sqrt();
+
+        let scale = Float::with_val(PREC, 1u128 << 64);
+        let one = Float::with_val(PREC, 1);
+
+        let to_q64x64 = |value: &Float| -> u128 {
+            let scaled = Float::with_val(PREC, value * &scale);
+            let (rounded, _) = scaled
+                .to_integer_round(Round::Nearest)
+                .expect("conversion to integer should succeed");
+            rounded
+                .to_u128()
+                .expect("scaled value should fit in u128 for Q64.64 range")
+        };
+
+        for (index, (&coeff_raw, &recip_raw)) in
+            POW2_COEFF.iter().zip(POW2_COEFF_RECIP.iter()).enumerate()
+        {
+            let expected_coeff = to_q64x64(&current);
+            let coeff_diff = coeff_raw.abs_diff(expected_coeff);
+            assert!(
+                coeff_diff <= 1,
+                "POW2_COEFF[{index}] differs from high-precision value by {coeff_diff} ULPs (expected = {expected_coeff:#034x}, actual = {coeff_raw:#034x})"
+            );
+
+            let reciprocal_float = Float::with_val(PREC, &one / &current);
+            let expected_recip = to_q64x64(&reciprocal_float);
+            let recip_diff = recip_raw.abs_diff(expected_recip);
+            assert!(
+                recip_diff <= 1,
+                "POW2_COEFF_RECIP[{index}] differs from high-precision value by {recip_diff} ULPs (expected = {expected_recip:#034x}, actual = {recip_raw:#034x})"
+            );
+
+            if index + 1 < POW2_COEFF.len() {
+                current = Float::with_val(PREC, &current * &current);
+            }
         }
     }
 

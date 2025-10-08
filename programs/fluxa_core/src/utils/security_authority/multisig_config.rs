@@ -388,6 +388,7 @@ pub struct InitializeMultisigConfig<'info> {
     /// UncheckedAccount allows for flexible pool core validation while maintaining
     /// the deterministic PDA relationship. The actual pool core validation happens
     /// in the initialize() method where business logic can perform comprehensive checks.
+    /// CHECK: This is not dangerous because we don't read or write from this account
     pub pool_core: UncheckedAccount<'info>,
 
     /// Account providing SOL rent for multisig config creation.

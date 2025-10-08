@@ -13,6 +13,7 @@
 
 use fluxa_core::math::core_arithmetic::{tick_to_sqrt_x64, Q64x64};
 use fluxa_core::utils::constants::{MAX_TICK, MIN_TICK};
+use fluxa_core_fuzz::{assert_rel_close_raw, REL_PPB_STRICT, ULP_TIGHT};
 use libfuzzer_sys::fuzz_target;
 
 // We intentionally focus strict invariants on an economically relevant envelope.
@@ -62,20 +63,13 @@ fuzz_target!(|data: &[u8]| {
 
             // Test specific mathematical properties for certain tick values
             if tick == 0 {
-                // tick=0 should give sqrt_price approximately equal to sqrt(1.0001^0) = 1.0
                 let one = Q64x64::one();
-                let diff = if sqrt_price.raw() >= one.raw() {
-                    sqrt_price.raw() - one.raw()
-                } else {
-                    one.raw() - sqrt_price.raw()
-                };
-
-                // Allow small error due to coefficient precision
-                assert!(
-                    diff < 1000,
-                    "tick=0 should give sqrt_price≈1.0, got {} (diff={})",
+                assert_rel_close_raw(
                     sqrt_price.raw(),
-                    diff
+                    one.raw(),
+                    REL_PPB_STRICT,
+                    ULP_TIGHT,
+                    "tick_to_sqrt_x64(0)",
                 );
             }
 
@@ -114,11 +108,18 @@ fuzz_target!(|data: &[u8]| {
                             [popcount={}, mag_bits={}, practical=true]",
                             tick, -tick, product.raw(), one.raw(), ulp_diff, max_ulp_error, n, mag_bits);
 
-                        // Also check relative error as a second line of defense
-                        let relative_error = (ulp_diff as f64) / (one.raw() as f64);
-                        assert!(relative_error < 0.0001, // 0.01% tolerance for practical range
-                            "Tick reciprocity relative error too large: tick={}, relative_error={:.6}%",
-                            tick, relative_error * 100.0);
+                        if abs_tick <= 200_000 {
+                            assert_rel_close_raw(
+                                product.raw(),
+                                one.raw(),
+                                REL_PPB_STRICT,
+                                ULP_TIGHT,
+                                &format!(
+                                    "tick reciprocity fuzz: tick_to_sqrt({}) * tick_to_sqrt({})",
+                                    tick, -tick
+                                ),
+                            );
+                        }
                     }
                 }
             }
@@ -174,27 +175,14 @@ fuzz_target!(|data: &[u8]| {
                 tick_to_sqrt_x64(tick_sum),
             ) {
                 if let Ok(product) = sqrt_a.checked_mul(sqrt_b) {
-                    let diff = if product.raw() >= sqrt_sum.raw() {
-                        product.raw() - sqrt_sum.raw()
-                    } else {
-                        sqrt_sum.raw() - product.raw()
-                    };
-
-                    // This property may not hold exactly due to fixed-point rounding,
-                    // but should be close for reasonable tick values
-                    if tick_sum.abs() < 10000 {
-                        // Only test for reasonable ticks
-                        let relative_error = if sqrt_sum.raw() > 0 {
-                            (diff as f64) / (sqrt_sum.raw() as f64)
-                        } else {
-                            0.0
-                        };
-
-                        // Allow up to 0.1% relative error due to fixed-point precision limits
-                        if relative_error > 0.001 {
-                            // This is informational - extreme precision may not always hold
-                            // but we want to know when it doesn't for algorithm analysis
-                        }
+                    if tick_sum.abs() < 10_000 {
+                        assert_rel_close_raw(
+                            product.raw(),
+                            sqrt_sum.raw(),
+                            REL_PPB_STRICT,
+                            ULP_TIGHT,
+                            &format!("binary exponentiation consistency: {} + {}", tick_a, tick_b),
+                        );
                     }
                 }
             }

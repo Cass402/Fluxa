@@ -30,8 +30,8 @@ use crate::error::AdvancedAccountOptimizationError;
 use crate::math::core_arithmetic::{mul_div, Q64x64};
 use crate::utils::constants::{ACCOUNT_OVERHEAD_BYTES, MAX_ACCOUNT_SIZE, RENT_BUFFER_SHIFT};
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::Instruction;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
-use solana_program::instruction::Instruction;
 
 // =================== PROTOCOL CONSTANTS ===================
 

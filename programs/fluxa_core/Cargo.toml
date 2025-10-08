@@ -20,7 +20,6 @@ cpi = ["no-entrypoint"]
 [dependencies]
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.31.1", features = ["metadata"] }
-solana-program = "2.3.0"
 solana-compute-budget-interface = "2.2"
 ethnum = { version = "1.5.2", features = ["macros"], default-features = false }
 prusti-contracts = { version = "0.2.0", features = ["prusti"], optional = true }
@@ -33,6 +32,6 @@ solana-program-test = "2.3.2"
 solana-bpf-loader-program = "2.3.2"
 solana-sdk = "2.3.1"
 proptest = "1.7.0"
-criterion = { version = "0.6.0", features = ["html_reports"] }
+criterion = { version = "0.7.0", features = ["html_reports"] }
 rand = "0.9.1"
 rug = "1.28"

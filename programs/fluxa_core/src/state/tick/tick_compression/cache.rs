@@ -19,7 +19,7 @@ use bytemuck::{Pod, Zeroable};
 /// - Bitwise packing enables fast location decoding and supports both inline and page-based tick storage.
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, InitSpace, AnchorSerialize, AnchorDeserialize)]
 pub struct CachedTickAccess {
     pub tick_index: i32,       // 4 bytes
     pub location_packed: u32,  // 4 bytes - packed location info
@@ -92,6 +92,7 @@ impl CachedTickAccess {
 /// - Fixed-size arrays and bitwise packing enable deterministic layout and zero-copy migration.
 /// - Hot/cold path logic supports ultra-fast tick lookup for frequent access patterns.
 #[account(zero_copy(unsafe))]
+#[derive(InitSpace)]
 #[repr(C)]
 pub struct TickLookupCache {
     // Cache metadata (hot data first for cache line efficiency)
