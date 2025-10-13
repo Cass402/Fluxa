@@ -26,7 +26,7 @@ prusti-contracts = { version = "0.2.0", features = ["prusti"], optional = true }
 bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
 
 [dev-dependencies]
-anchor-client = "0.31.1"
+anchor-client = "0.32.1"
 tokio = { version = "1.45.1", features = ["full"] }
 solana-program-test = "2.3.2"
 solana-bpf-loader-program = "2.3.2"
