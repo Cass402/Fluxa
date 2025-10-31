@@ -30,7 +30,7 @@ tokio = { version = "1.45.1", features = ["full"] }
 solana-program-test = "2.3.2"
 solana-bpf-loader-program = "2.3.2"
 solana-sdk = "2.3.1"
-proptest = "1.7.0"
+proptest = "1.9.0"
 criterion = { version = "0.7.0", features = ["html_reports"] }
 rand = "0.9.1"
 rug = "1.28"
