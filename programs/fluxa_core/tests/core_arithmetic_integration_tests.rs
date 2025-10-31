@@ -15,15 +15,15 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::pubkey::Pubkey;
 use fluxa_core::error::MathError;
 use fluxa_core::math::core_arithmetic::{
-    liquidity_from_amount_0, liquidity_from_amount_1, mul_div, mul_div_round_up, tick_to_sqrt_x64,
-    Q64x64,
+    liquidity_from_amount_0, liquidity_from_amount_1, mul_div, mul_div_round_up, sqrt_x64,
+    tick_to_sqrt_x64, Q64x64,
 };
 use fluxa_core::math::liquidity_math::{
     calculate_amounts_for_liquidity_piecewise, calculate_liquidity,
     calculate_position_value_at_price,
 };
 use fluxa_core::state::position::position_account::Position;
-use fluxa_core::utils::constants::ONE_X64;
+use fluxa_core::utils::constants::{MAX_SQRT_X64, ONE_X64};
 
 // Helper to build a Position in-memory (bypassing Anchor account init for pure math tests)
 fn build_position(tick_lower: i32, tick_upper: i32, liquidity_raw: u128, nonce: u16) -> Position {
@@ -242,5 +242,216 @@ fn chained_arithmetic_stability() {
         (4_500_000..=4_600_000).contains(&rel_ppb),
         "Fee increment outside expected band: {} ppb",
         rel_ppb
+    );
+}
+
+#[test]
+fn sqrt_newton_raphson_precision_envelope() {
+    // Validate Newton–Raphson envelope across several magnitudes to ensure bounded residual error.
+    let candidates: [u128; 9] = [
+        ONE_X64 / 1_000_000,
+        ONE_X64 / 10_000,
+        ONE_X64 / 100,
+        ONE_X64,
+        ONE_X64 * 25,
+        ONE_X64 * 10_000u128,
+        ONE_X64 * 1_000_000u128,
+        ONE_X64
+            .checked_mul(250_000_000u128)
+            .expect("scale within bounds"),
+        MAX_SQRT_X64,
+    ];
+
+    let mut previous_root = None;
+    for raw in candidates {
+        let value = Q64x64::from_raw(raw);
+        let root = sqrt_x64(value).expect("sqrt_x64 should converge");
+        if let Some(prev) = previous_root {
+            assert!(
+                root.raw() >= prev,
+                "sqrt must stay monotonic ({} >= {})",
+                root.raw(),
+                prev
+            );
+        }
+
+        let reconstructed = mul_div(root.raw(), root.raw(), ONE_X64).unwrap();
+        let error = reconstructed.abs_diff(raw);
+        let tolerance = (raw / 1_000_000_000).max(64);
+        assert!(
+            error <= tolerance,
+            "sqrt reconstruction drift too large (value={}, error={}, tolerance={})",
+            raw,
+            error,
+            tolerance
+        );
+
+        previous_root = Some(root.raw());
+    }
+}
+
+#[test]
+fn liquidity_extremely_narrow_ranges() {
+    // Stress extremely tight tick spans to confirm liquidity math retains precision.
+    let base_ticks = [-220_000, -50_000, -1, 0, 1, 220_000];
+    let deposit = 1_250_000u64;
+
+    for base in base_ticks {
+        let sqrt_lower = tick_to_sqrt_x64(base).unwrap();
+        let sqrt_upper = tick_to_sqrt_x64(base + 1).unwrap();
+        let width = sqrt_upper.raw() - sqrt_lower.raw();
+        if width == 0 {
+            continue;
+        }
+        if width >= ONE_X64 / 1_000 {
+            // Skip broader spans — this stress suite targets sub-basis-point width behavior.
+            continue;
+        }
+
+        let liq0 = liquidity_from_amount_0(sqrt_lower, sqrt_upper, deposit).unwrap();
+        let liq1 = liquidity_from_amount_1(sqrt_lower, sqrt_upper, deposit).unwrap();
+        assert!(liq0 > 0 && liq1 > 0, "liquidity should stay positive");
+
+        if width <= 1 {
+            // With single-ULP separation there is no representable midpoint inside the range.
+            continue;
+        }
+
+        let mut mid_raw = (sqrt_lower.raw() + sqrt_upper.raw()) / 2;
+        if mid_raw <= sqrt_lower.raw() {
+            mid_raw = sqrt_lower.raw() + 1;
+        }
+        if mid_raw >= sqrt_upper.raw() {
+            mid_raw = sqrt_upper.raw() - 1;
+        }
+        if mid_raw <= sqrt_lower.raw() || mid_raw >= sqrt_upper.raw() {
+            continue;
+        }
+
+        let current = Q64x64::from_raw(mid_raw);
+        let minted =
+            calculate_liquidity(current, sqrt_lower, sqrt_upper, deposit, deposit).unwrap();
+        assert!(
+            minted >= liq0.min(liq1),
+            "minted liquidity lost density ({} < {})",
+            minted,
+            liq0.min(liq1)
+        );
+
+        let (back0, back1) = calculate_amounts_for_liquidity_piecewise(
+            current,
+            sqrt_lower,
+            sqrt_upper,
+            Q64x64::from_raw(minted),
+        )
+        .unwrap();
+
+        let delta0 = deposit.saturating_sub(back0);
+        let delta1 = deposit.saturating_sub(back1);
+
+        if liq0 <= liq1 {
+            assert!(
+                delta0 <= 5,
+                "token0 path lost precision: delta0={}, liq0={}, liq1={}",
+                delta0,
+                liq0,
+                liq1
+            );
+            assert!(
+                back1 <= deposit,
+                "token1 usage exceeded deposit: back1={} deposit={} liq0={} liq1={}",
+                back1,
+                deposit,
+                liq0,
+                liq1
+            );
+        } else {
+            assert!(
+                delta1 <= 5,
+                "token1 path lost precision: delta1={}, liq0={}, liq1={}",
+                delta1,
+                liq0,
+                liq1
+            );
+            assert!(
+                back0 <= deposit,
+                "token0 usage exceeded deposit: back0={} deposit={} liq0={} liq1={}",
+                back0,
+                deposit,
+                liq0,
+                liq1
+            );
+        }
+    }
+}
+
+#[test]
+fn chained_high_precision_operations() {
+    // Exercise mixed sqrt and mul/div chains to ensure stability over long compositions.
+    let start = Q64x64::from_int(25);
+    let factors = [3u64, 5, 9, 13, 21, 34, 55];
+    let mut accum = start;
+
+    let mut expected = start;
+
+    for &factor in &factors {
+        let scale = Q64x64::from_int(factor as u64);
+        accum = accum.checked_mul(scale).unwrap();
+        let rooted = sqrt_x64(accum).unwrap();
+        let sqrt_scale = sqrt_x64(scale).unwrap();
+        accum = rooted.checked_div(sqrt_scale).unwrap();
+        expected = sqrt_x64(expected).unwrap();
+    }
+
+    assert!(
+        accum.raw().abs_diff(expected.raw()) <= ONE_X64 / 1_000,
+        "iterative chain drifted (baseline={} final={})",
+        expected.raw(),
+        accum.raw()
+    );
+
+    let seed = ONE_X64
+        .checked_mul(50_000u128)
+        .expect("seed within u128 bounds");
+    let ratios: [(u128, u128); 5] = [
+        (ONE_X64 + 50, ONE_X64 - 3),
+        (ONE_X64 + 1_200, ONE_X64 + 7),
+        (ONE_X64.checked_mul(5).unwrap() / 4, ONE_X64),
+        (ONE_X64 + 65_000, ONE_X64 + 32),
+        (ONE_X64.checked_mul(9).unwrap() / 8, ONE_X64),
+    ];
+
+    let mut first = seed;
+    for &(num, den) in &ratios {
+        first = mul_div(first, num, den).unwrap();
+        first = mul_div_round_up(first, den, num).unwrap();
+    }
+
+    let mut replay = seed;
+    for &(num, den) in &ratios {
+        replay = mul_div(replay, num, den).unwrap();
+        replay = mul_div_round_up(replay, den, num).unwrap();
+    }
+
+    assert_eq!(first, replay, "chain must stay deterministic");
+
+    let final_q = Q64x64::from_raw(first);
+    let seed_q = Q64x64::from_raw(seed);
+    assert!(
+        final_q.raw().abs_diff(seed_q.raw()) <= ONE_X64 / 256,
+        "mul_div chain drift beyond tolerance (start={} end={})",
+        seed_q.raw(),
+        final_q.raw()
+    );
+
+    let sqrt_post = sqrt_x64(final_q).unwrap();
+    let rebuilt = mul_div(sqrt_post.raw(), sqrt_post.raw(), ONE_X64).unwrap();
+    let residual = rebuilt.abs_diff(first);
+    let allowed = (first / 500_000).max(32);
+    assert!(
+        residual <= allowed,
+        "post-chain sqrt reconstructed value drifted (residual={} allowed={})",
+        residual,
+        allowed
     );
 }

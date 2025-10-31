@@ -60,12 +60,9 @@ pub trait Bits {
     fn get_block(&self, position: usize) -> Self::Block {
         assert!(
             position < self.block_len(),
-            "{}",
-            format!(
-                "Bits::get_block: out of bounds ({}/{})",
-                position,
-                self.block_len()
-            )
+            "Bits::get_block: out of bounds ({}/{})",
+            position,
+            self.block_len()
         );
 
         let first_bit = Self::Block::mul_nbits(position);

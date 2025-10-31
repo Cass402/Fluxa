@@ -94,8 +94,11 @@ macro_rules! impl_bit_sliceable_adapter {
                 type Slice = ::adapter::BitSliceAdapter<Self>;
 
                 fn bit_slice(self, range: ::std::ops::Range<u64>) -> Self::Slice {
-                    assert!( range.start <= range.end,
-                             "{}", format!("{}::slice: bad range", stringify!($target)) );
+                    assert!(
+                        range.start <= range.end,
+                        "{}::slice: bad range",
+                        stringify!($target)
+                    );
                     ::adapter::BitSliceAdapter::new(self, range.start, range.end - range.start)
                 }
             }

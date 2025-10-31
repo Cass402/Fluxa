@@ -94,6 +94,9 @@ pnpm-debug.log*
 docs/**/chroma.sqlite3
 out.json
 wallets/
+lookup_table.py
+sdk/
+.serena
 
 # ----- IMPORTANT: DO NOT IGNORE THESE FILES -----
 # Keep frontend configuration
@@ -104,6 +107,3 @@ wallets/
 
 # Keep scripts
 !scripts/setup-test-accounts.sh
-
-lookup_table.py
-sdk/
