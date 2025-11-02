@@ -675,7 +675,6 @@ dependencies = [
  "bytemuck",
  "ethnum",
  "solana-compute-budget-interface",
- "solana-program",
 ]
 
 [[package]]
@@ -685,6 +684,7 @@ dependencies = [
  "ethnum",
  "fluxa_core",
  "libfuzzer-sys",
+ "solana-program",
 ]
 
 [[package]]

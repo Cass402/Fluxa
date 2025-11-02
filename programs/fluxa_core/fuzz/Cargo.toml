@@ -12,6 +12,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 ethnum = "1.5"
+solana-program = "2.3.0"
 
 [dependencies.fluxa_core]
 path = ".."
@@ -47,6 +48,27 @@ bench = false
 [[bin]]
 name = "crash_safety_fuzz"
 path = "fuzz_targets/crash_safety_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_calculate_amounts"
+path = "fuzz_targets/fuzz_calculate_amounts.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_calculate_liquidity"
+path = "fuzz_targets/fuzz_calculate_liquidity.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_position_value"
+path = "fuzz_targets/fuzz_position_value.rs"
 test = false
 doc = false
 bench = false

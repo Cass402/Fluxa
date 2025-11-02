@@ -11,8 +11,13 @@ use math::core_arithmetic::{
     liquidity_from_amount_0, liquidity_from_amount_1, mul_div, mul_div_q64, mul_div_round_up,
     recip_q64x64_nearest, sqrt_x64, tick_to_sqrt_x64, Q64x64,
 };
+use math::liquidity_math::{
+    calculate_amount_0_delta, calculate_amount_1_delta, calculate_amounts_for_liquidity_piecewise,
+    calculate_liquidity, calculate_position_value_at_price,
+};
+use state::position::position_account::Position;
 
-declare_id!("4i7vUz8hdydUDGqY2AiabhVJSQZvzDRbSB4kcypnjcWp");
+declare_id!("CCaEqq6JVbDhCC2ng1UvwvJXkGiKS5Um9G1Y22eeg8tN");
 
 #[program]
 pub mod fluxa_core {
@@ -97,6 +102,101 @@ pub mod fluxa_core {
         let _ = liquidity_from_amount_1(sqrt_a, sqrt_b, args.amount_1)?;
         Ok(())
     }
+
+    /// Temporary instruction for measuring compute units of `calculate_amount_0_delta`.
+    pub fn benchmark_calculate_amount_0_delta(
+        _ctx: Context<ComputeUnitBenchContext>,
+        args: BenchmarkCalculateAmountDeltaArgs,
+    ) -> Result<()> {
+        let sqrt_lower = Q64x64::from_raw(args.sqrt_price_lower);
+        let sqrt_upper = Q64x64::from_raw(args.sqrt_price_upper);
+        let liquidity = Q64x64::from_raw(args.liquidity);
+        let _ = calculate_amount_0_delta(sqrt_lower, sqrt_upper, liquidity)?;
+        Ok(())
+    }
+
+    /// Temporary instruction for measuring compute units of `calculate_amount_1_delta`.
+    pub fn benchmark_calculate_amount_1_delta(
+        _ctx: Context<ComputeUnitBenchContext>,
+        args: BenchmarkCalculateAmountDeltaArgs,
+    ) -> Result<()> {
+        let sqrt_lower = Q64x64::from_raw(args.sqrt_price_lower);
+        let sqrt_upper = Q64x64::from_raw(args.sqrt_price_upper);
+        let liquidity = Q64x64::from_raw(args.liquidity);
+        let _ = calculate_amount_1_delta(sqrt_lower, sqrt_upper, liquidity)?;
+        Ok(())
+    }
+
+    /// Temporary instruction for measuring compute units of `calculate_amounts_for_liquidity_piecewise`.
+    pub fn benchmark_calculate_amounts_piecewise(
+        _ctx: Context<ComputeUnitBenchContext>,
+        args: BenchmarkCalculateAmountsPiecewiseArgs,
+    ) -> Result<()> {
+        let sqrt_current = Q64x64::from_raw(args.sqrt_price_current);
+        let sqrt_lower = Q64x64::from_raw(args.sqrt_price_lower);
+        let sqrt_upper = Q64x64::from_raw(args.sqrt_price_upper);
+        let liquidity = Q64x64::from_raw(args.liquidity);
+        let _ = calculate_amounts_for_liquidity_piecewise(
+            sqrt_current,
+            sqrt_lower,
+            sqrt_upper,
+            liquidity,
+        )?;
+        Ok(())
+    }
+
+    /// Temporary instruction for measuring compute units of `calculate_liquidity`.
+    pub fn benchmark_calculate_liquidity(
+        _ctx: Context<ComputeUnitBenchContext>,
+        args: BenchmarkCalculateLiquidityArgs,
+    ) -> Result<()> {
+        let sqrt_current = Q64x64::from_raw(args.sqrt_price_current);
+        let sqrt_lower = Q64x64::from_raw(args.sqrt_price_lower);
+        let sqrt_upper = Q64x64::from_raw(args.sqrt_price_upper);
+        let _ = calculate_liquidity(
+            sqrt_current,
+            sqrt_lower,
+            sqrt_upper,
+            args.amount_0,
+            args.amount_1,
+        )?;
+        Ok(())
+    }
+
+    /// Temporary instruction for measuring compute units of `calculate_position_value_at_price`.
+    pub fn benchmark_calculate_position_value(
+        _ctx: Context<ComputeUnitBenchContext>,
+        args: BenchmarkCalculatePositionValueArgs,
+    ) -> Result<()> {
+        let position = Position {
+            owner: args.owner,
+            tick_lower: args.tick_lower,
+            tick_upper: args.tick_upper,
+            status_flags: Position::FLAG_ACTIVE,
+            position_nonce: 0,
+            _padding1: [0u8; 2],
+            liquidity: Q64x64::from_raw(args.liquidity),
+            fee_growth_inside_0_last: Q64x64::zero(),
+            fee_growth_inside_1_last: Q64x64::zero(),
+            tokens_owed_0: Q64x64::zero(),
+            tokens_owed_1: Q64x64::zero(),
+            total_fees_collected_0: Q64x64::zero(),
+            total_fees_collected_1: Q64x64::zero(),
+            creation_slot: 0,
+            last_update_slot: 0,
+            creation_timestamp: 0,
+            position_hash: [0u8; 32],
+            reserved: [0u64; 3],
+        };
+        let current_sqrt = Q64x64::from_raw(args.current_sqrt_price);
+        let _ = calculate_position_value_at_price(
+            &position,
+            current_sqrt,
+            args.token_0_price_usd,
+            args.token_1_price_usd,
+        )?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -147,4 +247,39 @@ pub struct BenchmarkLiquidityFromAmount1Args {
     pub sqrt_a: u128,
     pub sqrt_b: u128,
     pub amount_1: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BenchmarkCalculateAmountDeltaArgs {
+    pub sqrt_price_lower: u128,
+    pub sqrt_price_upper: u128,
+    pub liquidity: u128,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BenchmarkCalculateAmountsPiecewiseArgs {
+    pub sqrt_price_current: u128,
+    pub sqrt_price_lower: u128,
+    pub sqrt_price_upper: u128,
+    pub liquidity: u128,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BenchmarkCalculateLiquidityArgs {
+    pub sqrt_price_current: u128,
+    pub sqrt_price_lower: u128,
+    pub sqrt_price_upper: u128,
+    pub amount_0: u64,
+    pub amount_1: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BenchmarkCalculatePositionValueArgs {
+    pub owner: Pubkey,
+    pub tick_lower: i32,
+    pub tick_upper: i32,
+    pub liquidity: u128,
+    pub current_sqrt_price: u128,
+    pub token_0_price_usd: u64,
+    pub token_1_price_usd: u64,
 }

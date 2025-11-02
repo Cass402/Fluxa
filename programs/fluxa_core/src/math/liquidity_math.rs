@@ -24,8 +24,9 @@ use anchor_lang::prelude::*;
 ///
 /// # Usage
 /// Used by the AMM to determine how much token0 a user must deposit to mint a position, and for withdrawal calculations.
+/// Also exposed publicly for testing purposes to verify economic invariants.
 #[inline(always)]
-fn calculate_amount_0_delta(
+pub fn calculate_amount_0_delta(
     sqrt_price_lower: Q64x64,
     sqrt_price_upper: Q64x64,
     liquidity: Q64x64,
@@ -68,8 +69,9 @@ fn calculate_amount_0_delta(
 ///
 /// # Usage
 /// Used by the AMM to determine how much token1 a user must deposit to mint a position, and for withdrawal calculations.
+/// Also exposed publicly for testing purposes to verify economic invariants.
 #[inline(always)]
-fn calculate_amount_1_delta(
+pub fn calculate_amount_1_delta(
     sqrt_price_lower: Q64x64,
     sqrt_price_upper: Q64x64,
     liquidity: Q64x64,

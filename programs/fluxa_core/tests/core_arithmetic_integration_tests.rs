@@ -395,7 +395,7 @@ fn chained_high_precision_operations() {
     let mut expected = start;
 
     for &factor in &factors {
-        let scale = Q64x64::from_int(factor as u64);
+        let scale = Q64x64::from_int(factor);
         accum = accum.checked_mul(scale).unwrap();
         let rooted = sqrt_x64(accum).unwrap();
         let sqrt_scale = sqrt_x64(scale).unwrap();

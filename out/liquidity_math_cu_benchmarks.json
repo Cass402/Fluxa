@@ -1,0 +1,542 @@
+[
+  {
+    "name": "calculate_amount_0_delta",
+    "scenario": "best_case",
+    "description": "Tight range, minimal price spread",
+    "averageComputeUnits": 2864,
+    "maxComputeUnits": 2864,
+    "minComputeUnits": 2864,
+    "samples": [
+      {
+        "computeUnits": 2864,
+        "signature": "4a5d2rbbGRt6sK6y4bbufLXyxgQzDq4UgH9zSLfnwjC1mzWPtnBx49pCkpSAwHurZ16fzR5z5qToPqJpFFFqwGAk"
+      },
+      {
+        "computeUnits": 2864,
+        "signature": "5bzyvbTiKhBoHE3inbrWtN1AJpGYnj8bScSTrC1vtNTc4zchPzw8LGxEZ3AKCeffZXnr6rVbppyXhhCe5L7Yf9j9"
+      },
+      {
+        "computeUnits": 2864,
+        "signature": "27JdP3PSA4UUdC1NUgGLT98RG28wcQq9GtWu9CUV7aAh5PrgiYzuJ5RcXDrPh76h6LLTvXovT84FsFNDQxPzvy6m"
+      },
+      {
+        "computeUnits": 2864,
+        "signature": "24canrETZhuPXFYZzCxnge2DcGyGhewtH98QPjyAM5GbT9gzb6UgoLTST58UAWshdubRPe8T5bYwp2KT79HiA956"
+      },
+      {
+        "computeUnits": 2864,
+        "signature": "3sFQGjhp9H1q6pVpdZVhpapAH1YwZ8XQiDebnNjkKdwwGfF4EjZ2r2iTQ3EWEjJaEuDMrA5Py7ZP8vW6V6zdLzXV"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amount_0_delta",
+    "scenario": "common_case",
+    "description": "Standard concentrated liquidity range (10% width)",
+    "averageComputeUnits": 2849,
+    "maxComputeUnits": 2849,
+    "minComputeUnits": 2849,
+    "samples": [
+      {
+        "computeUnits": 2849,
+        "signature": "33yiRHYgDzR5rPJWbDuWWJYak6UUemHCtgVj9wxx7VF75p5dfZgJ1zJhaGZZH4rdBpvoC8AD79KKA993AFgcxCrz"
+      },
+      {
+        "computeUnits": 2849,
+        "signature": "5kxS8Ty7qU7zhsZyxe9u4PuQuXfjsg5WvFLQGk4bMp8iwacgVEF979yYmGMfHoL3BbDLVL4q6a1D6BZwjtpPC2WV"
+      },
+      {
+        "computeUnits": 2849,
+        "signature": "29wBQZBR3QCKvw11gVmb6FmT5JAkazXJ966vPQqefi3C45so8yMF9tYZpmfrgWKhJoDcpPsVga4XW9MGnUDyt4sF"
+      },
+      {
+        "computeUnits": 2849,
+        "signature": "v9PWPuJDe5Dm5ndVRqPKC53JoA4rimkS77kzxzbUG2xbKxhwHsDFaAqsDzZFytZ8UQamYmXUZNb85k5gosLAn4h"
+      },
+      {
+        "computeUnits": 2849,
+        "signature": "2BmxpjXCTLvLPKroERcnVVFPmeofcLmv6qw18fxicP2VKkJBA9xacfr6m1JePMLoHCChy7YeBhs3UiyZMvBeZQgb"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amount_0_delta",
+    "scenario": "worst_case",
+    "description": "Wide range with high liquidity",
+    "averageComputeUnits": 2860,
+    "maxComputeUnits": 2860,
+    "minComputeUnits": 2860,
+    "samples": [
+      {
+        "computeUnits": 2860,
+        "signature": "5DjcZgeA6Ek9E6vqDE7aZeHYmFiahpU7AEdZFsnHR1jkqH6T8qzcfjWbB2cg7898MbPNHvoBLnNMGDGQ8HpcFRZj"
+      },
+      {
+        "computeUnits": 2860,
+        "signature": "5EaKHBeNiqFhRLzeVjXuntWLrytNCw4YAtAvR4oxXjHAQC6b527KAngLBdQeV2AFhGwo59quA1gYbDAmQEPMdG7r"
+      },
+      {
+        "computeUnits": 2860,
+        "signature": "4PLaNgXsQ7nFo5MQhjTaZH6fyWWErGRqhzEoAmukVQq6sZDg1CYAt4BGLZEb5oMnJTAuS8WLgqTdRKaGQTiNLrn9"
+      },
+      {
+        "computeUnits": 2860,
+        "signature": "4kKdmKGBepALUJoWP76BDEJM5vH2wB3uE2tPzYdT3LZUSefBRme37WP1ERi3Y7xfx22SQV6k2FfAbRKCBgaHWkA8"
+      },
+      {
+        "computeUnits": 2860,
+        "signature": "5KcQ2r8ZXvXGpEFBLMLdYzNnvsrLHQa7bkrnv91NtfZfjYUjhqVrbCZ5oJEUpuYs4ZS8FQ8VsthciMCR6aEbpbDp"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amount_1_delta",
+    "scenario": "best_case",
+    "description": "Tight range, minimal price spread",
+    "averageComputeUnits": 960,
+    "maxComputeUnits": 960,
+    "minComputeUnits": 960,
+    "samples": [
+      {
+        "computeUnits": 960,
+        "signature": "4iBxW6CNu4S7susQV7i1CcmUMRf878TsY5SVfeqcD5yWvUmiQPGdHm9TGLLYBQ3jovH9WFDJQhBggmJFzFnkwHaD"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "oUK2BthpMyw4rA7n96aoA63DGQX5xsc5D17Bt52Bdwofr2P8uLkVYgjP2uSYimySfGtXwSzuWTyNf7TgFVAPEMg"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "5qQ6cM7YWgYoFdmfawMrW6nzP8nVYuefyQ2KCGAQe9kuYhBj2239KpeWyUYmCCitkSpUtqq4pr1YKoWvfy5FzHVZ"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "5QhczxyBGLehCYaoKq6ZEMY66wmVHgWpfr43d1wybvvpJNLEcksdBLk2K5ccgirtMHHGL29JJAwTZ9WSeedzCpJH"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "5XLQVS9adxsWoSbzPtqNUR2bk2jHGiW5iCFPGDQNDEVDY17ZQfg1rukhWiXRXx2jrLDCDvAAuPAtwvQ3NJ4dYatb"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amount_1_delta",
+    "scenario": "common_case",
+    "description": "Standard concentrated liquidity range (10% width)",
+    "averageComputeUnits": 961,
+    "maxComputeUnits": 961,
+    "minComputeUnits": 961,
+    "samples": [
+      {
+        "computeUnits": 961,
+        "signature": "2yHXC1dAe1gU2VckFoBaZ7vzvztapdToaYNCTQP8jYyNow3tWUHnEmKrFBdxBnStZk6moXbjw7FhjyRf8dSgzcfE"
+      },
+      {
+        "computeUnits": 961,
+        "signature": "64Z1xoJNc2WdJJG191VaRbtz8XNVEXKe93iE95LuQijEoghoZiuFXF8yUiPabeno8PhzSMuyG3F4aMcthTcMoxoL"
+      },
+      {
+        "computeUnits": 961,
+        "signature": "5SvcKNPsTLzAqxM4R2Ya9mQkQFE8hc5odQHLqD1vDbjPpy1iHYCEPaHwLpDChy9DeqA2LevXXLox8QP5w5Ebu13p"
+      },
+      {
+        "computeUnits": 961,
+        "signature": "2FDxFpZbyqkBzE9KPSurdMuXNGsGGu9BP2327ma8MV62gLDkZLufTTMUsA2SjcQgc7xoh9GesXiHW4F2iT31Kqvr"
+      },
+      {
+        "computeUnits": 961,
+        "signature": "Nq5VUig6nHF7pNZLzH46aUaSoqwuk1W6gW3TWuhx4QUcziSpedMaBELd4sYNwr3kqbxJZ7oSivx9u6AdBRTbQ6z"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amount_1_delta",
+    "scenario": "worst_case",
+    "description": "Wide range with high liquidity",
+    "averageComputeUnits": 960,
+    "maxComputeUnits": 960,
+    "minComputeUnits": 960,
+    "samples": [
+      {
+        "computeUnits": 960,
+        "signature": "3FHTrGiY5WGF6GQoJXQEBZijQ2sURf53wA38JNC7vhktuM8ZYrQ4XzNXgbRUd9qmCNBbn66wKSdLVoyL7wbbCxMi"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "58apThDcsZwxcdap1XT7FmuJ1dnPQdTRTxR7SDe9Nw9KhAk9TSdqM3gPdU6mKm55JpwNxtXcsVopoyo63sjxuueB"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "2GdZsyeQTG7DZMn8punwrhEvrvrJTATB12y1px1vzMHcZKpWy3rZFeHLGPz8MMKknfzjeXvoBAd1En9aHSkhThtc"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "3s3dtHusSkKJJhLkWcXaiDFWNnEf3jfQizzfu8fh2eeVsN2SQBshYzjUs59UPJP9wNrdgPK1CVTGUYsbXfC6TXAE"
+      },
+      {
+        "computeUnits": 960,
+        "signature": "5887yFxJayQ7vTy6r12Lprt5JWiQSAcVZCCPD7ajmnXZ4uPfZgkUrmYNLvGjm73stvfXiQs5b5UT7cwYgLMHECS6"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amounts_piecewise",
+    "scenario": "active_range",
+    "description": "Price within range (both tokens required)",
+    "averageComputeUnits": 3167,
+    "maxComputeUnits": 3167,
+    "minComputeUnits": 3167,
+    "samples": [
+      {
+        "computeUnits": 3167,
+        "signature": "5M17Vf2oYYAdsvh8WXNVtsaWL693GxzMvKkepX7PXoRarFbfJfVdtV4ZkiRqrbexWWbhKL8xGq4V9GiSGf5FS1DC"
+      },
+      {
+        "computeUnits": 3167,
+        "signature": "64bP1P5WieogQUYa14uW46iUjheESHuLAE4UhMPuci7pzDfxZYnveVicgU2KqBzsH9Y5duNxyeVYjVVaNEnmL1Qz"
+      },
+      {
+        "computeUnits": 3167,
+        "signature": "3MYE46iJ1wbpuR8esEeqxBv8HiAvMmxHzwzWnopyj2x878k9rvML9ftem3oCFtvEVad15K3eVTEKmUg4LXPv9h1K"
+      },
+      {
+        "computeUnits": 3167,
+        "signature": "SyZBZD117mvwQ9SmZDffYvtaFhKrFXCMzuumah84fVMQ2tdx8yEAkAFkuoJgpk5Rc4GniVCRJxz9NVN5wXKH2zK"
+      },
+      {
+        "computeUnits": 3167,
+        "signature": "2d5g65TeXNqrjdnzmMqahXnwrpbNbfdfx8pj99mEvMJhzGHusd7vuVws1QZN9GrKSL8WWHk2k4XYjMZwjBhzvhh4"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amounts_piecewise",
+    "scenario": "below_range",
+    "description": "Price below range (only token0 required)",
+    "averageComputeUnits": 2913,
+    "maxComputeUnits": 2913,
+    "minComputeUnits": 2913,
+    "samples": [
+      {
+        "computeUnits": 2913,
+        "signature": "ku3uYFBNyDkGuY1Zgiinx1S4K9qESL5VsGYfKw5cpGrds9k3L8nvTvmr2zJLMGTuvD5guhGTwJmUZDVE2DtVm18"
+      },
+      {
+        "computeUnits": 2913,
+        "signature": "2BySRZhdiD6ro7EtpsjiWb4KH7WTUmN6gjxbmtWNJMSrpL8jpUChHbUpZAqRDKFCuSNZMnoFsQumgNwrxqG11vCw"
+      },
+      {
+        "computeUnits": 2913,
+        "signature": "2cw8nfEXYGCEDsYp5vmSVxAKLNc9kc62bzwUoWe4SKovSrDKoKu3ns7vciv9ad6JC9XBZCU7SwtnG1fUCHohatXa"
+      },
+      {
+        "computeUnits": 2913,
+        "signature": "4z3uXmfpzTZmPswgHhLu18EAUB1bk4UoHpDSg9fXZQiquuh1we9q6jwUud6LQUnn91s57iNGMR4TyxZy7G8Rq4xD"
+      },
+      {
+        "computeUnits": 2913,
+        "signature": "2bJ7aWKwdZLZZobXxLeNq2cTo9ppmhxPPsvHU8WCNjwJQs5odQL3YAgBkiVEYxbN9Fv9rpahwtesCo6KHeDhoaXe"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amounts_piecewise",
+    "scenario": "above_range",
+    "description": "Price above range (only token1 required)",
+    "averageComputeUnits": 1024,
+    "maxComputeUnits": 1024,
+    "minComputeUnits": 1024,
+    "samples": [
+      {
+        "computeUnits": 1024,
+        "signature": "A72raS1ca3uWzHJekURg9PanVVjwsciwTFC42paJSKUDTvvfbu8VZHZoU4CKyBTEfdhTCPzvMQWWjWBoc1Vmi4s"
+      },
+      {
+        "computeUnits": 1024,
+        "signature": "3Yu5b5egjsEDicpPwf89SFSG7WH2DB6KVVcjM7RFkxfQiQVD1WhreheWSf4CEQzv5WLBuMurzDcZomMrnknzPuFh"
+      },
+      {
+        "computeUnits": 1024,
+        "signature": "54RvfEybQNrJYvT1nRcVdfY2tuNxEgpEYVUqzETuT6xSGioZCK5caXfPdMwLdgGSVDtBScGq7g6KaRwavRcMn31P"
+      },
+      {
+        "computeUnits": 1024,
+        "signature": "nTFXcgDL1Mcrv8WkTSqn4XhR38qLc7AxXH1TJbGPLaERQxFCBvSyWAg27j2uGKX7AUq9qdXjPby3TAazVecVxmd"
+      },
+      {
+        "computeUnits": 1024,
+        "signature": "quAmZejzoYYUJSG1PaCxRn6YzLjSid95rAyTCe8urwwNn5XKy5aezZVCLA3KzzkygMkQK7YLY3gccKkjsDkpfCe"
+      }
+    ]
+  },
+  {
+    "name": "calculate_amounts_piecewise",
+    "scenario": "worst_case_active",
+    "description": "Wide range, high liquidity, mid-range price",
+    "averageComputeUnits": 3380,
+    "maxComputeUnits": 3380,
+    "minComputeUnits": 3380,
+    "samples": [
+      {
+        "computeUnits": 3380,
+        "signature": "32WrXyRsRt2PLpc5DBsoyEXpn8hgpVz2WEeLoCuPWTwMgJkksgkwx61GSzN881EaW6ooqsoow3BSiCUaYR1xQj3j"
+      },
+      {
+        "computeUnits": 3380,
+        "signature": "4PGjzvpNNHzHYMSrNVMLhLQLfEBmiqvgw6tBJsonPsgttpYKs5PMi45zWYR3hm6vkffWgvkDFyEXwULZxCiiWcmr"
+      },
+      {
+        "computeUnits": 3380,
+        "signature": "4tH6qa1QUDtk9gJScu8FSHLwxWjDajLPMWPM354vpFNtPnYASQg16pkcDhMsYJPjF4Bewbhyp2fFv5HrgcBrwmpv"
+      },
+      {
+        "computeUnits": 3380,
+        "signature": "6Nmr1iWwE4JiSNpv7qax4mcCEcnVzABnfXaypNrmdnCsikh6MS1wuvx2mGSV8tceWTTJ2bf42dBn3nHbP9KR8f9"
+      },
+      {
+        "computeUnits": 3380,
+        "signature": "1Jv7Cm8ieszUeHorK1SSw3Pr6ECjg4PQqJHSuToSGmMEHpPGyiNDXDAy8z9EgkVQ4p5GLjiFM267bo35ohpbHB"
+      }
+    ]
+  },
+  {
+    "name": "calculate_liquidity",
+    "scenario": "dual_sided_balanced",
+    "description": "Both tokens provided, balanced amounts",
+    "averageComputeUnits": 4317,
+    "maxComputeUnits": 4317,
+    "minComputeUnits": 4317,
+    "samples": [
+      {
+        "computeUnits": 4317,
+        "signature": "Tm5VDMs2GY4qZY75YDe1ZQJt73cHvUGbmpDMvgeLN1hr7uLoP6VT6CuBxPT3GrrAKCbPMeBU3KE7XbaskznXgWS"
+      },
+      {
+        "computeUnits": 4317,
+        "signature": "3RrKt2khNF72tfFFhLG1rqLguU7yNbDsG3qdXYGT5yRx7LbREJAZuDYahAxQaTNxkd1n8mNHRfiRv2nRC52bFx96"
+      },
+      {
+        "computeUnits": 4317,
+        "signature": "4rAxVy9F7KyCqsV2KnCY5cyD19g8CRnWYw1UdjmwgFFrfxaNWj9qPsoC6saycMKgQDY68RsvCPha6VJNMWw9vxC5"
+      },
+      {
+        "computeUnits": 4317,
+        "signature": "4J7Kz7ZwoSspWDqDqoudBjPKwQodh7KSEtKx6tBEmAs3AyidY2w4Q96gGWYfhckW1WbUnM7QApdyrphTuF2EM9uP"
+      },
+      {
+        "computeUnits": 4317,
+        "signature": "2AMDNiCSqLDBCbwNMngCmUGZuMk3o42KJkEptEKi1yebGKXGR4UkHHk3Dr74MaNyj2fiGT5qfTVquJXqdexAZ24A"
+      }
+    ]
+  },
+  {
+    "name": "calculate_liquidity",
+    "scenario": "token0_only",
+    "description": "Only token0 provided (constrained by amount0)",
+    "averageComputeUnits": 2908,
+    "maxComputeUnits": 2908,
+    "minComputeUnits": 2908,
+    "samples": [
+      {
+        "computeUnits": 2908,
+        "signature": "2YkwjSRNanVatN1GZXf8YVv8zAk6Eb5HTqXsovxZfpTgx5zKzFBXxwEvj9qbzswz9e5pkyg9s6n2x5heN1iy72nU"
+      },
+      {
+        "computeUnits": 2908,
+        "signature": "3iKbEdPNFXhnT3fj8443YmeLPSe2qKfFyBrL8yYwLFiRRA2zovTCN2kjFU4cL5A5vkqsv5TRRzknQJUuggJXDt25"
+      },
+      {
+        "computeUnits": 2908,
+        "signature": "3aH1GLffbZ42AhFpUpzytABNEtUModGg1eiCpMDK3ZNzAvyqKCSZ4JUqprijwVQWb1pvqX2htr7JohbTmFqa8mmr"
+      },
+      {
+        "computeUnits": 2908,
+        "signature": "16nPmJRw43wfVk7zPMsTveviTj2yHzRQm5u2mgySTNDJkg5FKWyDa78QpYAVNHbdUhtTwkydrMWNN1SPsdBidXf"
+      },
+      {
+        "computeUnits": 2908,
+        "signature": "472qBnCToGfW4ubYkAZXPAsbcyF3E6spo28p3Sxcqxzp2xpJtHZBp7HeFft4k5bw44C2AmsXdyfSBWs7y3v1t7ML"
+      }
+    ]
+  },
+  {
+    "name": "calculate_liquidity",
+    "scenario": "token1_only",
+    "description": "Only token1 provided (constrained by amount1)",
+    "averageComputeUnits": 2184,
+    "maxComputeUnits": 2184,
+    "minComputeUnits": 2184,
+    "samples": [
+      {
+        "computeUnits": 2184,
+        "signature": "3MWVaA9iJnTmVHJTT8gedQVEBM74ha88BS9Fb8zoshZxLZuvX8VAeJHSjf9TG7SNsWJAh5Z7borNPbi9NiWbZtSt"
+      },
+      {
+        "computeUnits": 2184,
+        "signature": "2L34biveWxLVMiocwwjY2x9quEcsA7wEDgtKXMyN5wujP3EyMCUjinikVBXqJkJerC7oDwUupcGHz7ygcLmrDpWp"
+      },
+      {
+        "computeUnits": 2184,
+        "signature": "43dpHpcttKoRjTRnknDohZd511oRrB5DDHJFfXSSr4e2TpfTxEj8biM5s9DQFuybYuH2mNAaXLePQcLDGuJUgUQQ"
+      },
+      {
+        "computeUnits": 2184,
+        "signature": "494aGgfPWCEd31oZUhpdFyTyGkecBxFskXzQS4X9o75FJzagKWJkUf9Pm3Y8eoXAB6oLTsbU7fGYZdioa4ww4EiN"
+      },
+      {
+        "computeUnits": 2184,
+        "signature": "3KUi6pb7a2ovK2iFVGHdMY7KKe9TRJbZ77nQTB1YWVn8ofVmHYFdg5ctCUUezsQBrhZJwRjfBjWufVHipNk3PYRA"
+      }
+    ]
+  },
+  {
+    "name": "calculate_liquidity",
+    "scenario": "worst_case_imbalanced",
+    "description": "Large amounts, wide range, imbalanced",
+    "averageComputeUnits": 4445,
+    "maxComputeUnits": 4445,
+    "minComputeUnits": 4445,
+    "samples": [
+      {
+        "computeUnits": 4445,
+        "signature": "65qCKKzV3NdK9zdzpj9cyeQCrxN7axAsfsKUNQLN87ekFSN5pwzWch6tZ414bd7PdiAMDzFmmawSu7yVGdDkH3RT"
+      },
+      {
+        "computeUnits": 4445,
+        "signature": "31L2V8tw2JBjU2QUBGA7cLUK6Adhci1fiXKRDvn23qzDYMJGiqeP9TiQyMHGAiRiGeNNVSBiFY4vewgfpGCy8i3P"
+      },
+      {
+        "computeUnits": 4445,
+        "signature": "5LdQCdAhRoW7GL5xUCGT9LHyAP7H5nAwrC9pxGEEKeWguJDvuTiuAREJVLx7hL5jQTnqmZTckDQ1xWihqtw8pS6Y"
+      },
+      {
+        "computeUnits": 4445,
+        "signature": "5jMGzwTJM3Te19bNZcZmwwbrWDjatog39riDRuoJxSUGkR5i5wicvm3Lz1RSBV3hnxhcVyEKaEVNaC37hR1k3Nce"
+      },
+      {
+        "computeUnits": 4445,
+        "signature": "5ZDTgawgvaBuUn37thSYwBEN3mFVmBQwgifCY9AWSn7uAFLs3gUwTzD3WFaeLScXHgir393jV3LcTyhFUWpsBHgf"
+      }
+    ]
+  },
+  {
+    "name": "calculate_position_value",
+    "scenario": "small_position",
+    "description": "Small position, moderate prices",
+    "averageComputeUnits": 6330,
+    "maxComputeUnits": 6330,
+    "minComputeUnits": 6330,
+    "samples": [
+      {
+        "computeUnits": 6330,
+        "signature": "5ZpbAeygjajtVePJMKZrYbBH4EVkTqhVYZnSaABJZpiKWkENbfPX8emudqm7kuV2cgTnyZf45Y3Q2fVpUqVTVxZC"
+      },
+      {
+        "computeUnits": 6330,
+        "signature": "2LyNhXWm6D1iz4NquPeoC9w8nP5Cgqa5LS1qMToEGfFVaoKEQkgG9JAxSzLhEtKMxRpcQtfdHWyC9B4RaPrqfZE1"
+      },
+      {
+        "computeUnits": 6330,
+        "signature": "419CAp9wj3jCPU7VFaD6BFBnV2Xx8tHMkkgtHTng4ouBpiYvSN8bN1RyD1f4SUKCp3inQ6vrGMZSqJ6uAXu7JCE1"
+      },
+      {
+        "computeUnits": 6330,
+        "signature": "4h2ArnR26hn6d5Y73kw4LY228hzw4PsrWzNbzYQ4QHaSeTgFCb8hK9LgWEfdf7EiEsWisTGS5UdSxakR88KjeMBE"
+      },
+      {
+        "computeUnits": 6330,
+        "signature": "2nBmNJjaBhLqfQ7C9VcERWYoaaapuxsqraeCNzSD8h8t6iEnacQHvKWWfUicZNaDH2gKF5s7jaViviozgjRrMpUY"
+      }
+    ]
+  },
+  {
+    "name": "calculate_position_value",
+    "scenario": "common_case",
+    "description": "Typical LP position with realistic pricing",
+    "averageComputeUnits": 5921,
+    "maxComputeUnits": 5921,
+    "minComputeUnits": 5921,
+    "samples": [
+      {
+        "computeUnits": 5921,
+        "signature": "HjTY1Wdp3G7unnatdNQ8viFwbXqoXRCht9zbVz9KHZMEC7K7PsRdfeNJxzBewKNWNR1KTz8zAZ2c3GH3tkCuDqF"
+      },
+      {
+        "computeUnits": 5921,
+        "signature": "2r61Jnh2QWg6TE5uRoQjWygXvtUuFJvyAtT8prvxXEyTqfjEX8aXR8Caj3vg6D8hcxLHU2dpLaPLNxbkK9JxoAC9"
+      },
+      {
+        "computeUnits": 5921,
+        "signature": "aFMiPXTekyDEMTmrCiBRhFngzobBftAZL5wY1pkxK5t47pwf7rW5moH9BB2UWKXFNX417R791QTZK5gjeo5zqhG"
+      },
+      {
+        "computeUnits": 5921,
+        "signature": "247itRhsUJ1D1gaqJoCwsqzs2h8uXGtCGj1HJXG24ZE7hHUL8fwqDKWpRHKimwEDePNbKjTbLgEwuwRueHovuBz3"
+      },
+      {
+        "computeUnits": 5921,
+        "signature": "5SbPhA1fo1PXqJPaR1dGPy8ZWLEzj3FnQyMHXPRgM4H8gersoBrsPSKJC377eULXvKNjw4AfVSSrMWvwoUaMJjXB"
+      }
+    ]
+  },
+  {
+    "name": "calculate_position_value",
+    "scenario": "high_value_position",
+    "description": "Large position with expensive assets",
+    "averageComputeUnits": 3958,
+    "maxComputeUnits": 3958,
+    "minComputeUnits": 3958,
+    "samples": [
+      {
+        "computeUnits": 3958,
+        "signature": "34VWHD7BQwBb2GNxUvNemiyZz7V6SiG58tU5dDyZVUeAv8PKMB282UaPsboh8z4cX8tnepydoRsb5qHLpc7878WK"
+      },
+      {
+        "computeUnits": 3958,
+        "signature": "5fjo9cHueBMqdQ7pW7V7tj1CAKL5aV26DZmUH5kWQ79SPNeTbnR7Wm8Bud1RFdWD3kMcR8vb7cZZ4YPpKUHZ2QNV"
+      },
+      {
+        "computeUnits": 3958,
+        "signature": "5qddwUz3aH2LR5RVgpVuBB7DZAXZ3mQAbeNRpBATzpYx4UZirCQMHDfL1aJ8dR9vaehxnh6Bq7ZiQyyVNDnCNkLT"
+      },
+      {
+        "computeUnits": 3958,
+        "signature": "3rapnMenTRnMZZDF4N6uJYc5jQSfJH1yUeSDBoLdpG4DKaYdyQYv6wctZ9PRt9wPPQVjFLvSZSHJdLFpgqRCEHoc"
+      },
+      {
+        "computeUnits": 3958,
+        "signature": "5EJM6P9iseoLgVcLxHpQ3p1QKY7CcG99nycJass86yZBjYTL4p5oobJW5BUpXdZY7RPEeXZd84LDsti3FWXapNS5"
+      }
+    ]
+  },
+  {
+    "name": "calculate_position_value",
+    "scenario": "worst_case_overflow_path",
+    "description": "Testing overflow protection with large values",
+    "averageComputeUnits": 7088,
+    "maxComputeUnits": 7088,
+    "minComputeUnits": 7088,
+    "samples": [
+      {
+        "computeUnits": 7088,
+        "signature": "BbvVZS53Ss1zHPWkmWpouyCsG3YQrFJeZvNBeGX83qxL5tD6hG5E3LhYaoDphzZFo2JMrg9RNWqsojXQ8f4sRtT"
+      },
+      {
+        "computeUnits": 7088,
+        "signature": "5uJhC5t4B4GatFbXA6A67V5pZbx7QhpBuR1ztMpAefrdUu63M8JH8btwaZbybtXTmd8gRY9QHuRViwWjHLVh3JxP"
+      },
+      {
+        "computeUnits": 7088,
+        "signature": "3ja5QgWQRQefqmm77jH1Au8dqBTUNvwF9CDzwxtw5rPbiQPZDMgXPk5Cb49vm2RDvfaU176gEtfQmtfQmKU7Ycef"
+      },
+      {
+        "computeUnits": 7088,
+        "signature": "5Tj9GFsydVbCa3mMgLPJzZWvhUyTJR9SaWLAuEPADE9krpVju1Y8DfReohdDRtTqWSw8mpR3LuL1XTqVGXwSkYH1"
+      },
+      {
+        "computeUnits": 7088,
+        "signature": "45mFCfSyBbhdSJA4SQfHA9CdwxThyZSki13zMUVrk3FrgSnR2EfAT2VCkJBLa7brBduFKVHx6p89sysrN3Dbzc6"
+      }
+    ]
+  }
+]
