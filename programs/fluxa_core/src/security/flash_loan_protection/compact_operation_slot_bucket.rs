@@ -3,7 +3,7 @@ use crate::utils::constants::{HIGH_IMPACT_THRESHOLD, LARGE_AMOUNT_THRESHOLD, SLO
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize, Default)]
 #[repr(C)]
 pub struct CompactOperation {
     pub user: Pubkey,

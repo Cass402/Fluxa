@@ -4,7 +4,7 @@ use crate::utils::constants::{FLASH_SEQUENCE_PATTERN, OPERATION_WINDOW_SIZE, PAT
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Pod, Zeroable, InitSpace, AnchorSerialize, AnchorDeserialize, Default)]
 #[repr(C)]
 pub struct OperationRingBuffer {
     pub operations: [CompactOperation; OPERATION_WINDOW_SIZE],
@@ -18,6 +18,16 @@ pub struct OperationRingBuffer {
 }
 
 impl OperationRingBuffer {
+    #[inline(always)]
+    pub fn len(&self) -> u8 {
+        self.count
+    }
+
+    #[inline(always)]
+    pub fn is_full(&self) -> bool {
+        self.count as usize == OPERATION_WINDOW_SIZE
+    }
+
     #[inline(always)]
     pub fn push(&mut self, operation: CompactOperation) -> Result<()> {
         let index = (self.head as usize) & (OPERATION_WINDOW_SIZE - 1);

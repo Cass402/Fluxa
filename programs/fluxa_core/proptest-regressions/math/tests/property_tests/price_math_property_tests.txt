@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 50a048631df9a104dac10950fa12577e8367816a8f63de67cae0bf9b120fd191 # shrinks to sqrt_price = Q64x64(4295127739)
+cc 743fe84f5f44d8360589b51f4116114a6677843caff0b16420a0e2e00773244c # shrinks to sqrt_price = Q64x64(4295127739)
+cc a887fef0eaed24a930e30703fcfc148ac580ce2332b3b6a61d4593c4a5b0055e # shrinks to sqrt_price = Q64x64(15111346279735664548545842206)
+cc 4025d953ae8549f8c5bfc72f528b787ecc4faf73c90e719c75e4c4c752c3efc0 # shrinks to (a, b) = (Q64x64(4295127739), Q64x64(4295128739))
+cc cdca6721df8474fefd4ce5be766591004b495c1f8f9bafcc0de535924e02eef0 # shrinks to sqrt_price = Q64x64(4295127739)
+cc f5a9e6889cda1000cf8b4a2857fa121775009a0869bfdbcc5ad1efb7b54ca8df # shrinks to sqrt_price = Q64x64(4295127739)
