@@ -4,6 +4,7 @@ use anchor_lang::prelude::*;
 pub mod error;
 pub mod math;
 //pub mod security;
+pub mod instructions;
 pub mod state;
 pub mod utils;
 
