@@ -570,7 +570,7 @@ impl TickLookupCache {
         }
 
         // Build max heap
-        for start in (0..len / 2).rev() {
+        for start in (0..len >> 1).rev() {
             self.sift_down_hotness(start, len - 1);
         }
 
@@ -582,7 +582,7 @@ impl TickLookupCache {
 
         // Reverse for descending order (hottest first)
         let end = len;
-        for i in 0..end / 2 {
+        for i in 0..end >> 1 {
             self.entries.swap(i, end - 1 - i);
         }
     }
@@ -598,7 +598,7 @@ impl TickLookupCache {
         }
 
         // Build max heap
-        for start in (0..len / 2).rev() {
+        for start in (0..len >> 1).rev() {
             self.sift_down_tick_index(start, len - 1);
         }
 
@@ -611,8 +611,8 @@ impl TickLookupCache {
 
     fn sift_down_hotness(&mut self, start: usize, end: usize) {
         let mut root = start;
-        while root * 2 < end {
-            let child = root * 2 + 1;
+        while root << 1 < end {
+            let child = (root << 1) + 1;
             let mut swap = root;
 
             if self.is_hotter_than(self.entries[child], self.entries[swap]) {
@@ -632,8 +632,8 @@ impl TickLookupCache {
 
     fn sift_down_tick_index(&mut self, start: usize, end: usize) {
         let mut root = start;
-        while root * 2 < end {
-            let child = root * 2 + 1;
+        while root << 1 < end {
+            let child = (root << 1) + 1;
             let mut swap = root;
 
             if self.entries[child].tick_index > self.entries[swap].tick_index {

@@ -7,11 +7,11 @@
 //! - Loss tracking and compression statistics are maintained for auditability and protocol safety.
 //! - Inline storage is optimized for small pools, while overflow pages scale for large pools without exceeding Solana account limits.
 use crate::error::TickError;
-use crate::math::core_arithmetic::{mul_div, Q64x64, Q64x64Signed};
+use crate::math::core_arithmetic::{Q64x64, Q64x64Signed, mul_div};
 use crate::state::tick::tick_data::TickData;
 use crate::utils::constants::{
-    INLINE_TICK_CAPACITY, MAIN_BITMAP_WORDS, MAX_LOSS_PCT, MAX_STORAGE_PAGES, PAGE_BITMAP_WORDS,
-    TICKS_PER_PAGE, VIRTUAL_TICK_OFFSET,
+    BIT_POS_MASK, BITS_PER_WORD, INLINE_TICK_CAPACITY, MAIN_BITMAP_WORDS, MAX_LOSS_PCT,
+    MAX_STORAGE_PAGES, PAGE_BITMAP_WORDS, TICKS_PER_PAGE, VIRTUAL_TICK_OFFSET, WORD_POS_SHIFT,
 };
 use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
@@ -21,8 +21,8 @@ use bytemuck::{Pod, Zeroable};
 /// # Why this function?
 /// - Ensures that tick spacing is always compatible with bitmap capacity, preventing out-of-bounds errors and wasted storage.
 const fn min_tick_spacing_for_coverage() -> u16 {
-    let max_ticks = MAIN_BITMAP_WORDS * 64;
-    let virtual_range = (2 * VIRTUAL_TICK_OFFSET) as usize;
+    let max_ticks = MAIN_BITMAP_WORDS << 6; // multiply by 64
+    let virtual_range = (VIRTUAL_TICK_OFFSET << 1) as usize;
     virtual_range.div_ceil(max_ticks) as u16
 }
 
@@ -339,7 +339,7 @@ impl CompressedTickStorage {
 
         let virtual_tick = virtual_tick as usize;
         require!(
-            virtual_tick < (MAIN_BITMAP_WORDS * 64),
+            virtual_tick < (MAIN_BITMAP_WORDS << 6),
             TickError::TickIndexOutOfRange
         );
 
@@ -351,10 +351,10 @@ impl CompressedTickStorage {
     /// # Why this approach?
     /// - Enables O(1) tick existence checks and prevents duplicate tick storage.
     fn set_main_bitmap_bit(&mut self, virtual_tick: usize) -> Result<()> {
-        let word_idx = virtual_tick / 64;
+        let word_idx = virtual_tick >> 6;
         require!(word_idx < MAIN_BITMAP_WORDS, TickError::TickIndexOutOfRange);
 
-        let bit_idx = virtual_tick % 64;
+        let bit_idx = virtual_tick & BIT_POS_MASK as usize;
         self.main_bitmap[word_idx] |= 1u64 << bit_idx;
         Ok(())
     }
@@ -365,13 +365,13 @@ impl CompressedTickStorage {
     /// - Enables fast-path existence checks for tick operations, minimizing CU and lookup cost.
     pub fn tick_exists_in_bitmap(&self, tick_index: i32) -> Result<bool> {
         let virtual_tick = self.get_virtual_tick_index(tick_index)?;
-        let word_idx = virtual_tick / 64;
+        let word_idx = virtual_tick >> 6;
 
         if word_idx >= MAIN_BITMAP_WORDS {
             return Ok(false);
         }
 
-        let bit_idx = virtual_tick % 64;
+        let bit_idx = virtual_tick & BIT_POS_MASK as usize;
         Ok((self.main_bitmap[word_idx] & (1u64 << bit_idx)) != 0)
     }
 
@@ -546,6 +546,195 @@ impl CompressedTickStorage {
         let page_space = self.active_page_count as usize * std::mem::size_of::<TickStoragePage>();
         main_space + page_space
     }
+
+    /// Clears the bit for a tick in the main bitmap.
+    ///
+    /// # Why this approach?
+    /// - Uses explicit `&= !mask` pattern for idempotent, safe bit clearing.
+    /// - Required for tick removal operations to maintain bitmap consistency.
+    fn clear_main_bitmap_bit(&mut self, virtual_tick: usize) -> Result<()> {
+        let word_idx = virtual_tick >> WORD_POS_SHIFT;
+        require!(word_idx < MAIN_BITMAP_WORDS, TickError::TickIndexOutOfRange);
+
+        let bit_idx = (virtual_tick as u64) & BIT_POS_MASK;
+        self.main_bitmap[word_idx] &= !(1u64 << bit_idx);
+        Ok(())
+    }
+
+    /// Converts a virtual tick index back to the original tick index.
+    ///
+    /// # Why this approach?
+    /// - Inverse of `get_virtual_tick_index` for tick traversal operations.
+    /// - Accounts for tick spacing and virtual offset.
+    pub fn tick_index_from_virtual(&self, virtual_tick: usize) -> i32 {
+        let adjusted = (virtual_tick as i64) * (self.tick_spacing as i64);
+        (adjusted - VIRTUAL_TICK_OFFSET as i64) as i32
+    }
+
+    /// Finds the next initialized tick within a single bitmap word.
+    ///
+    /// # Why this approach?
+    /// - Implements the Uniswap v3 algorithm for efficient tick traversal during swaps.
+    /// - Uses bit masking and `leading_zeros()`/`trailing_zeros()` for O(1) tick finding.
+    /// - Returns `(next_virtual_tick, initialized)` where `initialized` indicates if a tick was found.
+    ///
+    /// # Arguments
+    /// - `virtual_tick`: The starting virtual tick index.
+    /// - `lte`: If true, search for ticks <= current (selling token0/buying token1).
+    ///         If false, search for ticks > current (selling token1/buying token0).
+    ///
+    /// # Returns
+    /// - `Ok((next_virtual_tick, true))` if an initialized tick was found in the same word.
+    /// - `Ok((word_boundary, false))` if no tick found; returns the word boundary for continuation.
+    pub fn next_initialized_tick_within_one_word(
+        &self,
+        virtual_tick: usize,
+        lte: bool,
+    ) -> Result<(usize, bool)> {
+        // Calculate word and bit position
+        let word_pos = virtual_tick >> WORD_POS_SHIFT;
+        let bit_pos = (virtual_tick as u64) & BIT_POS_MASK;
+
+        if word_pos >= MAIN_BITMAP_WORDS {
+            return Err(TickError::TickIndexOutOfRange.into());
+        }
+
+        let word = self.main_bitmap[word_pos];
+
+        if lte {
+            // Search for ticks <= current position (going left/down in price)
+            // Mask off bits above the current position
+            let mask = (1u64 << (bit_pos + 1)) - 1;
+            let masked = word & mask;
+
+            if masked != 0 {
+                // Found an initialized tick - use highest set bit
+                let highest_bit = BITS_PER_WORD - 1 - masked.leading_zeros() as usize;
+                let next_virtual = (word_pos << WORD_POS_SHIFT) | highest_bit;
+                Ok((next_virtual, true))
+            } else {
+                // No tick found in this word - return left boundary
+                let boundary = word_pos << WORD_POS_SHIFT;
+                Ok((boundary, false))
+            }
+        } else {
+            // Search for ticks > current position (going right/up in price)
+            // Mask off bits at and below the current position
+            let mask = !((1u64 << (bit_pos + 1)) - 1);
+            let masked = word & mask;
+
+            if masked != 0 {
+                // Found an initialized tick - use lowest set bit
+                let lowest_bit = masked.trailing_zeros() as usize;
+                let next_virtual = (word_pos << WORD_POS_SHIFT) | lowest_bit;
+                Ok((next_virtual, true))
+            } else {
+                // No tick found in this word - return right boundary
+                let boundary = ((word_pos + 1) << WORD_POS_SHIFT) - 1;
+                Ok((boundary.min(MAIN_BITMAP_WORDS * BITS_PER_WORD - 1), false))
+            }
+        }
+    }
+
+    /// Finds the next initialized tick across multiple bitmap words.
+    ///
+    /// # Why this approach?
+    /// - Wraps `next_initialized_tick_within_one_word` to handle cross-word traversal.
+    /// - Essential for swap execution when the next tick may be several words away.
+    ///
+    /// # Arguments
+    /// - `tick_index`: The starting tick index (will be converted to virtual internally).
+    /// - `lte`: If true, search for ticks <= current. If false, search for ticks > current.
+    /// - `max_words_to_search`: Limit on how many words to search (prevents unbounded CU usage).
+    ///
+    /// # Returns
+    /// - `Ok(Some(tick_index))` if an initialized tick was found.
+    /// - `Ok(None)` if no tick found within the search limit.
+    pub fn next_initialized_tick(
+        &self,
+        tick_index: i32,
+        lte: bool,
+        max_words_to_search: usize,
+    ) -> Result<Option<i32>> {
+        let mut virtual_tick = self.get_virtual_tick_index(tick_index)?;
+        let mut words_searched = 0;
+
+        while words_searched < max_words_to_search {
+            let word_pos = virtual_tick >> WORD_POS_SHIFT;
+
+            // Check bounds
+            if lte {
+                if word_pos == 0 && virtual_tick == 0 {
+                    return Ok(None); // Reached the start
+                }
+            } else {
+                if word_pos >= MAIN_BITMAP_WORDS {
+                    return Ok(None); // Reached the end
+                }
+            }
+
+            // Search current word
+            let (next_virtual, found) =
+                self.next_initialized_tick_within_one_word(virtual_tick, lte)?;
+
+            if found {
+                let found_tick = self.tick_index_from_virtual(next_virtual);
+                return Ok(Some(found_tick));
+            }
+
+            // Move to next word
+            if lte {
+                if word_pos == 0 {
+                    return Ok(None); // No more words to search
+                }
+                // Move to the last bit of the previous word
+                virtual_tick = (word_pos << WORD_POS_SHIFT) - 1;
+            } else {
+                // Move to the first bit of the next word
+                virtual_tick = (word_pos + 1) << WORD_POS_SHIFT;
+                if virtual_tick >= MAIN_BITMAP_WORDS << WORD_POS_SHIFT {
+                    return Ok(None); // No more words to search
+                }
+            }
+
+            words_searched += 1;
+        }
+
+        Ok(None) // Exceeded search limit
+    }
+
+    /// Removes a tick from inline storage using swap-remove pattern.
+    ///
+    /// # Why this approach?
+    /// - O(1) removal by swapping with the last element.
+    /// - Clears the bitmap bit for consistency.
+    /// - Returns the removed tick data for potential use.
+    pub fn remove_inline_tick(&mut self, tick_index: i32) -> Result<Option<CompressedTick>> {
+        // Find the tick in inline storage
+        let idx = match self.find_inline_tick(tick_index) {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+
+        // Clear the bitmap bit
+        let virtual_tick = self.get_virtual_tick_index(tick_index)?;
+        self.clear_main_bitmap_bit(virtual_tick)?;
+
+        // Swap-remove: move last element to this position
+        let last_idx = (self.inline_tick_count - 1) as usize;
+        let removed = self.inline_ticks[idx];
+
+        if idx != last_idx {
+            self.inline_ticks[idx] = self.inline_ticks[last_idx];
+        }
+
+        // Clear the last slot and decrement counter
+        self.inline_ticks[last_idx] = CompressedTick::default();
+        self.inline_tick_count -= 1;
+        self.total_tick_count = self.total_tick_count.saturating_sub(1);
+
+        Ok(Some(removed))
+    }
 }
 
 impl TickStoragePage {
@@ -701,6 +890,99 @@ impl TickStoragePage {
             let total = self.avg_loss_pct as u64 * (self.compression_count - 1) as u64;
             self.avg_loss_pct = ((total + new_loss as u64) / self.compression_count as u64) as u16;
         }
+    }
+
+    /// Calculates the bit position within the page bitmap for a tick slot index.
+    ///
+    /// # Why this approach?
+    /// - Page bitmap tracks which slots in `ticks[]` array are occupied.
+    /// - Enables O(1) existence checks within a page.
+    fn get_page_bitmap_position(slot_index: usize) -> Option<(usize, u64)> {
+        if slot_index >= TICKS_PER_PAGE {
+            return None;
+        }
+        let word_idx = slot_index >> WORD_POS_SHIFT;
+        let bit_idx = (slot_index as u64) & BIT_POS_MASK;
+        Some((word_idx, 1u64 << bit_idx))
+    }
+
+    /// Sets the page bitmap bit for a given slot index.
+    ///
+    /// # Why this approach?
+    /// - Uses explicit `|= mask` for idempotent, safe bit setting.
+    /// - Called internally when adding ticks to maintain bitmap consistency.
+    pub fn set_page_bitmap_bit(&mut self, slot_index: usize) -> Result<()> {
+        let (word_idx, mask) =
+            Self::get_page_bitmap_position(slot_index).ok_or(TickError::InvalidPageIndex)?;
+        require!(word_idx < PAGE_BITMAP_WORDS, TickError::InvalidPageIndex);
+        self.page_bitmap[word_idx] |= mask;
+        Ok(())
+    }
+
+    /// Clears the page bitmap bit for a given slot index.
+    ///
+    /// # Why this approach?
+    /// - Uses explicit `&= !mask` for idempotent, safe bit clearing.
+    /// - Called internally when removing ticks to maintain bitmap consistency.
+    pub fn clear_page_bitmap_bit(&mut self, slot_index: usize) -> Result<()> {
+        let (word_idx, mask) =
+            Self::get_page_bitmap_position(slot_index).ok_or(TickError::InvalidPageIndex)?;
+        require!(word_idx < PAGE_BITMAP_WORDS, TickError::InvalidPageIndex);
+        self.page_bitmap[word_idx] &= !mask;
+        Ok(())
+    }
+
+    /// Removes a tick from this page using swap-remove pattern.
+    ///
+    /// # Why this approach?
+    /// - O(1) removal by swapping with the last element.
+    /// - Clears the page bitmap bit for the removed slot.
+    /// - Returns the removed tick data for potential use.
+    ///
+    /// # Note
+    /// The caller (instruction layer) is responsible for updating the main_bitmap
+    /// in CompressedTickStorage when a tick is removed from a page.
+    pub fn remove_tick(&mut self, tick_index: i32) -> Result<Option<CompressedTick>> {
+        // Find the tick in page storage
+        let idx = match self.find_tick(tick_index) {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+
+        // Clear the page bitmap bit for this slot
+        self.clear_page_bitmap_bit(idx)?;
+
+        // Swap-remove: move last element to this position
+        let last_idx = (self.tick_count - 1) as usize;
+        let removed = self.ticks[idx];
+
+        if idx != last_idx {
+            // Move the last tick to the removed slot
+            self.ticks[idx] = self.ticks[last_idx];
+
+            // Update bitmap: clear old position, set new position
+            self.clear_page_bitmap_bit(last_idx)?;
+            self.set_page_bitmap_bit(idx)?;
+        }
+
+        // Clear the last slot and decrement counter
+        self.ticks[last_idx] = CompressedTick::default();
+        self.tick_count -= 1;
+
+        Ok(Some(removed))
+    }
+
+    /// Checks if a slot in this page is occupied.
+    ///
+    /// # Why this approach?
+    /// - O(1) existence check using page bitmap.
+    pub fn slot_occupied(&self, slot_index: usize) -> bool {
+        if let Some((word_idx, mask)) = Self::get_page_bitmap_position(slot_index) {
+            if word_idx < PAGE_BITMAP_WORDS {
+                return (self.page_bitmap[word_idx] & mask) != 0;
+            }
+        }
+        false
     }
 }
 

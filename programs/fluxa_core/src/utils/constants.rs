@@ -43,7 +43,7 @@ pub const MAX_SHARDS: usize = 64; // Maximum number of shards per factory for ef
 pub const DEFAULT_PROTOCOL_FEE: u32 = 100; // 1% default, balancing protocol revenue and user cost.
 pub const POOL_CREATION_FEE: u64 = 1_000_000; // Small fee to deter spam and cover storage costs.
 pub const DEFAULT_FEE_TIERS: [u32; MAX_FEE_TIERS] = [100, 500, 3000, 10000, 0, 0, 0, 0]; // Preallocated for zero-copy, unused slots are zeroed.
-                                                                                         // Status flags use bitwise encoding for efficient, atomic updates and multi-flag support.
+// Status flags use bitwise encoding for efficient, atomic updates and multi-flag support.
 pub const STATUS_NORMAL: u8 = 0x00;
 pub const STATUS_PAUSED: u8 = 0x01;
 pub const STATUS_EMERGENCY: u8 = 0x02;
@@ -84,8 +84,14 @@ pub const MAX_LOSS_PCT: u8 = 5; // Precision guard
 pub const VIRTUAL_TICK_OFFSET: i32 = 262_144; // 2^18 for wider range coverage
 pub const MAX_CACHE_ENTRIES: usize = 256; // Cache size (stack allocated)
 pub const HOT_TICK_THRESHOLD: u16 = 3; // Minimum access count to be "hot"
-pub const MAIN_BITMAP_WORDS: usize = 64; // 4096 bits in main account
-pub const PAGE_BITMAP_WORDS: usize = 8; // 512 bits per page
+pub const MAIN_BITMAP_WORDS: usize = 256; // 16,384 bits in main account (~6.5KB with other data)
+pub const PAGE_BITMAP_WORDS: usize = 16; // 1024 bits per page for better coverage
+
+/// Bitmap bit manipulation constants.
+/// These follow the Uniswap v3 pattern for efficient tick traversal.
+pub const BITS_PER_WORD: usize = 64; // u64 word size
+pub const WORD_POS_SHIFT: usize = 6; // log2(64) - used to extract word index from tick
+pub const BIT_POS_MASK: u64 = 0x3F; // 63 = 0b111111 - used to extract bit position within word
 
 /// Position and storage constraints.
 ///
@@ -114,9 +120,9 @@ pub const MIN_VOLUME_FLOR_Q64: Q64x64 = Q64x64::from_raw(18_446_744_073_709_551_
 pub const PRECISION_FACTOR_Q64: Q64x64 = Q64x64::from_raw(184_467_440_737_095_516_160_000); // 10,000(1e4) in Q64.64
 pub const SLOT_BUCKET_COUNT: usize = 8; // Number of slot buckets for tracking
 pub const OPERATION_WINDOW_SIZE: usize = 32; // power of 2 for efficiency
-                                             // Fixed-point precision for smooth decay
+// Fixed-point precision for smooth decay
 pub const DECAY_PRECISION: u32 = 10_000; // 4 decimal places
-                                         // Bitset aging configuration
+// Bitset aging configuration
 pub const BITSET_AGING_SLOTS: u64 = 100; // Number of slots before aging bitsets
 pub const PATTERN_CACHE_SIZE: usize = 4; // LRU cache size
 pub const HIGH_IMPACT_THRESHOLD: Q64x64 = Q64x64::from_raw(922337203685477581); // 5% impact (0.05 in Q64.64)
