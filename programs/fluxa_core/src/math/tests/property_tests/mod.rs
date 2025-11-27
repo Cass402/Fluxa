@@ -1,2 +1,3 @@
 mod core_arithmetic_property_tests;
 mod liquidity_property_tests;
+mod price_math_property_tests;

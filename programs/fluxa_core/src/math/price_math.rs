@@ -3,6 +3,15 @@ use crate::math::core_arithmetic::{tick_to_sqrt_x64, Q64x64};
 use crate::utils::constants::{MAX_SQRT_X64, MAX_TICK, MIN_SQRT_X64, MIN_TICK};
 use anchor_lang::prelude::*;
 
+const MAX_BINARY_ITERATIONS: usize = 32;
+const BINARY_SEARCH_RANGE: i32 = 10_000;
+
+#[cfg(test)]
+pub(crate) const TEST_MAX_BINARY_ITERATIONS: usize = MAX_BINARY_ITERATIONS;
+
+#[cfg(test)]
+pub(crate) const TEST_BINARY_SEARCH_RANGE: i32 = BINARY_SEARCH_RANGE;
+
 /// Converts a Q64x64 square root price to a normal price (u64), enforcing protocol bounds and safety.
 ///
 /// # Why
@@ -49,9 +58,6 @@ pub fn sqrt_price_to_price(sqrt_price: Q64x64) -> Result<u64> {
 /// Used internally by sqrt_price_to_tick to refine the tick index after a coarse lookup.
 #[inline(always)]
 fn optimized_binary_search(sqrt_price: Q64x64, mut low: i32, mut high: i32) -> Result<i32> {
-    // Safety: Fixed iteration count prevents infinite loops and DoS.
-    const MAX_BINARY_ITERATIONS: usize = 32;
-
     for _ in 0..MAX_BINARY_ITERATIONS {
         // Early exit if search space is exhausted.
         if low >= high {
@@ -97,12 +103,13 @@ pub fn sqrt_price_to_tick(sqrt_price: Q64x64) -> Result<i32> {
     }
 
     // Optimization: Coarse lookup table provides a fast, deterministic initial guess, reducing compute cost.
-    let coarse_tick = coarse_lookup_table_search(sqrt_price);
+    let coarse_tick = coarse_lookup_table_search(sqrt_price)?;
 
     // Rationale: Localized binary search ensures precision, but with bounded compute cost for on-chain safety.
-    let search_range = 10;
-    let low = (coarse_tick - search_range).max(MIN_TICK);
-    let high = (coarse_tick + search_range).min(MAX_TICK);
+    // The search range must be large enough to account for interpolation error in the coarse lookup.
+    // With 10,000 tick gaps in the LOOKUP_TABLE, we need a proportional search range to ensure precision.
+    let low = (coarse_tick - BINARY_SEARCH_RANGE).max(MIN_TICK);
+    let high = (coarse_tick + BINARY_SEARCH_RANGE).min(MAX_TICK);
 
     optimized_binary_search(sqrt_price, low, high)
 }
@@ -223,27 +230,50 @@ const LOOKUP_TABLE: &[(u128, i32)] = &[
 /// # Usage
 /// Used internally by sqrt_price_to_tick for fast initial tick approximation.
 #[inline(always)]
-fn coarse_lookup_table_search(sqrt_price: Q64x64) -> i32 {
+fn coarse_lookup_table_search(sqrt_price: Q64x64) -> Result<i32> {
     // Rationale: Binary search for O(log n) lookup, which is efficient and deterministic.
     match LOOKUP_TABLE.binary_search_by_key(&sqrt_price.raw(), |&(price, _)| price) {
-        Ok(index) => LOOKUP_TABLE[index].1, // Exact match found
+        Ok(index) => Ok(LOOKUP_TABLE[index].1), // Exact match found
         Err(index) => {
             // If no exact match, return the closest lower tick, which is safe for AMM logic.
             if index == 0 {
-                LOOKUP_TABLE[0].1
+                Ok(LOOKUP_TABLE[0].1)
             } else if index >= LOOKUP_TABLE.len() {
-                LOOKUP_TABLE[LOOKUP_TABLE.len() - 1].1
+                Ok(LOOKUP_TABLE[LOOKUP_TABLE.len() - 1].1)
             } else {
                 // Interpolate for better accuracy, but only as an initial guess.
                 let (lower_price, lower_tick) = LOOKUP_TABLE[index - 1];
                 let (upper_price, upper_tick) = LOOKUP_TABLE[index];
                 if upper_price == lower_price {
-                    lower_tick
+                    Ok(lower_tick)
                 } else {
-                    let weight = (sqrt_price.raw() - lower_price) / (upper_price - lower_price);
-                    lower_tick + (weight * (upper_tick - lower_tick) as u128) as i32
+                    //let weight = (sqrt_price.raw() - lower_price) / (upper_price - lower_price);
+                    let numerator = sqrt_price.checked_sub(Q64x64::from_raw(lower_price))?;
+                    let denominator =
+                        Q64x64::from_raw(upper_price).checked_sub(Q64x64::from_raw(lower_price))?;
+                    let weight = numerator.checked_div(denominator)?.raw();
+                    Ok(lower_tick + ((weight * (upper_tick - lower_tick) as u128) >> 64) as i32)
                 }
             }
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn lookup_table_for_tests() -> &'static [(u128, i32)] {
+    LOOKUP_TABLE
+}
+
+#[cfg(test)]
+pub(crate) fn coarse_lookup_table_search_for_tests(sqrt_price: Q64x64) -> Result<i32> {
+    coarse_lookup_table_search(sqrt_price)
+}
+
+#[cfg(test)]
+pub(crate) fn optimized_binary_search_for_tests(
+    sqrt_price: Q64x64,
+    low: i32,
+    high: i32,
+) -> Result<i32> {
+    optimized_binary_search(sqrt_price, low, high)
 }

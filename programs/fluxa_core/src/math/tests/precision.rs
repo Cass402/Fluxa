@@ -9,6 +9,24 @@ pub const REL_PPB_STRICT: u128 = 1; // 1e-9 relative error
 /// Accounts for error amplification in operations like sqrt(x)² ≈ x.
 pub const REL_PPB_SQUARED: u128 = 10; // 1e-8 relative error
 
+/// Relative error tolerance for tick-based price conversions.
+/// Ticks represent discrete 0.01% (1 basis point = 100,000 PPB) price levels in the AMM.
+/// Due to tick quantization, round-trip conversions (tick → sqrt_price → tick) may have
+/// some inherent error. This tolerance accounts for the fundamental discretization while
+/// maintaining economic security.
+///
+/// Rationale: Each tick represents 1.0001^(tick/2), with 0.01% spacing between ticks.
+/// When converting arbitrary sqrt_prices to ticks, we must round to the nearest tick,
+/// introducing up to ~0.005% (50,000 PPB) error in the worst case. We set tolerance at 100 PPB
+/// which is 1000x tighter than the tick spacing, ensuring economic precision while
+/// accounting for quantization effects.
+pub const REL_PPB_TICK_CONVERSION: u128 = 100; // 100 PPB = 1e-7 relative error, ~1000x tighter than tick spacing
+
+/// ULP tolerance for tick-to-sqrt conversions with large magnitude values.
+/// When sqrt_prices are large (e.g., 100+ in Q64.64), the absolute ULP difference can be
+/// significant even with small relative errors. This tolerance accounts for magnitude effects.
+pub const _ULP_TICK_LARGE: u128 = 100; // 100 ULPs for large magnitude tick conversions
+
 /// Tight ULP (Unit in Last Place) tolerance for high-precision operations.
 /// Used when mathematical result should be very close to expected value.
 pub const ULP_TIGHT: u128 = 2; // 2 raw Q64.64 ULPs
