@@ -5,7 +5,7 @@ members = [
 exclude = [
     "programs/fluxa_core/fuzz",
 ]
-resolver = "2"
+resolver = "3"
 
 [profile.test]
 overflow-checks = false

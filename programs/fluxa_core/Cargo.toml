@@ -2,7 +2,7 @@
 name = "fluxa_core"
 version = "0.1.0"
 description = "Core Protocol of Fluxa"
-edition = "2021"
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -18,14 +18,14 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 cpi = ["no-entrypoint"]
 
 [dependencies]
-anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
-anchor-spl = { version = "0.31.1", features = ["metadata"] }
+anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-spl = { version = "0.32.1", features = ["metadata"] }
 solana-compute-budget-interface = "2.2"
 ethnum = { version = "1.5.2", features = ["macros"], default-features = false }
 bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
 
 [dev-dependencies]
-anchor-client = "0.31.1"
+anchor-client = "0.32.1"
 tokio = { version = "1.45.1", features = ["full"] }
 solana-program-test = "2.3.2"
 solana-bpf-loader-program = "2.3.2"
