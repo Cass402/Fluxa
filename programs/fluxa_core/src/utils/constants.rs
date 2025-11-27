@@ -124,3 +124,40 @@ pub const LARGE_AMOUNT_THRESHOLD: Q64x64 = Q64x64::from_int(10_000_000); // 10 m
 pub const FLASH_SEQUENCE_PATTERN: u8 = 0b010010; // Add (01) -> Swap (00) -> Remove (10) = 0b010010 in 6-bit window (decimal equivalent: 18)
 pub const MAX_DISTINCT_USERS: usize = 32;
 pub const GLOBAL_BUFFER_SIZE: usize = 64;
+
+/// Position creation and batch management parameters.
+///
+/// # Why
+/// These constants define the limits and thresholds for position creation, slippage protection,
+/// compute unit requirements, and batch vs. individual position decisions.
+/// They are protocol-wide defaults that can be overridden at the pool level where applicable.
+
+/// Default liquidity threshold for automatic batch vs. individual position selection.
+/// Positions with liquidity >= this threshold are created as individual accounts.
+/// Positions below this threshold may be batched for compute/rent efficiency.
+/// Value: 100M with 18 decimals (represents ~$100M in typical stablecoin terms).
+pub const DEFAULT_BATCH_LIQUIDITY_THRESHOLD: u128 = 100_000_000_000_000_000;
+
+/// Maximum allowed liquidity per position to prevent overflow in downstream calculations.
+/// Value: 1B with 18 decimals.
+pub const MAX_POSITION_LIQUIDITY: u128 = 1_000_000_000_000_000_000;
+
+/// Maximum deadline extension allowed from the current timestamp.
+/// Prevents users from setting arbitrarily far deadlines that could be exploited.
+/// Value: 1 hour (3600 seconds).
+pub const MAX_DEADLINE_EXTENSION: i64 = 3600;
+
+/// Maximum allowed slippage in basis points (1 bp = 0.01%).
+/// Used for enhanced slippage percentage validation.
+/// Value: 5000 bps = 50% maximum slippage.
+pub const MAX_SLIPPAGE_BPS: u16 = 5000;
+
+/// Minimum compute units required to complete position creation.
+/// Used for pre-flight CU estimation to fail fast before expensive operations.
+/// Value: 200,000 CU (typical position creation cost with all validations).
+pub const MIN_CU_FOR_POSITION_CREATION: u64 = 200_000;
+
+/// Maximum number of positions allowed in a single batch account.
+/// Balances compute cost with storage efficiency.
+/// Value: 50 positions per batch (accounts for Merkle updates and CU limits).
+pub const MAX_BATCH_POSITIONS: usize = 50;

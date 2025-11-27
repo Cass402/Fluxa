@@ -56,13 +56,20 @@ pub struct PoolConfig {
     /// Why: Only this authority can make critical changes, ensuring protocol safety and upgradability. Storing as Pubkey allows for multisig or DAO integration.
     pub core_authority: Pubkey,
 
+    /// Pool-level override for batch liquidity threshold.
+    ///
+    /// Why: Allows individual pools to customize the threshold at which positions are created
+    /// as individual accounts vs. batched. 0 = use protocol default from constants.rs.
+    /// High-value pools may want a higher threshold, while low-liquidity pools may batch more aggressively.
+    pub batch_liquidity_threshold_override: u64,
+
     pub bump_config: u8,   // Cache bump for efficiency
     pub _padding: [u8; 7], // Align to 8-byte boundary
 
     /// Reserved for future upgrades (e.g., new risk controls, fee models) without breaking account layout.
     ///
     /// Why: Pre-allocating space allows for seamless upgrades and avoids costly migrations or rent increases.
-    pub reserved: [u64; 8],
+    pub reserved: [u64; 7], // Reduced from 8 to 7 to accommodate batch_liquidity_threshold_override
 }
 
 impl Default for PoolConfig {
@@ -80,9 +87,32 @@ impl Default for PoolConfig {
             daily_volume_limit: 0,
             last_volume_reset: 0,
             core_authority: Pubkey::default(),
+            batch_liquidity_threshold_override: 0, // 0 = use protocol default
             bump_config: 0,
             _padding: [0; 7],
-            reserved: [0; 8],
+            reserved: [0; 7],
         }
+    }
+}
+
+impl PoolConfig {
+    /// Returns the effective batch liquidity threshold for this pool.
+    ///
+    /// If `batch_liquidity_threshold_override` is non-zero, returns that value as u128.
+    /// Otherwise, returns the protocol-wide default from constants.
+    #[inline(always)]
+    pub fn get_batch_liquidity_threshold(&self) -> u128 {
+        if self.batch_liquidity_threshold_override > 0 {
+            self.batch_liquidity_threshold_override as u128
+        } else {
+            crate::utils::constants::DEFAULT_BATCH_LIQUIDITY_THRESHOLD
+        }
+    }
+
+    /// Sets a pool-level override for the batch liquidity threshold.
+    /// Pass 0 to revert to using the protocol default.
+    #[inline(always)]
+    pub fn set_batch_liquidity_threshold_override(&mut self, threshold: u64) {
+        self.batch_liquidity_threshold_override = threshold;
     }
 }

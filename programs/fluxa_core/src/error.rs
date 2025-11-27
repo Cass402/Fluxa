@@ -375,6 +375,58 @@ pub enum PositionError {
     /// Why: Prevents replay or collision attacks in position management.
     #[msg("Duplicate position nonce")]
     DuplicatePositionNonce,
+    /// Transaction deadline has been exceeded.
+    /// Why: Protects users from stale transactions being executed at unfavorable prices.
+    #[msg("Transaction deadline exceeded")]
+    DeadlineExceeded,
+    /// Deadline is too far in the future.
+    /// Why: Prevents users from setting arbitrarily long deadlines that could be exploited.
+    #[msg("Deadline too far in the future")]
+    DeadlineTooFar,
+    /// Slippage tolerance exceeded for token amounts.
+    /// Why: Protects users from receiving fewer tokens than their minimum acceptable amount.
+    #[msg("Slippage tolerance exceeded")]
+    SlippageExceeded,
+    /// Insufficient compute units for position creation.
+    /// Why: Fails fast before expensive operations if CU budget is too low.
+    #[msg("Insufficient compute budget for position creation")]
+    InsufficientComputeBudget,
+    /// Position liquidity is zero or below minimum.
+    /// Why: Prevents creation of dust positions that waste state and compute.
+    #[msg("Position liquidity must be greater than zero")]
+    InsufficientLiquidity,
+    /// Position liquidity exceeds protocol maximum.
+    /// Why: Prevents overflow in downstream calculations and extreme concentration.
+    #[msg("Position liquidity exceeds maximum allowed")]
+    ExcessiveLiquidity,
+    /// Invalid tick range for position.
+    /// Why: Ensures tick_lower < tick_upper and both are valid protocol ticks.
+    #[msg("Invalid tick range: lower must be less than upper")]
+    InvalidTickRange,
+    /// Tick not aligned with pool's tick spacing.
+    /// Why: Ensures positions are created at valid price grid points.
+    #[msg("Tick not aligned with pool tick spacing")]
+    TickNotAligned,
+    /// Pool is currently paused.
+    /// Why: Prevents position creation during emergency or maintenance pause.
+    #[msg("Pool is currently paused")]
+    PoolPaused,
+    /// User has insufficient token balance for deposit.
+    /// Why: Pre-validates user can afford the position before state changes.
+    #[msg("Insufficient token balance")]
+    InsufficientBalance,
+    /// Token transfer failed during position creation.
+    /// Why: Catches CPI failures for proper error handling.
+    #[msg("Token transfer failed")]
+    TransferFailed,
+    /// Batch account not provided for batched position.
+    /// Why: Ensures batch operations have required accounts.
+    #[msg("Batch account required for batched position")]
+    BatchAccountRequired,
+    /// Batch capacity exceeded.
+    /// Why: Prevents adding positions to full batches.
+    #[msg("Batch has reached maximum capacity")]
+    BatchCapacityExceeded,
 }
 
 #[error_code]

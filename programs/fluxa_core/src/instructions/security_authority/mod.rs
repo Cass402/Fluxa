@@ -15,7 +15,8 @@ pub mod security_system_initialization;
 
 pub use add_emergency_contact::*;
 pub use authority_change_proposal::*;
-pub use core_authority_emergency_pause::*;
+// Note: core_authority_emergency_pause exports are superseded by security_coordinator_emergency_pause
+// pub use core_authority_emergency_pause::*;
 pub use create_audit_trail_entry::*;
 pub use execute_authority_change::*;
 pub use initialize_audit_trail_head::*;
@@ -24,6 +25,7 @@ pub use initialize_emergency_contacts::*;
 pub use initialize_multisig_config::*;
 pub use initialize_security_coordinator::*;
 pub use multisig_confirmation::*;
-pub use propose_authority_change::*;
+// Note: propose_authority_change exports conflict with authority_change_proposal
+// pub use propose_authority_change::*;
 pub use security_coordinator_emergency_pause::*;
 pub use security_system_initialization::*;
