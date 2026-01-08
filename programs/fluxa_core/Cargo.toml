@@ -22,7 +22,7 @@ anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.32.1", features = ["metadata"] }
 solana-compute-budget-interface = "2.2"
 ethnum = { version = "1.5.2", features = ["macros"], default-features = false }
-bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
+bytemuck = { version = "1.24", features = ["derive", "min_const_generics"] }
 
 [dev-dependencies]
 anchor-client = "0.32.1"
